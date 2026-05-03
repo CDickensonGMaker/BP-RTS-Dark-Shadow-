@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
+[ext_resource type="Resource" path="res://assets/sprites/units/ddcatplt_atlas.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+regiment_name = "Ddcatplt"
+unit_type = 3
+attack = 4
+defense = 4
+weapon_skill = 4
+ballistic_skill = 14
+strength = 8
+max_soldiers = 8
+current_soldiers = 8
+base_morale = 55.0
+morale_save = 4
+speed = 1.5
+charge_bonus = 0
+max_ammo = 12
+current_ammo = 12
+range_distance = 80.0
+faction_color = Color(0.5, 0.5, 0.5, 1)
+sprite_atlas = ExtResource("2")

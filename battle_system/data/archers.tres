@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RegimentData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+regiment_name = "Archers"
+unit_type = 2
+attack = 6
+defense = 6
+weapon_skill = 8
+ballistic_skill = 14
+strength = 2
+max_soldiers = 24
+current_soldiers = 24
+base_morale = 50.0
+morale_save = 4
+speed = 3.5
+charge_bonus = 0
+max_ammo = 24
+current_ammo = 24
+range_distance = 40.0
+faction_color = Color(0.1, 0.6, 0.2, 1)

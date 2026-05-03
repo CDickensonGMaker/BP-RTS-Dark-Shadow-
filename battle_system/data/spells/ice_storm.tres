@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="SpellData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://battle_system/data/spell_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "ice_storm"
+display_name = "Ice Storm"
+description = "Summons a freezing blizzard at the target location, dealing ice damage and slowing all units caught in its path."
+target_type = 1
+damage_type = 1
+effect_type = 0
+base_damage = 40
+edge_damage_mult = 0.6
+morale_damage_mult = 0.4
+range_distance = 50.0
+aoe_radius = 10.0
+cone_angle = 45.0
+cone_length = 20.0
+beam_width = 2.0
+beam_distance = 40.0
+projectile_speed = 20.0
+is_homing = false
+homing_turn_rate = 180.0
+projectile_arc = 3.0
+projectile_scale = 1.0
+creates_hazard = true
+hazard_duration = 8.0
+hazard_tick_damage = 4
+hazard_tick_interval = 0.5
+hazard_radius = 10.0
+effect_duration = 0.0
+attack_modifier = 1.0
+defense_modifier = 1.0
+speed_modifier = 0.6
+morale_per_second = 0.0
+cooldown = 35.0
+stamina_cost = 25.0
+ammo_cost = 0
+effect_color = Color(0.4, 0.7, 1, 0.9)
+secondary_color = Color(0.2, 0.4, 0.9, 0.6)
+cast_sound = "spell_ice"
+impact_sound = "ice_shatter"
+allowed_unit_types = []
+min_veterancy_level = 0

@@ -1,0 +1,388 @@
+[gd_scene load_steps=21 format=3]
+
+[ext_resource type="Script" path="res://battle_system/terrain/battle_terrain.gd" id="1"]
+[ext_resource type="Script" path="res://battle_system/nodes/regiment.gd" id="2"]
+[ext_resource type="Script" path="res://battle_system/nodes/regiment_leader.gd" id="3"]
+[ext_resource type="Script" path="res://battle_system/ui/battle_hud.gd" id="6"]
+[ext_resource type="Script" path="res://camera/battle_camera.gd" id="7"]
+[ext_resource type="Script" path="res://battle_system/ui/selection_box_overlay.gd" id="8"]
+[ext_resource type="Script" path="res://battle_system/debug/combat_debug_overlay.gd" id="11_debug"]
+[ext_resource type="Script" path="res://battle_system/ui/battle_over_screen.gd" id="12_battle_over"]
+
+; Player Regiment Data (3 sword, 2 archer, 1 cavalry)
+[ext_resource type="Resource" path="res://battle_system/data/regiments/grtsword_regiment.tres" id="player_sword"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/dwxbow_regiment.tres" id="player_archer"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/brdhrs_regiment.tres" id="player_cavalry"]
+
+; Enemy Regiment Data - Goblins/Orcs (3 sword, 2 archer, 1 cavalry)
+[ext_resource type="Resource" path="res://battle_system/data/regiments/blackorc_regiment.tres" id="enemy_sword1"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/orcboyz_regiment.tres" id="enemy_sword2"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/ntgoblin_regiment.tres" id="enemy_sword3"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/arraboyz_regiment.tres" id="enemy_archer1"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/biguns_regiment.tres" id="enemy_archer2"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/wolfride_regiment.tres" id="enemy_cavalry"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape_1"]
+radius = 8.0
+height = 10.0
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 1
+background_color = Color(0.45, 0.6, 0.75, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.9, 0.9, 0.95, 1)
+ambient_light_energy = 0.7
+
+[node name="BattleScene" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 20, 0)
+shadow_enabled = true
+light_energy = 1.2
+
+[node name="BattleCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707, 0.707, 0, -0.707, 0.707, 0, 30, 25)
+script = ExtResource("7")
+fov = 60.0
+map_bounds_min = Vector3(-100, 0, -100)
+map_bounds_max = Vector3(100, 100, 100)
+
+[node name="BattleTerrain" type="Node3D" parent="."]
+script = ExtResource("1")
+terrain_size = Vector2(150, 150)
+terrain_resolution = 64
+height_scale = 15.0
+tree_count = 30
+building_count = 5
+prop_count = 20
+rock_count = 15
+bush_count = 25
+
+; ========== PLAYER UNITS (Left side, X = -30) ==========
+
+; Player Sword 1 - Front Center
+[node name="PlayerSword1" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 10, 0)
+script = ExtResource("2")
+data = ExtResource("player_sword")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+
+[node name="Sprite3D" type="Sprite3D" parent="PlayerSword1"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="PlayerSword1"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="PlayerSword1/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="PlayerSword1"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PlayerSword1/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; Player Sword 2 - Front Left
+[node name="PlayerSword2" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 10, -15)
+script = ExtResource("2")
+data = ExtResource("player_sword")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+
+[node name="Sprite3D" type="Sprite3D" parent="PlayerSword2"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="PlayerSword2"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="PlayerSword2/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="PlayerSword2"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PlayerSword2/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; Player Sword 3 - Front Right
+[node name="PlayerSword3" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 10, 15)
+script = ExtResource("2")
+data = ExtResource("player_sword")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+
+[node name="Sprite3D" type="Sprite3D" parent="PlayerSword3"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="PlayerSword3"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="PlayerSword3/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="PlayerSword3"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PlayerSword3/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; Player Archer 1 - Back Left
+[node name="PlayerArcher1" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -45, 10, -10)
+script = ExtResource("2")
+data = ExtResource("player_archer")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+
+[node name="Sprite3D" type="Sprite3D" parent="PlayerArcher1"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="PlayerArcher1"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="PlayerArcher1/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="PlayerArcher1"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PlayerArcher1/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; Player Archer 2 - Back Right
+[node name="PlayerArcher2" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -45, 10, 10)
+script = ExtResource("2")
+data = ExtResource("player_archer")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+
+[node name="Sprite3D" type="Sprite3D" parent="PlayerArcher2"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="PlayerArcher2"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="PlayerArcher2/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="PlayerArcher2"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PlayerArcher2/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; Player Cavalry - Flank
+[node name="PlayerCavalry" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 10, 30)
+script = ExtResource("2")
+data = ExtResource("player_cavalry")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+
+[node name="Sprite3D" type="Sprite3D" parent="PlayerCavalry"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="PlayerCavalry"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="PlayerCavalry/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="PlayerCavalry"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PlayerCavalry/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; ========== ENEMY UNITS (Right side, X = +30) ==========
+
+; Enemy Black Orcs - Front Center
+[node name="EnemyBlackOrcs" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 10, 0)
+script = ExtResource("2")
+data = ExtResource("enemy_sword1")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+is_player_controlled = false
+
+[node name="Sprite3D" type="Sprite3D" parent="EnemyBlackOrcs"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="EnemyBlackOrcs"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="EnemyBlackOrcs/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="EnemyBlackOrcs"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyBlackOrcs/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; Enemy Orcs - Front Left
+[node name="EnemyOrcs" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 10, -15)
+script = ExtResource("2")
+data = ExtResource("enemy_sword2")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+is_player_controlled = false
+
+[node name="Sprite3D" type="Sprite3D" parent="EnemyOrcs"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="EnemyOrcs"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="EnemyOrcs/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="EnemyOrcs"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyOrcs/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; Enemy Night Goblins - Front Right
+[node name="EnemyGoblins" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 10, 15)
+script = ExtResource("2")
+data = ExtResource("enemy_sword3")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+is_player_controlled = false
+
+[node name="Sprite3D" type="Sprite3D" parent="EnemyGoblins"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="EnemyGoblins"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="EnemyGoblins/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="EnemyGoblins"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyGoblins/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; Enemy Arrer Boyz - Back Left
+[node name="EnemyArchers1" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 45, 10, -10)
+script = ExtResource("2")
+data = ExtResource("enemy_archer1")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+is_player_controlled = false
+
+[node name="Sprite3D" type="Sprite3D" parent="EnemyArchers1"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="EnemyArchers1"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="EnemyArchers1/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="EnemyArchers1"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyArchers1/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; Enemy Big'Uns Archers - Back Right
+[node name="EnemyArchers2" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 45, 10, 10)
+script = ExtResource("2")
+data = ExtResource("enemy_archer2")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+is_player_controlled = false
+
+[node name="Sprite3D" type="Sprite3D" parent="EnemyArchers2"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="EnemyArchers2"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="EnemyArchers2/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="EnemyArchers2"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyArchers2/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; Enemy Wolf Riders - Flank
+[node name="EnemyWolfRiders" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 10, -30)
+script = ExtResource("2")
+data = ExtResource("enemy_cavalry")
+use_3d_soldiers = false
+use_sprite_soldiers = true
+is_player_controlled = false
+
+[node name="Sprite3D" type="Sprite3D" parent="EnemyWolfRiders"]
+visible = false
+
+[node name="RegimentLeader" type="Node3D" parent="EnemyWolfRiders"]
+script = ExtResource("3")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="EnemyWolfRiders/RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="EnemyWolfRiders"]
+collision_layer = 2
+collision_mask = 2
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyWolfRiders/MeleeArea"]
+shape = SubResource("CapsuleShape_1")
+
+; ========== UI LAYERS ==========
+
+[node name="BattleHUD" type="CanvasLayer" parent="."]
+script = ExtResource("6")
+
+[node name="SelectionBoxOverlay" type="CanvasLayer" parent="."]
+layer = 10
+script = ExtResource("8")
+
+[node name="CombatDebugOverlay" type="CanvasLayer" parent="."]
+layer = 100
+script = ExtResource("11_debug")
+
+[node name="BattleOverScreen" type="CanvasLayer" parent="."]
+script = ExtResource("12_battle_over")

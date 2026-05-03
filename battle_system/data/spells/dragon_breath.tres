@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="SpellData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://battle_system/data/spell_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "dragon_breath"
+display_name = "Dragon's Breath"
+description = "Unleashes a searing cone of fire in front of the caster, incinerating all enemies caught in the flames."
+target_type = 3
+damage_type = 0
+effect_type = 0
+base_damage = 70
+edge_damage_mult = 0.5
+morale_damage_mult = 0.7
+range_distance = 30.0
+aoe_radius = 8.0
+cone_angle = 60.0
+cone_length = 25.0
+beam_width = 2.0
+beam_distance = 40.0
+projectile_speed = 30.0
+is_homing = false
+homing_turn_rate = 180.0
+projectile_arc = 5.0
+projectile_scale = 1.0
+creates_hazard = true
+hazard_duration = 5.0
+hazard_tick_damage = 6
+hazard_tick_interval = 0.4
+hazard_radius = 6.0
+effect_duration = 0.0
+attack_modifier = 1.0
+defense_modifier = 1.0
+speed_modifier = 1.0
+morale_per_second = 0.0
+cooldown = 40.0
+stamina_cost = 40.0
+ammo_cost = 0
+effect_color = Color(1, 0.3, 0, 1)
+secondary_color = Color(1, 0.6, 0.1, 0.7)
+cast_sound = "dragon_roar"
+impact_sound = "fire_whoosh"
+allowed_unit_types = [4]
+min_veterancy_level = 0

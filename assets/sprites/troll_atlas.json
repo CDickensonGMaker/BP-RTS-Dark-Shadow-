@@ -1,0 +1,27 @@
+{
+	"animations": {
+		"attack": {
+			"frame_count": 2,
+			"start_frame": 10
+		},
+		"dead": {
+			"frame_count": 1,
+			"start_frame": 12
+		},
+		"idle": {
+			"frame_count": 1,
+			"start_frame": 0
+		},
+		"walk": {
+			"frame_count": 9,
+			"start_frame": 1
+		}
+	},
+	"columns": 13,
+	"directions": 8,
+	"frame_size": {
+		"x": 64,
+		"y": 128
+	},
+	"rows": 8
+}

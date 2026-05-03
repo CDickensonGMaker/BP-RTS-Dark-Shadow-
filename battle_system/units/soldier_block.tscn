@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://battle_system/units/soldier_block.gd" id="1"]
+
+[node name="SoldierBlock" type="Node3D"]
+script = ExtResource("1")
+soldier_color = Color(0.2, 0.4, 0.8, 1)
+soldier_size = 0.4

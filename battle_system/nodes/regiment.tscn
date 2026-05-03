@@ -1,0 +1,31 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://battle_system/nodes/regiment.gd" id="1"]
+[ext_resource type="Script" path="res://battle_system/nodes/regiment_leader.gd" id="2"]
+[ext_resource type="PackedScene" path="res://battle_system/units/soldier.tscn" id="3_soldier"]
+[ext_resource type="Resource" path="res://assets/sprites/units/grtsword_atlas.tres" id="4_atlas"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape_melee"]
+radius = 6.0
+height = 8.0
+
+[node name="Regiment" type="Node3D"]
+script = ExtResource("1")
+use_3d_soldiers = true
+use_sprite_soldiers = true
+soldier_scene = ExtResource("3_soldier")
+sprite_atlas = ExtResource("4_atlas")
+
+[node name="Sprite3D" type="Sprite3D" parent="."]
+visible = false
+billboard = 2
+
+[node name="RegimentLeader" type="Node3D" parent="."]
+script = ExtResource("2")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="RegimentLeader"]
+
+[node name="MeleeArea" type="Area3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeleeArea"]
+shape = SubResource("CapsuleShape_melee")

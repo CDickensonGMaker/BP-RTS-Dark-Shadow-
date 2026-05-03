@@ -1,0 +1,42 @@
+[gd_scene load_steps=3 format=3 uid="uid://c6yxqpvtcnvjv"]
+
+[ext_resource type="Script" path="res://campaign_system/map/map_battalion.gd" id="1_battalion"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_click"]
+size = Vector2(50, 50)
+
+[node name="MapBattalion" type="Node2D"]
+script = ExtResource("1_battalion")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+modulate = Color(0.2, 0.4, 0.8, 1)
+scale = Vector2(0.5, 0.5)
+
+[node name="TokenBackground" type="Polygon2D" parent="."]
+color = Color(0.15, 0.12, 0.1, 0.95)
+polygon = PackedVector2Array(-18, -18, 18, -18, 18, 18, -18, 18)
+
+[node name="TokenBorder" type="Polygon2D" parent="."]
+color = Color(0.6, 0.5, 0.3, 1)
+polygon = PackedVector2Array(-20, -20, 20, -20, 20, 20, -20, 20, -20, -20, -18, -18, -18, 18, 18, 18, 18, -18, -18, -18)
+
+[node name="SelectionIndicator" type="Node2D" parent="."]
+visible = false
+
+[node name="Glow" type="Polygon2D" parent="SelectionIndicator"]
+color = Color(0.85, 0.7, 0.4, 0.6)
+polygon = PackedVector2Array(-24, -24, 24, -24, 24, 24, -24, 24, -24, -24, -20, -20, -20, 20, 20, 20, 20, -20, -20, -20)
+
+[node name="BannerLabel" type="Label" parent="."]
+offset_left = -60.0
+offset_top = -40.0
+offset_right = 60.0
+offset_bottom = -22.0
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ClickArea" type="Area2D" parent="."]
+input_pickable = true
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ClickArea"]
+shape = SubResource("RectangleShape2D_click")

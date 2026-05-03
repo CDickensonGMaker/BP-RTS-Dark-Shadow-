@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="SpellData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://battle_system/data/spell_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "fireball"
+display_name = "Fireball"
+description = "Hurls a blazing sphere of fire at the target location, dealing heavy fire damage to all units in the blast radius."
+target_type = 0
+damage_type = 0
+effect_type = 0
+base_damage = 60
+edge_damage_mult = 0.4
+morale_damage_mult = 0.6
+range_distance = 60.0
+aoe_radius = 8.0
+cone_angle = 45.0
+cone_length = 20.0
+beam_width = 2.0
+beam_distance = 40.0
+projectile_speed = 25.0
+is_homing = false
+homing_turn_rate = 180.0
+projectile_arc = 8.0
+projectile_scale = 1.5
+creates_hazard = false
+hazard_duration = 10.0
+hazard_tick_damage = 5
+hazard_tick_interval = 0.5
+hazard_radius = 0.0
+effect_duration = 0.0
+attack_modifier = 1.0
+defense_modifier = 1.0
+speed_modifier = 1.0
+morale_per_second = 0.0
+cooldown = 25.0
+stamina_cost = 30.0
+ammo_cost = 0
+effect_color = Color(1, 0.4, 0.1, 1)
+secondary_color = Color(1, 0.2, 0, 0.7)
+cast_sound = "spell_fire"
+impact_sound = "explosion_fire"
+allowed_unit_types = []
+min_veterancy_level = 0

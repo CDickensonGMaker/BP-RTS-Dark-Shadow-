@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="SpriteUnitAtlas" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/sprites/units/spells_atlas.png" id="1"]
+[ext_resource type="Script" path="res://battle_system/data/sprite_unit_atlas.gd" id="2"]
+
+[resource]
+script = ExtResource("2")
+texture = ExtResource("1")
+columns = 13
+rows = 8
+frame_size = Vector2(64, 64)
+directions = 8
+animation_speed = 8.0
+animations = {
+"idle": {"start_frame": 0, "frame_count": 8},
+"walk": {"start_frame": 8, "frame_count": 8},
+"attack": {"start_frame": 16, "frame_count": 7},
+"death": {"start_frame": 23, "frame_count": 4},
+"anim_44": {"start_frame": 27, "frame_count": 2},
+"anim_54": {"start_frame": 29, "frame_count": 2},
+"anim_64": {"start_frame": 31, "frame_count": 5},
+"anim_74": {"start_frame": 36, "frame_count": 5},
+"anim_84": {"start_frame": 41, "frame_count": 8},
+"anim_94": {"start_frame": 49, "frame_count": 2},
+"anim_a4": {"start_frame": 51, "frame_count": 2},
+"anim_b4": {"start_frame": 53, "frame_count": 1},
+"anim_c4": {"start_frame": 54, "frame_count": 1},
+"anim_d4": {"start_frame": 55, "frame_count": 3},
+"anim_e4": {"start_frame": 58, "frame_count": 8},
+"anim_f4": {"start_frame": 66, "frame_count": 4}
+}

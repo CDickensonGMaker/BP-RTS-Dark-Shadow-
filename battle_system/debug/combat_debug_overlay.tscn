@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://c5vxqm2r7kdmw"]
+
+[ext_resource type="Script" path="res://battle_system/debug/combat_debug_overlay.gd" id="1_debug"]
+
+[node name="CombatDebugOverlay" type="CanvasLayer"]
+layer = 100
+script = ExtResource("1_debug")

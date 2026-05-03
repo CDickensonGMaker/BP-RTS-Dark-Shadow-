@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="SpriteUnitAtlas" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/sprites/units/troll_atlas.png" id="1"]
+[ext_resource type="Script" path="res://battle_system/data/sprite_unit_atlas.gd" id="2"]
+
+[resource]
+script = ExtResource("2")
+texture = ExtResource("1")
+columns = 13
+rows = 8
+frame_size = Vector2(64, 128)
+directions = 8
+animation_speed = 8.0
+animations = {
+"idle": {"start_frame": 0, "frame_count": 1},
+"walk": {"start_frame": 1, "frame_count": 9},
+"attack": {"start_frame": 10, "frame_count": 2},
+"death": {"start_frame": 12, "frame_count": 1}
+}

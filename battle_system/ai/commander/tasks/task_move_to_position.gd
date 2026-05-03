@@ -1,0 +1,82 @@
+class_name TaskMoveToPosition
+extends BTNode
+
+## Behavior tree task for moving to a position.
+## Can move towards target, waypoint, or flee position.
+
+var commander: CommanderAI
+var _arrival_threshold: float = 3.0
+
+func _init(p_commander: CommanderAI) -> void:
+	super._init("MoveToPosition")
+	commander = p_commander
+
+
+func tick(_delta: float) -> Status:
+	## Move towards the target or destination.
+
+	var regiment: Node = commander.regiment
+	if not regiment:
+		return Status.FAILURE
+
+	# If already in melee combat, don't issue new move orders
+	if regiment.state == Regiment.State.ENGAGING:
+		return Status.SUCCESS
+
+	# Determine destination
+	var destination: Vector3 = _get_destination()
+	if destination == Vector3.ZERO:
+		return Status.FAILURE
+
+	# Check if we've arrived
+	var distance: float = regiment.global_position.distance_to(destination)
+	if distance <= _arrival_threshold:
+		return Status.SUCCESS
+
+	# Issue move order if not already moving there
+	if regiment.state != Regiment.State.MARCHING:
+		commander.issue_move_order(destination)
+
+	return Status.RUNNING
+
+
+func _get_destination() -> Vector3:
+	## Determine where to move.
+
+	# If we have a target, move towards it
+	var target: Node = blackboard.get("target")
+	if target and is_instance_valid(target):
+		# Get engagement distance based on unit type
+		var engage_dist: float = _get_engagement_distance()
+
+		# Move to engagement range
+		var dir: Vector3 = (target.global_position - commander.regiment.global_position).normalized()
+		var target_dist: float = commander.regiment.global_position.distance_to(target.global_position)
+
+		if target_dist > engage_dist:
+			return target.global_position - dir * engage_dist
+		else:
+			return target.global_position
+
+	# Check for explicit destination
+	var dest: Variant = blackboard.get("destination")
+	if dest is Vector3 and dest != Vector3.ZERO:
+		return dest
+
+	return Vector3.ZERO
+
+
+func _get_engagement_distance() -> float:
+	## Get optimal engagement distance based on unit type and stance.
+	var regiment: Node = commander.regiment
+
+	# Ranged units stay at range
+	if regiment.data.ballistic_skill > 0 and regiment.current_ammo > 0:
+		match commander.current_stance:
+			CommanderAI.Stance.SKIRMISH:
+				return regiment.data.range_distance * 0.8
+			_:
+				return regiment.data.range_distance * 0.6
+
+	# Melee units close in
+	return 2.0  # Melee range

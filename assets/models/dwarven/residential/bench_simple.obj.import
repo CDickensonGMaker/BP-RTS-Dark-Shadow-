@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://dnm720an6q4jc"
+path="res://.godot/imported/bench_simple.obj-af45255e9d2c72389ccc12f178f3e982.mesh"
+
+[deps]
+
+files=["res://.godot/imported/bench_simple.obj-af45255e9d2c72389ccc12f178f3e982.mesh"]
+
+source_file="res://assets/models/dwarven/residential/bench_simple.obj"
+dest_files=["res://.godot/imported/bench_simple.obj-af45255e9d2c72389ccc12f178f3e982.mesh", "res://.godot/imported/bench_simple.obj-af45255e9d2c72389ccc12f178f3e982.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://b2axmjvwma3pj"
+path="res://.godot/imported/cart_mine.obj-7139fd6820ff7615d9afd9ae668d291c.mesh"
+
+[deps]
+
+files=["res://.godot/imported/cart_mine.obj-7139fd6820ff7615d9afd9ae668d291c.mesh"]
+
+source_file="res://assets/models/dwarven/market/cart_mine.obj"
+dest_files=["res://.godot/imported/cart_mine.obj-7139fd6820ff7615d9afd9ae668d291c.mesh", "res://.godot/imported/cart_mine.obj-7139fd6820ff7615d9afd9ae668d291c.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

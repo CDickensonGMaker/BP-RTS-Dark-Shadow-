@@ -1,0 +1,123 @@
+[gd_scene load_steps=4 format=3 uid="uid://bpx7kw9gv8tqy"]
+
+[ext_resource type="Script" path="res://campaign_system/map/campaign_map.gd" id="1_map"]
+[ext_resource type="Script" path="res://campaign_system/map/campaign_camera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://campaign_system/ui/campaign_hud.gd" id="3_hud"]
+
+[node name="CampaignMap" type="Node2D"]
+script = ExtResource("1_map")
+map_bounds = Rect2(0, 0, 1920, 1080)
+
+[node name="CampaignCamera" type="Camera2D" parent="."]
+position = Vector2(960, 540)
+script = ExtResource("2_camera")
+map_bounds = Rect2(0, 0, 1920, 1080)
+
+[node name="MapBackground" type="ColorRect" parent="."]
+offset_right = 1920.0
+offset_bottom = 1080.0
+color = Color(0.82, 0.76, 0.62, 1)
+
+[node name="ParchmentTexture" type="Polygon2D" parent="MapBackground"]
+color = Color(0.72, 0.66, 0.52, 0.3)
+polygon = PackedVector2Array(100, 100, 300, 80, 500, 120, 700, 90, 900, 130, 1100, 85, 1300, 115, 1500, 95, 1700, 125, 1820, 100, 1820, 980, 1700, 960, 1500, 990, 1300, 955, 1100, 985, 900, 950, 700, 980, 500, 945, 300, 975, 100, 950, 100, 100)
+
+[node name="RegionsContainer" type="Node2D" parent="."]
+
+[node name="BattalionsContainer" type="Node2D" parent="."]
+
+[node name="EnemyArmiesContainer" type="Node2D" parent="."]
+
+[node name="PathPreview" type="Line2D" parent="."]
+width = 3.0
+default_color = Color(0.85, 0.7, 0.4, 0.8)
+
+[node name="CampaignHUD" type="CanvasLayer" parent="."]
+script = ExtResource("3_hud")
+
+[node name="TopBar" type="HBoxContainer" parent="CampaignHUD"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 50.0
+grow_horizontal = 2
+theme_override_constants/separation = 40
+
+[node name="Background" type="ColorRect" parent="CampaignHUD/TopBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(0.08, 0.06, 0.05, 0.92)
+
+[node name="GoldLabel" type="Label" parent="CampaignHUD/TopBar"]
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_font_sizes/font_size = 20
+text = "Gold: 2000"
+
+[node name="UpkeepLabel" type="Label" parent="CampaignHUD/TopBar"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Upkeep: 45/turn"
+
+[node name="TurnLabel" type="Label" parent="CampaignHUD/TopBar"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Turn: 1"
+
+[node name="Spacer" type="Control" parent="CampaignHUD/TopBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="EndTurnButton" type="Button" parent="CampaignHUD/TopBar"]
+layout_mode = 2
+size_flags_horizontal = 8
+theme_override_font_sizes/font_size = 18
+text = "End Turn"
+
+[node name="BattalionPanel" type="Panel" parent="CampaignHUD"]
+visible = false
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -250.0
+offset_right = 260.0
+offset_bottom = -10.0
+grow_vertical = 0
+
+[node name="VBox" type="VBoxContainer" parent="CampaignHUD/BattalionPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="NameLabel" type="Label" parent="CampaignHUD/BattalionPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Battalion Name"
+
+[node name="Separator" type="HSeparator" parent="CampaignHUD/BattalionPanel/VBox"]
+layout_mode = 2
+
+[node name="MovementLabel" type="Label" parent="CampaignHUD/BattalionPanel/VBox"]
+layout_mode = 2
+text = "Movement:"
+
+[node name="MovementBar" type="ProgressBar" parent="CampaignHUD/BattalionPanel/VBox"]
+layout_mode = 2
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="RegimentsLabel" type="Label" parent="CampaignHUD/BattalionPanel/VBox"]
+layout_mode = 2
+text = "Regiments:"
+
+[node name="RegimentList" type="VBoxContainer" parent="CampaignHUD/BattalionPanel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
