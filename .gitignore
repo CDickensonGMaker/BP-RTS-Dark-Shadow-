@@ -30,3 +30,9 @@ mono_crash.*.json
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Sprites and textures (kept locally, not shared)
+assets/sprites/
+sothr_sprites_labeled/
+*.png
+*.png.import
