@@ -121,6 +121,22 @@ const RANKS := {
 	Type.SCHILTRON: 0, # Circular
 }
 
+# Time (seconds) to transition TO this formation
+# More complex formations take longer to form
+const TRANSITION_TIMES := {
+	Type.LINE: 2.0,        # Basic formation - quick
+	Type.COLUMN: 1.5,      # Simple column - fastest
+	Type.WEDGE: 2.5,       # Needs precise positioning
+	Type.SQUARE: 4.0,      # Complex hollow square - slow
+	Type.LOOSE: 1.0,       # Just spread out - very fast
+	Type.SHIELD_WALL: 3.0, # Lock shields - takes time
+	Type.SCHILTRON: 4.5,   # Circular bristle - most complex
+}
+
+# Combat effectiveness multiplier DURING transition (vulnerable while reforming)
+const TRANSITION_COMBAT_PENALTY := 0.5  # 50% effectiveness while reforming
+const TRANSITION_DEFENSE_PENALTY := 0.6 # 40% defense penalty while reforming
+
 static func get_formation_name(formation: Type) -> String:
 	return NAMES.get(formation, "Unknown")
 
@@ -148,3 +164,26 @@ static func can_unit_use(formation: Type, unit_type: UnitType.Type) -> bool:
 
 static func get_hotkey(formation: Type) -> int:
 	return HOTKEYS.get(formation, 0)
+
+
+static func get_transition_time(formation: Type, unit_type: UnitType.Type = UnitType.Type.INFANTRY) -> float:
+	## Get time to transition to this formation, adjusted by unit type.
+	## Cavalry reform faster, infantry is baseline, artillery slowest.
+	var base_time: float = TRANSITION_TIMES.get(formation, 2.0)
+	match unit_type:
+		UnitType.Type.CAVALRY:
+			return base_time * 0.6  # 40% faster
+		UnitType.Type.RANGED:
+			return base_time * 0.9  # 10% faster (lighter equipment)
+		UnitType.Type.ARTILLERY:
+			return base_time * 1.5  # 50% slower (heavy equipment)
+		_:
+			return base_time
+
+
+static func get_transition_combat_penalty() -> float:
+	return TRANSITION_COMBAT_PENALTY
+
+
+static func get_transition_defense_penalty() -> float:
+	return TRANSITION_DEFENSE_PENALTY

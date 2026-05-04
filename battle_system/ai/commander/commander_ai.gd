@@ -195,7 +195,11 @@ func _create_has_target_condition() -> BTNode:
 func _create_has_ammo_condition() -> BTNode:
 	var cond: BTCondition = BTCondition.new("HasAmmo")
 	cond.condition_func = func():
-		return regiment and regiment.current_ammo > 0 and regiment.data.ballistic_skill > 0
+		var has_ammo = regiment and regiment.current_ammo > 0 and regiment.data.ballistic_skill > 0
+		if regiment and regiment.data.ballistic_skill > 0:
+			print("[AI DEBUG] %s HasAmmo check: ammo=%d, bs=%d, result=%s" % [
+				regiment.name, regiment.current_ammo, regiment.data.ballistic_skill, has_ammo])
+		return has_ammo
 	cond.blackboard = blackboard
 	return cond
 
@@ -290,8 +294,8 @@ func _update_blackboard() -> void:
 
 
 func _check_unit_preservation() -> void:
-	## Check if unit should retreat based on HP and personality.
-	## When HP ratio < 0.3 and unit_preservation > 0.5, request retreat.
+	## Check if unit should retreat based on HP, personality, and threat assessment.
+	## Uses threat heatmap for smarter retreat decisions (spring1944-style).
 	if not regiment:
 		return
 
@@ -302,13 +306,26 @@ func _check_unit_preservation() -> void:
 	if blackboard.get("is_routing", false):
 		return
 
-	# Unit preservation threshold check
-	if hp_ratio < 0.3 and personality.unit_preservation > 0.5:
+	# Calculate our firepower for threat comparison
+	var my_firepower := float(regiment.data.weapon_skill * regiment.data.strength * regiment.current_soldiers)
+
+	# Use threat heatmap for intelligent retreat decision
+	var should_retreat_threat := false
+	if AIAutoload and AIAutoload.threat_heatmap:
+		should_retreat_threat = AIAutoload.should_retreat(
+			regiment.global_position, _faction, my_firepower, hp_ratio
+		)
+
+	# Traditional unit preservation threshold check
+	var should_retreat_hp := hp_ratio < 0.3 and personality.unit_preservation > 0.5
+
+	# Retreat if either condition is met
+	if should_retreat_threat or should_retreat_hp:
 		# Request tactical retreat from GeneralAI
 		if general_ai and general_ai.has_method("request_retreat"):
 			general_ai.request_retreat(regiment)
 		else:
-			# If no general, switch to defensive and move away
+			# If no general, switch to defensive and move to safer position
 			set_stance(Stance.DEFENSIVE)
 			var flee_pos: Vector3 = _find_flee_position()
 			issue_move_order(flee_pos)
@@ -461,7 +478,14 @@ func _on_unit_rallied() -> void:
 
 
 func _find_flee_position() -> Vector3:
-	## Find a position to flee towards (away from enemies).
+	## Find a position to flee towards using threat heatmap (spring1944-style).
+	## Falls back to simple flee-from-enemy if heatmap unavailable.
+
+	# Use threat heatmap for intelligent safe position
+	if AIAutoload and AIAutoload.threat_heatmap:
+		return AIAutoload.get_safest_retreat_position(regiment.global_position, _faction)
+
+	# Fallback: simple flee-from-enemy logic
 	var flee_direction: Vector3 = Vector3.ZERO
 
 	# Get direction away from nearest enemy

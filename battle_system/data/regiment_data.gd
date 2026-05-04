@@ -24,6 +24,8 @@ extends Resource
 # Movement (1.5 = infantry walk, 2.5 = cavalry, 3.0+ = charge/run)
 @export var speed: float = 1.5
 @export var charge_bonus: int = 6       # attack bonus on charge tick
+@export var mass: float = 1.0           # unit mass for charge impact (cavalry=2.0-3.0, infantry=1.0)
+@export var turn_rate: float = 3.0      # radians/sec (infantry=3.0, cavalry=1.5, artillery=0.5)
 
 # Ranged (optional)
 @export var max_ammo: int = 0           # 0 = melee only

@@ -48,6 +48,9 @@ const ARROW_LENGTH: float = 25.0
 const ARROW_HEAD_SIZE: float = 8.0
 const FLANKED_OFFSET_Y: float = -55.0
 const AI_STATE_OFFSET_Y: float = -70.0
+const UNIT_NAME_OFFSET_Y: float = -85.0
+const COLOR_UNIT_NAME_ENEMY: Color = Color(1.0, 0.3, 0.3, 1.0)      # Red for enemies
+const COLOR_UNIT_NAME_PLAYER: Color = Color(0.3, 0.7, 1.0, 1.0)     # Blue for player
 
 
 func _ready() -> void:
@@ -171,6 +174,9 @@ func _draw_regiment_debug(regiment: Regiment) -> void:
 	# Draw AI state (only for AI-controlled units)
 	if not regiment.is_player_controlled and regiment.ai_controller:
 		_draw_ai_state(regiment, screen_pos)
+
+	# Draw unit name (for identifying units during debug)
+	_draw_unit_name(regiment, screen_pos)
 
 	# Draw target line
 	_draw_target_line(regiment)
@@ -321,6 +327,29 @@ func _draw_ai_state(regiment: Regiment, screen_pos: Vector2) -> void:
 	# Draw with shadow
 	draw_control.draw_string(font, text_pos + Vector2(1, 1), state_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
 	draw_control.draw_string(font, text_pos, state_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, COLOR_AI_STATE)
+
+
+func _draw_unit_name(regiment: Regiment, screen_pos: Vector2) -> void:
+	## Draw unit name above the regiment for identification.
+	var unit_name: String = regiment.name
+
+	# Also show soldier count for quick reference
+	unit_name += " (%d)" % regiment.current_soldiers
+
+	var text_pos: Vector2 = screen_pos + Vector2(0, UNIT_NAME_OFFSET_Y)
+
+	var font: Font = ThemeDB.fallback_font
+	var font_size: int = 13
+
+	var text_size: Vector2 = font.get_string_size(unit_name, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	text_pos.x -= text_size.x / 2
+
+	# Choose color based on player/enemy
+	var text_color: Color = COLOR_UNIT_NAME_PLAYER if regiment.is_player_controlled else COLOR_UNIT_NAME_ENEMY
+
+	# Draw with shadow
+	draw_control.draw_string(font, text_pos + Vector2(1, 1), unit_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
+	draw_control.draw_string(font, text_pos, unit_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
 
 
 func _draw_target_line(regiment: Regiment) -> void:

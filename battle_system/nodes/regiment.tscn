@@ -7,7 +7,7 @@
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape_melee"]
 radius = 6.0
-height = 8.0
+height = 14.0
 
 [node name="Regiment" type="Node3D"]
 script = ExtResource("1")
@@ -26,6 +26,10 @@ script = ExtResource("2")
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="RegimentLeader"]
 
 [node name="MeleeArea" type="Area3D" parent="."]
+collision_layer = 2
+collision_mask = 2
+monitorable = true
+monitoring = true
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="MeleeArea"]
 shape = SubResource("CapsuleShape_melee")

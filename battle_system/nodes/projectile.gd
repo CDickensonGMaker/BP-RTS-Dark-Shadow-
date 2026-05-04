@@ -65,6 +65,10 @@ var _mesh_instance: MeshInstance3D
 var _immediate_mesh: ImmediateMesh
 var _arrow_material: StandardMaterial3D
 
+# Trail effect for arrow visibility
+var _trail_particles: GPUParticles3D
+var _trail_material: ParticleProcessMaterial
+
 # Legacy sprite reference (disabled, kept for compatibility)
 @onready var sprite: Sprite3D = $Sprite3D
 
@@ -72,6 +76,9 @@ var _arrow_material: StandardMaterial3D
 func _ready() -> void:
 	# Setup procedural arrow mesh
 	_setup_arrow_mesh()
+
+	# Setup trail particles
+	_setup_trail()
 
 	# Disable legacy sprite if it exists
 	if sprite:
@@ -99,27 +106,85 @@ func _setup_arrow_mesh() -> void:
 
 ## Draw the arrow shape using PRIMITIVE_LINES
 ## Arrow points along -Z axis (Godot's forward direction for look_at)
+## Scaled up 4x from original for visibility
 func _draw_arrow() -> void:
 	_immediate_mesh.clear_surfaces()
 	_immediate_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
 
-	# Arrow shaft (0.5 units long, pointing along -Z which is forward after look_at)
-	_immediate_mesh.surface_add_vertex(Vector3(0, 0, 0.25))   # Tail
-	_immediate_mesh.surface_add_vertex(Vector3(0, 0, -0.25))  # Head (tip)
+	# Arrow shaft (2.0 units long, pointing along -Z which is forward after look_at)
+	_immediate_mesh.surface_add_vertex(Vector3(0, 0, 1.0))    # Tail
+	_immediate_mesh.surface_add_vertex(Vector3(0, 0, -1.0))   # Head (tip)
 
-	# Arrowhead (small V shape at the tip)
-	_immediate_mesh.surface_add_vertex(Vector3(0, 0, -0.25))  # Tip
-	_immediate_mesh.surface_add_vertex(Vector3(0.05, 0, -0.15)) # Left barb
-	_immediate_mesh.surface_add_vertex(Vector3(0, 0, -0.25))  # Tip
-	_immediate_mesh.surface_add_vertex(Vector3(-0.05, 0, -0.15))# Right barb
+	# Arrowhead (V shape at the tip)
+	_immediate_mesh.surface_add_vertex(Vector3(0, 0, -1.0))   # Tip
+	_immediate_mesh.surface_add_vertex(Vector3(0.2, 0, -0.6)) # Left barb
+	_immediate_mesh.surface_add_vertex(Vector3(0, 0, -1.0))   # Tip
+	_immediate_mesh.surface_add_vertex(Vector3(-0.2, 0, -0.6))# Right barb
 
 	# Add fletching (tail feathers) for visual interest
-	_immediate_mesh.surface_add_vertex(Vector3(0, 0, 0.2))    # Fletching base
-	_immediate_mesh.surface_add_vertex(Vector3(0.04, 0, 0.25))# Fletching right
-	_immediate_mesh.surface_add_vertex(Vector3(0, 0, 0.2))    # Fletching base
-	_immediate_mesh.surface_add_vertex(Vector3(-0.04, 0, 0.25))# Fletching left
+	_immediate_mesh.surface_add_vertex(Vector3(0, 0, 0.8))    # Fletching base
+	_immediate_mesh.surface_add_vertex(Vector3(0.15, 0, 1.0)) # Fletching right
+	_immediate_mesh.surface_add_vertex(Vector3(0, 0, 0.8))    # Fletching base
+	_immediate_mesh.surface_add_vertex(Vector3(-0.15, 0, 1.0))# Fletching left
+
+	# Add vertical fletching for visibility from all angles
+	_immediate_mesh.surface_add_vertex(Vector3(0, 0, 0.8))    # Fletching base
+	_immediate_mesh.surface_add_vertex(Vector3(0, 0.15, 1.0)) # Fletching top
+	_immediate_mesh.surface_add_vertex(Vector3(0, 0, 0.8))    # Fletching base
+	_immediate_mesh.surface_add_vertex(Vector3(0, -0.15, 1.0))# Fletching bottom
 
 	_immediate_mesh.surface_end()
+
+
+## Setup particle trail for arrow visibility
+func _setup_trail() -> void:
+	_trail_particles = GPUParticles3D.new()
+	_trail_particles.amount = 20
+	_trail_particles.lifetime = 0.3
+	_trail_particles.one_shot = false
+	_trail_particles.explosiveness = 0.0
+	_trail_particles.local_coords = false  # World space for trail effect
+	_trail_particles.emitting = false
+
+	# Create particle material
+	_trail_material = ParticleProcessMaterial.new()
+	_trail_material.direction = Vector3(0, 0, 1)  # Emit behind arrow
+	_trail_material.spread = 5.0
+	_trail_material.initial_velocity_min = 1.0
+	_trail_material.initial_velocity_max = 2.0
+	_trail_material.gravity = Vector3.ZERO
+
+	# Scale down over lifetime for tail effect
+	_trail_material.scale_min = 0.15
+	_trail_material.scale_max = 0.2
+	var scale_curve := Curve.new()
+	scale_curve.add_point(Vector2(0.0, 1.0))
+	scale_curve.add_point(Vector2(1.0, 0.0))
+	var scale_curve_tex := CurveTexture.new()
+	scale_curve_tex.curve = scale_curve
+	_trail_material.scale_curve = scale_curve_tex
+
+	# Color based on projectile type with fade out
+	var trail_color: Color = ARROW_COLORS.get(projectile_type, Color(0.4, 0.25, 0.1))
+	trail_color.a = 0.8
+	_trail_material.color = trail_color
+
+	# Alpha fade over lifetime
+	var alpha_curve := Curve.new()
+	alpha_curve.add_point(Vector2(0.0, 1.0))
+	alpha_curve.add_point(Vector2(1.0, 0.0))
+	var alpha_curve_tex := CurveTexture.new()
+	alpha_curve_tex.curve = alpha_curve
+	_trail_material.alpha_curve = alpha_curve_tex
+
+	_trail_particles.process_material = _trail_material
+
+	# Use a simple quad mesh for particles
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.1, 0.1)
+	_trail_particles.draw_pass_1 = quad
+
+	add_child(_trail_particles)
 
 
 ## Update arrow color based on projectile type
@@ -127,6 +192,10 @@ func set_projectile_type(type: ProjectileType) -> void:
 	projectile_type = type
 	if _arrow_material:
 		_arrow_material.albedo_color = ARROW_COLORS.get(type, ARROW_COLORS[ProjectileType.ARROW])
+	if _trail_material:
+		var trail_color: Color = ARROW_COLORS.get(type, Color(0.4, 0.25, 0.1))
+		trail_color.a = 0.8
+		_trail_material.color = trail_color
 
 
 ## Activate projectile for use (called by pool)
@@ -139,6 +208,10 @@ func activate() -> void:
 	pierced_targets.clear()
 	_damage_multiplier = 1.0
 
+	# Start trail emission
+	if _trail_particles:
+		_trail_particles.emitting = true
+
 
 ## Deactivate projectile for pooling (called by pool)
 func deactivate() -> void:
@@ -148,6 +221,10 @@ func deactivate() -> void:
 	target = null
 	origin = null
 	pierced_targets.clear()
+
+	# Stop trail emission
+	if _trail_particles:
+		_trail_particles.emitting = false
 
 
 ## Initialize projectile for flight (legacy support)
@@ -276,27 +353,27 @@ func _check_ground_collision() -> void:
 
 
 ## Handle hitting a target
-func _on_hit_target(hit_target: Regiment) -> void:
+func _on_hit_target(target_regiment: Regiment) -> void:
 	# Skip if already pierced this target
-	if hit_target in pierced_targets:
+	if target_regiment in pierced_targets:
 		return
 
 	# Calculate damage multiplier with pierce falloff
 	# Formula from Catacombs of Gore: damage *= pow(1.0 - falloff, pierce_count)
 	_damage_multiplier = pow(1.0 - pierce_damage_falloff, pierce_count)
 
-	# Emit hit signal
-	hit_target.emit(hit_target, _damage_multiplier)
+	# Emit hit signal (use self to access signal, not parameter)
+	hit_target.emit(target_regiment, _damage_multiplier)
 
 	# Resolve the hit through combat manager
 	if is_instance_valid(origin):
-		CombatManager.resolve_ranged_hit_with_multiplier(origin, hit_target, _damage_multiplier)
+		CombatManager.resolve_ranged_hit_with_multiplier(origin, target_regiment, _damage_multiplier)
 
 	# Check for piercing
 	if pierce_count < max_pierces:
 		pierce_count += 1
-		pierced_targets.append(hit_target)
-		pierced_target.emit(hit_target, pierce_count)
+		pierced_targets.append(target_regiment)
+		pierced_target.emit(target_regiment, pierce_count)
 		# Continue flight - find next target
 		_acquire_next_target()
 	else:

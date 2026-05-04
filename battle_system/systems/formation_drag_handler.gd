@@ -19,9 +19,16 @@ var min_drag_distance: float = 5.0  # Minimum pixels to start drag
 var min_formation_width: float = 5.0  # Minimum world units
 var max_formation_width: float = 50.0  # Maximum world units
 
+# Ghost markers for unit positions (spring1944-style preview)
+var ghost_markers: Array[MeshInstance3D] = []
+var ghost_material: StandardMaterial3D = null
+const GHOST_MARKER_RADIUS: float = 1.5  # Size of ghost markers
+const MAX_GHOST_MARKERS: int = 20  # Max markers to pool
+
 
 func _ready():
 	_create_preview_line()
+	_create_ghost_markers()
 
 
 func _create_preview_line():
@@ -35,6 +42,103 @@ func _create_preview_line():
 
 	# We'll update the mesh dynamically
 	add_child(preview_line)
+
+
+func _create_ghost_markers():
+	# Create ghost marker material (semi-transparent circles)
+	ghost_material = StandardMaterial3D.new()
+	ghost_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ghost_material.albedo_color = Color(0.3, 0.8, 1.0, 0.6)  # Light blue, semi-transparent
+	ghost_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ghost_material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Visible from both sides
+
+	# Pre-create marker pool
+	var ring_mesh := _create_ring_mesh(GHOST_MARKER_RADIUS)
+	for i in MAX_GHOST_MARKERS:
+		var marker := MeshInstance3D.new()
+		marker.mesh = ring_mesh
+		marker.material_override = ghost_material
+		marker.visible = false
+		add_child(marker)
+		ghost_markers.append(marker)
+
+
+func _create_ring_mesh(radius: float) -> Mesh:
+	## Create a ring/circle mesh for ghost markers.
+	var immediate := ImmediateMesh.new()
+	immediate.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
+
+	var segments := 24
+	for i in range(segments + 1):
+		var angle := float(i) / float(segments) * TAU
+		var x := cos(angle) * radius
+		var z := sin(angle) * radius
+		immediate.surface_add_vertex(Vector3(x, 0.3, z))  # Slight Y offset above ground
+
+	immediate.surface_end()
+	return immediate
+
+
+func _update_ghost_markers():
+	## Update ghost markers to show where each unit will go.
+	## Uses optimal assignment to show actual destinations.
+	if not SelectionManager:
+		_hide_all_ghost_markers()
+		return
+
+	var regiments := SelectionManager.selected_regiments
+	if regiments.is_empty():
+		_hide_all_ghost_markers()
+		return
+
+	# Calculate formation positions (same logic as _apply_formation)
+	var width := drag_start_world.distance_to(drag_end_world)
+	width = clamp(width, min_formation_width, max_formation_width)
+
+	var midpoint := (drag_start_world + drag_end_world) / 2.0
+	var drag_dir := (drag_end_world - drag_start_world).normalized()
+	var facing := Vector3(-drag_dir.z, 0, drag_dir.x)
+	if facing.z > 0:
+		facing = -facing
+	var right_dir := Vector3(facing.z, 0, -facing.x)
+
+	var num_regiments := regiments.size()
+
+	# Calculate target positions
+	var target_positions: Array[Vector3] = []
+	for i in range(num_regiments):
+		var offset: float
+		if num_regiments == 1:
+			offset = 0.0
+		else:
+			var t := float(i) / float(num_regiments - 1)
+			offset = (t - 0.5) * width
+		target_positions.append(midpoint + right_dir * offset)
+
+	# Get optimal assignments (same algorithm used in _apply_formation)
+	var assignments := _assign_units_optimal(regiments, target_positions)
+
+	# Show markers at assigned positions
+	var marker_idx := 0
+	for regiment in regiments:
+		if marker_idx >= MAX_GHOST_MARKERS:
+			break
+		if not is_instance_valid(regiment) or regiment not in assignments:
+			continue
+
+		var target_pos: Vector3 = assignments[regiment]
+		ghost_markers[marker_idx].global_position = target_pos
+		ghost_markers[marker_idx].visible = true
+		marker_idx += 1
+
+	# Hide unused markers
+	for i in range(marker_idx, MAX_GHOST_MARKERS):
+		ghost_markers[i].visible = false
+
+
+func _hide_all_ghost_markers():
+	for marker in ghost_markers:
+		marker.visible = false
 
 
 func _input(event):
@@ -82,6 +186,7 @@ func _update_drag(screen_pos: Vector2):
 	# Check if we've dragged far enough
 	if screen_pos.distance_to(drag_start_screen) < min_drag_distance:
 		preview_line.visible = false
+		_hide_all_ghost_markers()
 		return
 
 	var ground_pos = _raycast_ground(screen_pos)
@@ -90,6 +195,7 @@ func _update_drag(screen_pos: Vector2):
 
 	drag_end_world = ground_pos
 	_update_preview_line()
+	_update_ghost_markers()  # Show where each unit will go
 
 	# Emit update signal
 	if SelectionManager.selected_regiments.size() > 0:
@@ -103,6 +209,7 @@ func _end_drag(screen_pos: Vector2):
 
 	is_dragging = false
 	preview_line.visible = false
+	_hide_all_ghost_markers()
 
 	# Check if this was a simple click (not a drag)
 	if screen_pos.distance_to(drag_start_screen) < min_drag_distance:
@@ -131,6 +238,16 @@ func _end_drag(screen_pos: Vector2):
 
 
 func _issue_simple_move(screen_pos: Vector2):
+	# First, check if we clicked on an enemy unit
+	var enemy_target: Regiment = _raycast_enemy(screen_pos)
+
+	if enemy_target:
+		print("FormationDragHandler: Attack target ", enemy_target.name)
+		for regiment in SelectionManager.selected_regiments:
+			if is_instance_valid(regiment):
+				_issue_attack_order(regiment, enemy_target)
+		return
+
 	# Fallback to normal move order
 	var ground_pos = _raycast_ground(screen_pos)
 	if ground_pos == Vector3.INF:
@@ -148,27 +265,30 @@ func _apply_formation(center: Vector3, facing: Vector3, width: float):
 	if regiments.is_empty():
 		return
 
-	# Calculate positions for each regiment along the formation line
+	# Calculate target positions for the formation line
 	var num_regiments = regiments.size()
 	var right_direction = Vector3(facing.z, 0, -facing.x)  # Perpendicular to facing
+	var target_positions: Array[Vector3] = []
 
 	for i in range(num_regiments):
-		var regiment = regiments[i]
-		if not is_instance_valid(regiment):
-			continue
-
-		# Calculate position along the formation line
 		var offset: float
 		if num_regiments == 1:
 			offset = 0.0
 		else:
-			# Spread regiments evenly across the width
-			var t = float(i) / float(num_regiments - 1)  # 0 to 1
-			offset = (t - 0.5) * width  # -width/2 to +width/2
+			var t = float(i) / float(num_regiments - 1)
+			offset = (t - 0.5) * width
+		target_positions.append(center + right_direction * offset)
 
-		var target_pos = center + right_direction * offset
+	# Use optimal assignment to minimize path crossings (spring1944-style)
+	var assignments := _assign_units_optimal(regiments, target_positions)
 
-		# Apply to regiment
+	# Apply assignments
+	for regiment: Regiment in assignments.keys():
+		if not is_instance_valid(regiment):
+			continue
+
+		var target_pos: Vector3 = assignments[regiment]
+
 		if DeploymentManager and DeploymentManager.is_deployment_phase():
 			# During deployment, instantly reposition
 			regiment.global_position = target_pos
@@ -180,10 +300,44 @@ func _apply_formation(center: Vector3, facing: Vector3, width: float):
 		else:
 			# During combat, issue move order
 			regiment.give_order(OrderType.Type.MOVE, target_pos)
-			# After arrival, we'd want them to face this direction
-			# Store facing for later application
 
 		BattleSignals.formation_applied.emit(regiment, target_pos, facing, width)
+
+
+func _assign_units_optimal(units: Array, positions: Array[Vector3]) -> Dictionary:
+	## Greedy nearest-neighbor assignment (spring1944-inspired).
+	## Assigns each unit to nearest available position to minimize path crossings.
+	## O(n²) but simple and effective for typical selection sizes (<20 units).
+	var assignments: Dictionary = {}
+	var available_positions: Array[Vector3] = positions.duplicate()
+
+	# Sort units by their X position to reduce crossing likelihood
+	var sorted_units := units.duplicate()
+	sorted_units.sort_custom(func(a, b):
+		if not is_instance_valid(a) or not is_instance_valid(b):
+			return false
+		return a.global_position.x < b.global_position.x
+	)
+
+	for unit in sorted_units:
+		if not is_instance_valid(unit) or available_positions.is_empty():
+			continue
+
+		# Find nearest available position
+		var best_idx := -1
+		var best_dist := INF
+
+		for i in available_positions.size():
+			var dist: float = unit.global_position.distance_squared_to(available_positions[i])
+			if dist < best_dist:
+				best_dist = dist
+				best_idx = i
+
+		if best_idx >= 0:
+			assignments[unit] = available_positions[best_idx]
+			available_positions.remove_at(best_idx)
+
+	return assignments
 
 
 func _face_regiment(regiment: Regiment, facing: Vector3):
@@ -290,3 +444,59 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 			return ray_origin + ray_dir * t
 
 	return Vector3.INF
+
+
+func _raycast_enemy(screen_pos: Vector2) -> Regiment:
+	## Raycast to find enemy regiment under cursor.
+	var camera = get_viewport().get_camera_3d()
+	if camera == null:
+		return null
+
+	var ray_origin = camera.project_ray_origin(screen_pos)
+	var ray_dir = camera.project_ray_normal(screen_pos)
+	var ray_end = ray_origin + ray_dir * 1000
+
+	var space = get_viewport().get_world_3d().direct_space_state
+	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
+	query.collision_mask = 2  # Units layer
+	query.collide_with_areas = true
+
+	var result = space.intersect_ray(query)
+	if result and result.collider:
+		# MeleeArea is child of Regiment, get parent
+		var collider = result.collider
+		var regiment: Regiment = null
+
+		if collider is Area3D:
+			regiment = collider.get_parent() as Regiment
+		elif collider is Regiment:
+			regiment = collider
+
+		if regiment and not regiment.is_player_controlled and regiment.state != Regiment.State.DEAD:
+			print("FormationDragHandler: Enemy raycast hit ", regiment.name)
+			return regiment
+
+	return null
+
+
+func _issue_attack_order(regiment: Regiment, target: Regiment) -> void:
+	## Issue appropriate attack order based on unit capabilities.
+	## Ranged units fire from distance, melee units charge in.
+
+	# Check if unit has ranged capability
+	var has_ranged: bool = regiment.data.ballistic_skill > 0 and regiment.current_ammo > 0
+
+	if has_ranged:
+		# Ranged unit - enable AI assist to handle firing behavior
+		# This lets TaskFireRanged manage range, movement, and firing
+		regiment.enable_ai_assist(true)
+		if regiment.ai_controller:
+			regiment.ai_controller.set_target(target)
+			# Set stance to SKIRMISH for ranged units (fire and avoid melee)
+			regiment.ai_controller.set_stance(CommanderAI.Stance.SKIRMISH)
+		print("FormationDragHandler: %s targeting %s (ranged attack)" % [regiment.name, target.name])
+	else:
+		# Melee unit - charge towards enemy
+		var attack_pos: Vector3 = target.global_position
+		regiment.give_order(OrderType.Type.ATTACK_MOVE, attack_pos)
+		print("FormationDragHandler: %s charging %s (melee attack)" % [regiment.name, target.name])

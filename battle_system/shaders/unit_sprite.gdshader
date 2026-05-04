@@ -82,17 +82,18 @@ void fragment() {
 		bool is_dead_soldier = v_is_dead > 0.5;
 
 		// Dead soldiers show last frame of death animation (frozen corpse)
+		// Direction: dead soldiers always use direction 0 (south) for consistent corpse rendering
+		int direction;
 		if (is_dead_soldier) {
 			current_frame = death_anim_start + death_anim_frames - 1;  // Last death frame
+			direction = 0;  // Force south-facing for corpses
 		} else {
 			// Calculate current animation frame for alive soldiers
 			float anim_time = TIME * anim_speed + v_time_offset * float(current_anim_frames);
 			int frame_in_anim = int(mod(anim_time, float(current_anim_frames)));
 			current_frame = current_anim_start + frame_in_anim;
+			direction = int(v_direction);
 		}
-
-		// Direction = row in atlas
-		int direction = int(v_direction);
 
 		// Calculate UV coordinates for this frame in the atlas
 		float frame_width = 1.0 / float(atlas_columns);

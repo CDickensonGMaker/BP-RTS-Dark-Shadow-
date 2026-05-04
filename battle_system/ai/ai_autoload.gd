@@ -28,6 +28,7 @@ const SPATIAL_CELL_SIZE: float = 20.0
 # =============================================================================
 
 var spatial_hash: SpatialHash
+var threat_heatmap: ThreatHeatmap  # spring1944-style threat assessment
 var is_ai_enabled: bool = true
 
 # General AI instances (one per faction)
@@ -51,6 +52,7 @@ const COMMANDER_STAGGER_GROUPS: int = 4
 
 func _ready() -> void:
 	spatial_hash = SpatialHash.new(SPATIAL_CELL_SIZE)
+	threat_heatmap = ThreatHeatmap.new()
 
 	# Connect to battle signals for entity tracking
 	BattleSignals.regiment_dead.connect(_on_regiment_dead)
@@ -72,6 +74,10 @@ func _process(delta: float) -> void:
 		_commander_tick_acc -= COMMANDER_TICK_RATE
 		var start := Time.get_ticks_usec()
 		_tick_commanders_staggered()
+		# Update threat heatmap from all regiments
+		if threat_heatmap:
+			threat_heatmap.decay_threats(COMMANDER_TICK_RATE)
+			threat_heatmap.update_from_regiments(get_all_regiments())
 		var elapsed := (Time.get_ticks_usec() - start) / 1000.0
 		if elapsed > 16.0:
 			print("[PERF_WARN] Commander tick took %.1fms" % elapsed)
@@ -274,4 +280,37 @@ func get_debug_info() -> Dictionary:
 		"general_ais": _general_ais.size(),
 		"commander_ais": _commander_ais.size(),
 		"spatial_hash": spatial_hash.get_debug_info() if spatial_hash else {},
+		"threat_heatmap": threat_heatmap.get_debug_info() if threat_heatmap else {},
 	}
+
+
+# =============================================================================
+# THREAT HEATMAP QUERIES
+# =============================================================================
+
+func get_threat_at(position: Vector3, my_faction: int) -> float:
+	## Get enemy threat level at a position.
+	if threat_heatmap:
+		return threat_heatmap.get_threat_at(position, my_faction)
+	return 0.0
+
+
+func should_retreat(position: Vector3, my_faction: int, my_firepower: float, hp_ratio: float) -> bool:
+	## Check if a unit should retreat based on threat.
+	if threat_heatmap:
+		return threat_heatmap.should_retreat(position, my_faction, my_firepower, hp_ratio)
+	return false
+
+
+func get_safest_retreat_position(position: Vector3, my_faction: int) -> Vector3:
+	## Get safest nearby position to retreat to.
+	if threat_heatmap:
+		return threat_heatmap.get_safest_retreat_position(position, my_faction)
+	return position + Vector3.BACK * 30.0  # Fallback
+
+
+func get_flanking_direction(position: Vector3, target_position: Vector3, my_faction: int) -> Vector3:
+	## Get best direction for flanking maneuver.
+	if threat_heatmap:
+		return threat_heatmap.get_flanking_direction(position, target_position, my_faction)
+	return Vector3.RIGHT  # Fallback

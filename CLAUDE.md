@@ -1,6 +1,16 @@
 # BP RTS Dark Shadows
 
-Total War-style RTS battle system in Godot 4.
+Total War-style RTS battle system in Godot 4.5+
+
+**Project Location:** `C:\Users\caleb\BP_RTS_Dark_Shadows`
+
+## Agent Guidelines
+
+When working on this project:
+- **Be conservative** - Don't make changes without explicit instruction
+- **Reference the game bible** at `WIP/dark_shadows_bible.md` for design decisions
+- **Use signal-based architecture** - No direct node references between systems
+- **Follow battalion-based patterns** - Units are regiments, not individual soldiers
 
 ## Project Structure
 
@@ -113,3 +123,80 @@ regiment.cast_spell_by_id("fireball", target_position)
 if regiment.can_cast_spell(fireball, target_position):
     regiment.cast_spell(fireball, target_position)
 ```
+
+## Combat System (TotalWarSimulator-style)
+
+### Hit Chance Formula
+```
+hit_chance = clamp(35 + (attack - defense), 8, 90)
+```
+
+### Fatigue States
+| State | Stamina | Attack | Defense | Speed |
+|-------|---------|--------|---------|-------|
+| Fresh | >70% | 100% | 100% | 100% |
+| Winded | 40-70% | 95% | 95% | 95% |
+| Tired | 10-40% | 90% | 90% | 85% |
+| Exhausted | <10% | 80% | 85% | 50% |
+
+### Charge Mechanics
+- Requires minimum 10 units distance to apply charge bonus
+- Impact damage = mass × speed × 2
+- 70% of impact damage is armor-piercing
+- Bracing only negates **frontal** charges
+- Charge bonus decays linearly over 10 seconds
+
+### Flanking
+- Frontal: 1.0x damage
+- Flank (45-135°): 1.5x damage
+- Rear (135-180°): 2.0x damage
+
+## Formation System
+
+### Formations Available
+| Formation | Speed | Attack | Defense | Notes |
+|-----------|-------|--------|---------|-------|
+| Line | 1.0x | 1.0x | 1.0x | Default |
+| Column | 1.2x | 0.6x | 0.7x | Fast march |
+| Wedge | 1.1x | 1.3x | 0.8x | Cavalry only |
+| Square | 0.7x | 0.8x | 1.3x | Anti-cavalry |
+| Loose | 1.15x | 0.7x | 0.6x | Archers |
+| Shield Wall | 0.5x | 0.8x | 1.5x | Heavy infantry |
+| Schiltron | 0.0x | 0.6x | 1.4x | Pikemen only |
+
+### Formation Transitions
+- Transitioning reduces combat effectiveness (50% attack, 60% defense)
+- Transition time varies by formation complexity and unit type
+- Cavalry reforms 40% faster than infantry
+
+## Key Documentation
+
+- `WIP/dark_shadows_bible.md` - Complete game design (1000+ lines)
+- `WIP/implementation_status.md` - Progress tracking
+- `WIP/grand_campaign_map_plan.md` - Campaign roadmap
+
+## Research References
+
+These open-source projects inform the architecture:
+- **TotalWarSimulator** - Combat formulas, HTN AI
+- **Recoil Engine** - Large-scale RTS architecture
+- **Beyond All Reason** - Unit definitions, command systems
+- **RTSNavigationLib** - Flow fields, formation slots
+
+## Test Scene
+
+Run `scenes/battle_scene.tscn` for the main battle test.
+
+**Controls:**
+- WASD/Arrows: Pan camera
+- Mouse Wheel: Zoom
+- Middle Mouse: Rotate
+- Left Click: Select regiment
+- Right Click Terrain: Move
+- Right Click Enemy: Attack move
+- Spacebar: Pause
+- +/-: Speed control
+- Ctrl+1-9: Save group
+- 1-9: Recall group
+- F1-F4: Formation hotkeys
+- Z/X/C/V: Stance hotkeys

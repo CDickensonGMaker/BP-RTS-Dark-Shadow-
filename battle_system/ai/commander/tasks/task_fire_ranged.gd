@@ -17,10 +17,15 @@ func tick(delta: float) -> Status:
 	## Fire at target if conditions are met.
 
 	var regiment: Node = commander.regiment
-	var target: Node = blackboard.get("target")
+	var target = blackboard.get("target")  # Untyped to handle freed instances
+
+	print("[RANGED AI] %s: TaskFireRanged.tick() target=%s" % [
+		regiment.name if regiment else "nil",
+		target.name if target else "nil"])
 
 	# Check preconditions
 	if not target or not is_instance_valid(target):
+		print("[RANGED AI] %s: No valid target!" % (regiment.name if regiment else "nil"))
 		return Status.FAILURE
 
 	if target.state == Regiment.State.DEAD:
@@ -28,6 +33,7 @@ func tick(delta: float) -> Status:
 		return Status.FAILURE
 
 	if regiment.current_ammo <= 0:
+		print("[RANGED AI] %s: No ammo left!" % regiment.name)
 		return Status.FAILURE
 
 	if regiment.data.ballistic_skill == 0:
@@ -46,6 +52,8 @@ func tick(delta: float) -> Status:
 
 		# Issue move order if not already moving there
 		if regiment.state != Regiment.State.MARCHING:
+			print("[RANGED AI] %s: Out of range (%.1f > %.1f), moving to fire position" % [
+				regiment.name, distance, range_dist])
 			regiment.give_order(OrderType.Type.MOVE, fire_position)
 
 		return Status.RUNNING
@@ -56,6 +64,8 @@ func tick(delta: float) -> Status:
 		return Status.RUNNING
 
 	# Fire!
+	print("[RANGED AI] %s: FIRING at %s (range: %.1f, ammo: %d)" % [
+		regiment.name, target.name, distance, regiment.current_ammo])
 	_fire_volley(target)
 	_fire_cooldown = FIRE_INTERVAL
 
@@ -66,6 +76,7 @@ func tick(delta: float) -> Status:
 func _fire_volley(target: Node) -> void:
 	## Fire a ranged volley at the target.
 	CombatManager.fire_ranged(commander.regiment, target)
+	print("[RANGED AI] %s: Volley fired!" % commander.regiment.name)
 
 	# Apply "under fire" morale effect
 	if target.has_method("get") and target.get("unit_morale"):

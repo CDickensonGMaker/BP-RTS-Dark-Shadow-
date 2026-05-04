@@ -1,0 +1,139 @@
+[gd_scene format=3 uid="uid://xbn2tj2lxoxh"]
+
+[ext_resource type="Script" uid="uid://7x6x7woj7u" path="res://scenes/battle_scene.gd" id="1"]
+[ext_resource type="Script" uid="uid://c0k7fhy6qi4r1" path="res://camera/rts_camera.gd" id="2"]
+[ext_resource type="Script" uid="uid://vjco744etc8g" path="res://battle_system/nodes/regiment.gd" id="3"]
+[ext_resource type="Script" uid="uid://dr0fg5iq8fy8f" path="res://battle_system/nodes/regiment_leader.gd" id="4"]
+[ext_resource type="Resource" path="res://battle_system/data/swordsmen.tres" id="5"]
+[ext_resource type="Resource" path="res://battle_system/data/archers.tres" id="6"]
+[ext_resource type="Resource" path="res://battle_system/data/militia.tres" id="7"]
+[ext_resource type="Resource" path="res://battle_system/data/cavalry.tres" id="8"]
+[ext_resource type="Script" uid="uid://biqn168xq7h7o" path="res://battle_system/terrain/battle_terrain.gd" id="9"]
+[ext_resource type="Script" uid="uid://ehdw3t4r3csd" path="res://battle_system/ui/battle_hud.gd" id="10"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape_1"]
+radius = 2.5
+height = 5.0
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 1
+background_color = Color(0.35, 0.55, 0.75, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.8, 0.85, 0.9, 1)
+ambient_light_energy = 0.5
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.65, 0.7, 0.75, 1)
+fog_density = 0.001
+
+[node name="PrototypeBattle" type="Node3D" unique_id=2041989812]
+script = ExtResource("1")
+
+[node name="BattleTerrain" type="Node3D" parent="." unique_id=894269395]
+script = ExtResource("9")
+height_scale = 10.0
+tree_count = 40
+building_count = 4
+prop_count = 30
+rock_count = 20
+bush_count = 35
+
+[node name="RTSCamera" type="Node3D" parent="." unique_id=1916988659]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 30)
+script = ExtResource("2")
+
+[node name="SpringArm3D" type="SpringArm3D" parent="RTSCamera" unique_id=625805640]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 20, 0)
+spring_length = 35.0
+
+[node name="Camera3D" type="Camera3D" parent="RTSCamera/SpringArm3D" unique_id=367236479]
+
+[node name="PlayerSwordsmen" type="Node3D" parent="." unique_id=1201557339]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 2, 15)
+script = ExtResource("3")
+data = ExtResource("5")
+use_3d_soldiers = null
+use_sprite_soldiers = null
+
+[node name="Sprite3D" type="Sprite3D" parent="PlayerSwordsmen" unique_id=1161121121]
+billboard = 2
+
+[node name="RegimentLeader" type="Node3D" parent="PlayerSwordsmen" unique_id=2010587597]
+script = ExtResource("4")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="PlayerSwordsmen/RegimentLeader" unique_id=1734804466]
+
+[node name="MeleeArea" type="Area3D" parent="PlayerSwordsmen" unique_id=839544430]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PlayerSwordsmen/MeleeArea" unique_id=876702526]
+shape = SubResource("CapsuleShape_1")
+
+[node name="PlayerArchers" type="Node3D" parent="." unique_id=679618273]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -45, 2, 25)
+script = ExtResource("3")
+data = ExtResource("6")
+use_3d_soldiers = null
+use_sprite_soldiers = null
+
+[node name="Sprite3D" type="Sprite3D" parent="PlayerArchers" unique_id=1424679275]
+billboard = 2
+
+[node name="RegimentLeader" type="Node3D" parent="PlayerArchers" unique_id=1511314894]
+script = ExtResource("4")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="PlayerArchers/RegimentLeader" unique_id=1477628783]
+
+[node name="MeleeArea" type="Area3D" parent="PlayerArchers" unique_id=1864654656]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PlayerArchers/MeleeArea" unique_id=787238044]
+shape = SubResource("CapsuleShape_1")
+
+[node name="EnemyMilitia" type="Node3D" parent="." unique_id=1146260769]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 2, -15)
+script = ExtResource("3")
+data = ExtResource("7")
+use_3d_soldiers = null
+use_sprite_soldiers = null
+
+[node name="Sprite3D" type="Sprite3D" parent="EnemyMilitia" unique_id=1647476015]
+billboard = 2
+
+[node name="RegimentLeader" type="Node3D" parent="EnemyMilitia" unique_id=538715166]
+script = ExtResource("4")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="EnemyMilitia/RegimentLeader" unique_id=1646544491]
+
+[node name="MeleeArea" type="Area3D" parent="EnemyMilitia" unique_id=649849084]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyMilitia/MeleeArea" unique_id=695888035]
+shape = SubResource("CapsuleShape_1")
+
+[node name="EnemyCavalry" type="Node3D" parent="." unique_id=1440026823]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 45, 2, -25)
+script = ExtResource("3")
+data = ExtResource("8")
+use_3d_soldiers = null
+use_sprite_soldiers = null
+
+[node name="Sprite3D" type="Sprite3D" parent="EnemyCavalry" unique_id=1462427238]
+billboard = 2
+
+[node name="RegimentLeader" type="Node3D" parent="EnemyCavalry" unique_id=788154437]
+script = ExtResource("4")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="EnemyCavalry/RegimentLeader" unique_id=1110896440]
+
+[node name="MeleeArea" type="Area3D" parent="EnemyCavalry" unique_id=460391599]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyCavalry/MeleeArea" unique_id=1002352799]
+shape = SubResource("CapsuleShape_1")
+
+[node name="BattleHUD" type="CanvasLayer" parent="." unique_id=1684754613]
+script = ExtResource("10")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=999662514]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 30, 0)
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1073596044]
+environment = SubResource("Environment_1")

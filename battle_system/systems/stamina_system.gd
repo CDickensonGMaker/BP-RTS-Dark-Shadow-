@@ -11,9 +11,20 @@ const IDLE_RECOVERY_RATE: float = 10.0     # Per second while idle
 const RUN_DRAIN_RATE: float = 8.0          # Per second while running
 const CHARGE_DRAIN_RATE: float = 15.0      # Per second while charging
 
+# TotalWarSimulator fatigue thresholds
+const WINDED_THRESHOLD: float = 70.0       # Below this = winded
+const TIRED_THRESHOLD: float = 40.0        # Below this = tired
 const EXHAUSTED_THRESHOLD: float = 10.0    # Below this = exhausted
+
+# TotalWarSimulator fatigue penalties (attack/speed)
+const WINDED_COMBAT_PENALTY: float = 0.95  # 5% penalty when winded
+const TIRED_COMBAT_PENALTY: float = 0.90   # 10% penalty when tired
+const EXHAUSTED_ATTACK_PENALTY: float = 0.80   # 20% attack penalty when exhausted
+const EXHAUSTED_DEFENSE_PENALTY: float = 0.85  # 15% defense penalty when exhausted
+
+const WINDED_SPEED_PENALTY: float = 0.95   # 5% slower
+const TIRED_SPEED_PENALTY: float = 0.85    # 15% slower
 const EXHAUSTED_SPEED_PENALTY: float = 0.5 # 50% speed when exhausted
-const EXHAUSTED_COMBAT_PENALTY: float = 0.8 # 80% combat effectiveness
 
 enum MovementMode {
 	IDLE,
@@ -22,9 +33,17 @@ enum MovementMode {
 	CHARGING,
 }
 
+enum FatigueState {
+	FRESH,      # > WINDED_THRESHOLD
+	WINDED,     # TIRED_THRESHOLD to WINDED_THRESHOLD
+	TIRED,      # EXHAUSTED_THRESHOLD to TIRED_THRESHOLD
+	EXHAUSTED,  # < EXHAUSTED_THRESHOLD
+}
+
 var current_stamina: float = MAX_STAMINA
 var movement_mode: MovementMode = MovementMode.IDLE
 var is_exhausted: bool = false
+var fatigue_state: FatigueState = FatigueState.FRESH
 
 signal stamina_changed(new_value: float, max_value: float)
 signal exhausted()
@@ -44,9 +63,20 @@ func update(delta: float) -> void:
 		MovementMode.CHARGING:
 			current_stamina = maxf(current_stamina - CHARGE_DRAIN_RATE * delta, 0.0)
 
-	# Check for exhaustion state change
+	# Check for fatigue state change (TotalWarSimulator)
+	var old_state: FatigueState = fatigue_state
 	var was_exhausted: bool = is_exhausted
-	is_exhausted = current_stamina < EXHAUSTED_THRESHOLD
+
+	if current_stamina < EXHAUSTED_THRESHOLD:
+		fatigue_state = FatigueState.EXHAUSTED
+	elif current_stamina < TIRED_THRESHOLD:
+		fatigue_state = FatigueState.TIRED
+	elif current_stamina < WINDED_THRESHOLD:
+		fatigue_state = FatigueState.WINDED
+	else:
+		fatigue_state = FatigueState.FRESH
+
+	is_exhausted = fatigue_state == FatigueState.EXHAUSTED
 
 	if is_exhausted and not was_exhausted:
 		exhausted.emit()
@@ -75,14 +105,41 @@ func can_charge() -> bool:
 
 
 func get_speed_modifier() -> float:
-	if is_exhausted:
-		return EXHAUSTED_SPEED_PENALTY
+	## Returns speed multiplier based on fatigue state (TotalWarSimulator).
+	match fatigue_state:
+		FatigueState.WINDED:
+			return WINDED_SPEED_PENALTY
+		FatigueState.TIRED:
+			return TIRED_SPEED_PENALTY
+		FatigueState.EXHAUSTED:
+			return EXHAUSTED_SPEED_PENALTY
 	return 1.0
 
 
 func get_combat_modifier() -> float:
-	if is_exhausted:
-		return EXHAUSTED_COMBAT_PENALTY
+	## Returns attack modifier based on fatigue state (TotalWarSimulator).
+	## Note: For exhausted state, this returns attack penalty (0.80).
+	## Use get_defense_modifier() for separate defense penalty.
+	match fatigue_state:
+		FatigueState.WINDED:
+			return WINDED_COMBAT_PENALTY
+		FatigueState.TIRED:
+			return TIRED_COMBAT_PENALTY
+		FatigueState.EXHAUSTED:
+			return EXHAUSTED_ATTACK_PENALTY
+	return 1.0
+
+
+func get_defense_modifier() -> float:
+	## Returns defense modifier based on fatigue state (TotalWarSimulator).
+	## Only exhausted state has different defense penalty.
+	match fatigue_state:
+		FatigueState.WINDED:
+			return WINDED_COMBAT_PENALTY  # Same as attack for winded/tired
+		FatigueState.TIRED:
+			return TIRED_COMBAT_PENALTY
+		FatigueState.EXHAUSTED:
+			return EXHAUSTED_DEFENSE_PENALTY
 	return 1.0
 
 

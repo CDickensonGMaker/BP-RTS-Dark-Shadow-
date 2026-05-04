@@ -47,14 +47,14 @@ light_energy = 1.2
 transform = Transform3D(1, 0, 0, 0, 0.707, 0.707, 0, -0.707, 0.707, 0, 30, 25)
 script = ExtResource("7")
 fov = 60.0
-map_bounds_min = Vector3(-100, 0, -100)
-map_bounds_max = Vector3(100, 100, 100)
+map_bounds_min = Vector3(-120, 0, -120)
+map_bounds_max = Vector3(120, 100, 120)
 
 [node name="BattleTerrain" type="Node3D" parent="."]
 script = ExtResource("1")
-terrain_size = Vector2(150, 150)
+terrain_size = Vector2(200, 200)
 terrain_resolution = 64
-height_scale = 15.0
+height_scale = 6.0
 tree_count = 30
 building_count = 5
 prop_count = 20
@@ -65,7 +65,7 @@ bush_count = 25
 
 ; Player Sword 1 - Front Center
 [node name="PlayerSword1" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 10, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -55, 10, 0)
 script = ExtResource("2")
 data = ExtResource("player_sword")
 use_3d_soldiers = false
@@ -90,7 +90,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Player Sword 2 - Front Left
 [node name="PlayerSword2" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 10, -15)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -55, 10, -20)
 script = ExtResource("2")
 data = ExtResource("player_sword")
 use_3d_soldiers = false
@@ -115,7 +115,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Player Sword 3 - Front Right
 [node name="PlayerSword3" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 10, 15)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -55, 10, 20)
 script = ExtResource("2")
 data = ExtResource("player_sword")
 use_3d_soldiers = false
@@ -140,7 +140,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Player Archer 1 - Back Left
 [node name="PlayerArcher1" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -45, 10, -10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -70, 10, -12)
 script = ExtResource("2")
 data = ExtResource("player_archer")
 use_3d_soldiers = false
@@ -165,7 +165,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Player Archer 2 - Back Right
 [node name="PlayerArcher2" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -45, 10, 10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -70, 10, 12)
 script = ExtResource("2")
 data = ExtResource("player_archer")
 use_3d_soldiers = false
@@ -190,7 +190,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Player Cavalry - Flank
 [node name="PlayerCavalry" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 10, 30)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -65, 10, 40)
 script = ExtResource("2")
 data = ExtResource("player_cavalry")
 use_3d_soldiers = false
@@ -217,7 +217,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Enemy Black Orcs - Front Center
 [node name="EnemyBlackOrcs" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 10, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 10, 0)
 script = ExtResource("2")
 data = ExtResource("enemy_sword1")
 use_3d_soldiers = false
@@ -243,7 +243,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Enemy Orcs - Front Left
 [node name="EnemyOrcs" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 10, -15)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 10, -20)
 script = ExtResource("2")
 data = ExtResource("enemy_sword2")
 use_3d_soldiers = false
@@ -269,7 +269,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Enemy Night Goblins - Front Right
 [node name="EnemyGoblins" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 10, 15)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 10, 20)
 script = ExtResource("2")
 data = ExtResource("enemy_sword3")
 use_3d_soldiers = false
@@ -295,7 +295,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Enemy Arrer Boyz - Back Left
 [node name="EnemyArchers1" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 45, 10, -10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 70, 10, -12)
 script = ExtResource("2")
 data = ExtResource("enemy_archer1")
 use_3d_soldiers = false
@@ -321,7 +321,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Enemy Big'Uns Archers - Back Right
 [node name="EnemyArchers2" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 45, 10, 10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 70, 10, 12)
 script = ExtResource("2")
 data = ExtResource("enemy_archer2")
 use_3d_soldiers = false
@@ -347,7 +347,7 @@ shape = SubResource("CapsuleShape_1")
 
 ; Enemy Wolf Riders - Flank
 [node name="EnemyWolfRiders" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 10, -30)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 65, 10, -40)
 script = ExtResource("2")
 data = ExtResource("enemy_cavalry")
 use_3d_soldiers = false

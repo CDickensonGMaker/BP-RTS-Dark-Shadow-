@@ -55,6 +55,8 @@ signal unit_morale_changed(regiment: Regiment, average_morale: float)
 # Stance and Formation
 signal stance_changed(regiment: Regiment, old_stance: int, new_stance: int)
 signal formation_type_changed(regiment: Regiment, old_formation: int, new_formation: int)
+signal formation_reform_started(regiment: Regiment, duration: float)
+signal formation_reform_completed(regiment: Regiment)
 
 # Stamina
 signal unit_exhausted(regiment: Regiment)

@@ -58,6 +58,30 @@ func _play_death_cry(position: Vector3, casualty_count: int = 1) -> void:
 		_play_combat_sfx_random("death", 5, position)
 
 
+## Play ranged attack animation on the firing regiment
+func _play_ranged_attack_animation(regiment: Regiment) -> void:
+	if not is_instance_valid(regiment):
+		return
+
+	# Play attack animation on sprite overlay (2D sprites)
+	if regiment.sprite_overlay:
+		regiment.sprite_overlay.play_animation_staggered("attack", 0.02)
+		# Return to idle after a short delay
+		get_tree().create_timer(0.6).timeout.connect(func():
+			if is_instance_valid(regiment) and regiment.sprite_overlay:
+				regiment.sprite_overlay.play_animation_all("idle")
+		)
+
+	# Play attack animation on 3D formation
+	if regiment.formation and regiment.formation.has_method("play_animation_staggered"):
+		regiment.formation.play_animation_staggered("Attack", 0.02)
+		# Return to idle after a short delay
+		get_tree().create_timer(0.6).timeout.connect(func():
+			if is_instance_valid(regiment) and regiment.formation:
+				regiment.formation.play_animation_all("Idle")
+		)
+
+
 # Active melee combat pairs
 # Each entry: { attacker: Regiment, defender: Regiment, charge_applied: bool, charge_timer: float, charge_time: float }
 var active_melees: Array[Dictionary] = []
@@ -69,9 +93,10 @@ const CHARGE_DECAY_DURATION: float = 10.0  # Charge bonus decays linearly over 1
 const COMBAT_DAMAGE_MULTIPLIER: float = 0.36  # 64% less damage overall (20% faster than before)
 
 # Total War-style hit chance formula
-const BASE_HIT_CHANCE: float = 0.40  # 40% base hit chance
+# TotalWarSimulator-style hit chance formula
+const BASE_HIT_CHANCE: float = 0.35  # 35% base hit chance (TotalWarSimulator)
 const HIT_CHANCE_PER_SKILL: float = 0.01  # +1% per point of attack vs defense
-const MIN_HIT_CHANCE: float = 0.10  # Minimum 10% hit chance
+const MIN_HIT_CHANCE: float = 0.08  # Minimum 8% hit chance (TotalWarSimulator)
 const MAX_HIT_CHANCE: float = 0.90  # Maximum 90% hit chance
 
 # Debug mode
@@ -400,6 +425,13 @@ func _get_flank_damage_modifier(attacker: Regiment, defender: Regiment) -> float
 	return 1.0  # Frontal attack
 
 
+## Check if this is a frontal attack (for bracing check).
+## Returns true if attacker is hitting defender from the front arc.
+func _is_frontal_attack(attacker: Regiment, defender: Regiment) -> bool:
+	var angle: float = _calculate_attack_angle(attacker, defender)
+	return angle <= FLANK_SIDE_ANGLE  # Front is within side flank angle threshold
+
+
 ## Get flanking morale damage multiplier.
 func _get_flank_morale_modifier(attacker: Regiment, defender: Regiment) -> float:
 	var angle: float = _calculate_attack_angle(attacker, defender)
@@ -433,7 +465,7 @@ func _get_projectile_config(regiment: Regiment) -> Dictionary:
 			return PROJECTILE_CONFIG_ARTILLERY
 		_:
 			# Check for specific weapon types via unit name or tags
-			var unit_name: String = regiment.data.display_name.to_lower() if regiment.data.display_name else ""
+			var unit_name: String = regiment.data.regiment_name.to_lower() if regiment.data.regiment_name else ""
 
 			if "crossbow" in unit_name:
 				return PROJECTILE_CONFIG_CROSSBOW
@@ -456,24 +488,47 @@ func begin_melee(attacker: Regiment, defender: Regiment) -> void:
 
 	# Handle charge impact at moment of contact
 	var charge_negated: bool = false
+	var valid_charge: bool = attacker.has_valid_charge()
+
 	if attacker.current_order == OrderType.Type.CHARGE:
-		var was_braced: bool = defender.is_braced
-		if was_braced:
-			# Defender braced - negate charge bonus
-			charge_negated = true
-			print("CombatManager: Charge impact NEGATED! %s charged braced %s" % [attacker.name, defender.name])
-			# Spawn block effect for braced defender
-			if CombatEffects:
-				CombatEffects.spawn_block(defender.global_position + Vector3(0, 1.2, 0))
+		# Check if charge traveled minimum distance
+		if not valid_charge:
+			print("CombatManager: Charge INVALID - %s only traveled %.1f (need %.1f)" % [
+				attacker.name, attacker.charge_distance_traveled, attacker.MIN_CHARGE_DISTANCE])
 		else:
-			# Successful charge impact
-			print("CombatManager: Charge impact! %s charged %s (bonus: %d)" % [attacker.name, defender.name, attacker.data.charge_bonus])
+			var was_braced: bool = defender.is_braced
+			# Check if bracing applies (frontal charges only)
+			var is_frontal_charge: bool = _is_frontal_attack(attacker, defender)
 
-		# Emit charge impact signal
-		BattleSignals.charge_impact.emit(attacker, defender, was_braced)
+			if was_braced and is_frontal_charge:
+				# Defender braced against frontal charge - negate bonus, reduce impact
+				charge_negated = true
+				print("CombatManager: Charge impact NEGATED! %s charged braced %s (frontal)" % [attacker.name, defender.name])
+				# Spawn block effect for braced defender
+				if CombatEffects:
+					CombatEffects.spawn_block(defender.global_position + Vector3(0, 1.2, 0))
+			else:
+				# Successful charge impact - calculate impact damage
+				var impact_damage: int = attacker.get_charge_impact_damage()
+				if impact_damage > 0:
+					# Apply impact damage (partially armor-piercing per TotalWarSimulator)
+					var ap_damage: int = int(impact_damage * 0.7)  # 70% armor-piercing
+					var normal_damage: int = impact_damage - ap_damage
+					# Impact causes instant casualties
+					var total_impact_casualties: int = max(1, impact_damage / 3)
+					defender.take_casualties(total_impact_casualties)
+					defender.take_morale_damage(float(impact_damage) * 0.5)
+					print("CombatManager: Charge impact! %s hit %s for %d impact damage (%d casualties)" % [
+						attacker.name, defender.name, impact_damage, total_impact_casualties])
 
-		# Play charge impact audio
-		_play_combat_sfx("cavalry_charge_01", defender.global_position)
+				print("CombatManager: Charge bonus: %d, distance: %.1f" % [
+					attacker.data.charge_bonus, attacker.charge_distance_traveled])
+
+			# Emit charge impact signal
+			BattleSignals.charge_impact.emit(attacker, defender, was_braced and is_frontal_charge)
+
+			# Play charge impact audio
+			_play_combat_sfx("cavalry_charge_01", defender.global_position)
 
 		# Mark attacker as having charged
 		attacker.has_charged = true
@@ -601,11 +656,12 @@ func _resolve_melee_tick(melee: Dictionary) -> void:
 	var att_score: int = int(float(att_base) * att_modifier)
 
 	# Apply decaying charge bonus (Total War style - decays linearly over 10 seconds)
-	# Charge bonus now applies continuously but decays, not just on first tick
+	# Charge bonus requires minimum distance traveled and not negated by bracing
 	var charge_bonus_applied: bool = false
 	if att.data.charge_bonus > 0 and not melee.get("charge_negated", false):
-		# Check if attacker was charging
-		if att.current_order == OrderType.Type.CHARGE or melee.get("charge_applied", false):
+		# Check if attacker was charging AND traveled minimum distance
+		var had_valid_charge: bool = melee.get("charge_applied", false) or att.has_valid_charge()
+		if (att.current_order == OrderType.Type.CHARGE or melee.get("charge_applied", false)) and had_valid_charge:
 			# Calculate charge decay: 100% at t=0, 0% at t=CHARGE_DECAY_DURATION
 			var charge_decay: float = clampf(1.0 - (melee["charge_time"] / CHARGE_DECAY_DURATION), 0.0, 1.0)
 			if charge_decay > 0.0:
@@ -705,8 +761,8 @@ func _resolve_melee_tick(melee: Dictionary) -> void:
 		for i in casualties:
 			att.veterancy.add_kill()
 
-	# Defender hits back (unless routing)
-	if def.state != Regiment.State.ROUTING:
+	# Defender hits back (unless routing or dead)
+	if def.state != Regiment.State.ROUTING and def.current_soldiers > 0:
 		# Defender's attack with modifiers
 		var def_base2: int = def.data.attack
 		var def_modifier2: float = def.get_attack_modifier()
@@ -828,28 +884,39 @@ const FRIENDLY_FIRE_CHANCE: float = 0.15  # 15% chance to hit friendly
 
 ## Fire ranged attack
 func fire_ranged(attacker: Regiment, target: Regiment) -> void:
+	print("[RANGED] fire_ranged called: %s -> %s" % [attacker.name, target.name])
+
 	if attacker.current_ammo <= 0:
+		print("[RANGED] BLOCKED: No ammo")
 		return
 	if attacker.data.ballistic_skill == 0:
+		print("[RANGED] BLOCKED: No ballistic_skill")
 		return
 
 	# Weather LOS check - weather may block ranged attacks at distance
 	if WeatherSystem.blocks_los(attacker.global_position.distance_to(target.global_position)):
+		print("[RANGED] BLOCKED: Weather blocks LOS")
 		return
 
 	# LoS check
 	if not _has_line_of_sight(attacker, target):
+		print("[RANGED] BLOCKED: No LOS")
 		return
 
 	# Range check
 	var dist: float = attacker.global_position.distance_to(target.global_position)
 	if dist > attacker.data.range_distance:
+		print("[RANGED] BLOCKED: Out of range (%.1f > %.1f)" % [dist, attacker.data.range_distance])
 		return
 
+	print("[RANGED] FIRING! ammo %d -> %d" % [attacker.current_ammo, attacker.current_ammo - 1])
 	attacker.current_ammo -= 1
 
 	# Play bow release audio
 	_play_combat_sfx("bow_release_01", attacker.global_position)
+
+	# Play shooting animation on the attacker
+	_play_ranged_attack_animation(attacker)
 
 	# Check for friendly fire risk - is target in active melee?
 	var actual_target: Regiment = target

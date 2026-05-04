@@ -21,6 +21,11 @@ var current_stance: StanceType.Type = StanceType.Type.AGGRESSIVE
 var current_formation: FormationType.Type = FormationType.Type.LINE
 var guard_target: Regiment = null  # Unit being guarded (if GUARD stance)
 
+# Formation transition state
+var is_reforming: bool = false      # Currently changing formation
+var reform_timer: float = 0.0       # Time remaining in transition
+var reform_target: FormationType.Type = FormationType.Type.LINE  # Target formation
+
 # Stamina, Veterancy, Abilities
 var stamina: StaminaSystem = null
 var veterancy: VeterancySystem = null
@@ -32,8 +37,22 @@ var hold_fire: bool = false      # Don't auto-fire
 var inspire_active: bool = false # Inspired by general
 var has_charged: bool = false    # Has applied charge bonus this engagement
 
+# Charge tracking
+var charge_start_position: Vector3 = Vector3.ZERO  # Position when charge started
+var charge_distance_traveled: float = 0.0           # Distance traveled during charge
+const MIN_CHARGE_DISTANCE: float = 10.0             # Minimum distance to apply charge bonus
+
 # Facing direction for flanking calculations
 var _facing_direction: Vector3 = Vector3.FORWARD
+
+# Smooth rotation system (inspired by spring1944)
+var _target_heading: float = 0.0  # Desired heading toward enemy
+var _current_heading: float = 0.0  # Current actual heading
+var _combat_facing_locked: bool = false  # Hysteresis flag to prevent spinning
+const DEFAULT_TURN_SPEED: float = 3.0  # radians per second fallback
+const HEADING_THRESHOLD: float = 0.05  # ~3 degrees - prevents micro-adjustments
+const COMBAT_FACING_LOCK: float = 0.35  # ~20 degrees - stop rotating once aligned
+const COMBAT_FACING_UNLOCK: float = 0.7  # ~40 degrees - only resume rotating if enemy moves significantly
 
 # Internal refs
 @onready var sprite: Sprite3D = $Sprite3D
@@ -53,13 +72,13 @@ var unit_morale: UnitMorale = null
 enum State { IDLE, MARCHING, ENGAGING, ROUTING, RALLYING, DEAD }
 var state: State = State.IDLE
 
-# Animation mapping for states
+# Animation mapping for states (lowercase to match atlas definitions)
 const STATE_ANIMATIONS := {
-	State.IDLE: "Idle",
-	State.MARCHING: "Walk",
-	State.ENGAGING: "Attack",
-	State.ROUTING: "Run",
-	State.RALLYING: "Idle",
+	State.IDLE: "idle",
+	State.MARCHING: "walk",
+	State.ENGAGING: "attack",
+	State.ROUTING: "walk",
+	State.RALLYING: "idle",
 }
 
 
@@ -260,6 +279,14 @@ func enable_ai_assist(enabled: bool):
 
 
 func _process(delta):
+	# Update formation transition timer
+	if is_reforming:
+		reform_timer -= delta
+		if reform_timer <= 0:
+			is_reforming = false
+			reform_timer = 0.0
+			BattleSignals.formation_reform_completed.emit(self)
+
 	# Update per-soldier morale system
 	if unit_morale:
 		unit_morale.update(delta)
@@ -285,6 +312,9 @@ func _process(delta):
 	if abilities:
 		abilities.update(delta)
 
+	# Smooth rotation toward enemy during combat (spring1944-style)
+	_update_combat_facing(delta)
+
 
 func _physics_process(delta):
 	# Update position in spatial hash for efficient proximity queries
@@ -296,6 +326,69 @@ func _physics_process(delta):
 		State.ENGAGING:  _process_engage(delta)
 		State.ROUTING:   _process_route(delta)
 		State.RALLYING:  _process_rally(delta)
+
+
+func _update_combat_facing(delta: float) -> void:
+	## Smoothly rotate regiment toward enemy during combat (spring1944-style).
+	## Uses atan2 heading calculation with smooth interpolation and hysteresis.
+	if state != State.ENGAGING:
+		_combat_facing_locked = false  # Reset lock when not engaging
+		return
+
+	# Find current combat target
+	var enemy := _find_current_combat_target()
+	if not enemy or not is_instance_valid(enemy):
+		_combat_facing_locked = false
+		return
+
+	# Calculate desired heading toward enemy using atan2
+	var dir := enemy.global_position - global_position
+	dir.y = 0  # Keep rotation horizontal
+	if dir.length_squared() < 0.1:
+		return  # Too close, don't spin
+
+	_target_heading = atan2(dir.x, dir.z)
+
+	# Smooth rotation toward target heading
+	var angle_diff := _wrap_angle(_target_heading - _current_heading)
+
+	# Hysteresis to prevent spinning:
+	# - Once locked (facing within COMBAT_FACING_LOCK), stay locked
+	# - Only unlock if enemy moves significantly (beyond COMBAT_FACING_UNLOCK)
+	if _combat_facing_locked:
+		if absf(angle_diff) < COMBAT_FACING_UNLOCK:
+			return  # Stay locked, don't rotate
+		else:
+			_combat_facing_locked = false  # Enemy moved significantly, unlock
+	else:
+		if absf(angle_diff) < COMBAT_FACING_LOCK:
+			_combat_facing_locked = true  # Now facing enemy, lock in place
+			return
+
+	if absf(angle_diff) > HEADING_THRESHOLD:
+		# Use data.turn_rate if available, otherwise fallback to default
+		var turn_speed := data.turn_rate if data else DEFAULT_TURN_SPEED
+		# Apply turn speed (spring1944-style frame-by-frame interpolation)
+		var turn_amount: float = signf(angle_diff) * minf(absf(angle_diff), turn_speed * delta)
+		_current_heading = _wrap_angle(_current_heading + turn_amount)
+
+		# Update facing direction for flanking calculations
+		_facing_direction = Vector3(sin(_current_heading), 0, cos(_current_heading))
+
+		# Update sprite overlay facing (smooth, not instant)
+		if sprite_overlay:
+			sprite_overlay.set_facing_angle(_current_heading)
+		if formation and formation.has_method("set_facing_direction"):
+			formation.set_facing_direction(_facing_direction)
+
+
+func _wrap_angle(angle: float) -> float:
+	## Wrap angle to [-PI, PI] range (shortest-path wrapping).
+	while angle > PI:
+		angle -= TAU
+	while angle < -PI:
+		angle += TAU
+	return angle
 
 
 # --- STATE TRANSITIONS ---
@@ -324,7 +417,13 @@ func set_state(new_state: State):
 			BattleSignals.regiment_routing.emit(self)
 		State.DEAD:
 			BattleSignals.regiment_dead.emit(self)
-			queue_free()
+			# Clean up from combat systems before freeing
+			CombatManager.disengage_regiment(self)
+			# Delay queue_free to let other systems clean up references
+			get_tree().create_timer(0.5).timeout.connect(func():
+				if is_instance_valid(self):
+					queue_free()
+			)
 
 
 # --- ORDER HANDLING ---
@@ -352,6 +451,9 @@ func give_order(order: OrderType.Type, target: Variant = null):
 				leader.move_to(target)
 				set_state(State.MARCHING)
 				has_charged = false  # Reset charge flag for fresh charge bonus
+				# Track charge start position for minimum distance calculation
+				charge_start_position = global_position
+				charge_distance_traveled = 0.0
 				# Use run animation for charge
 				if formation:
 					formation.play_animation_all("Run")
@@ -407,7 +509,12 @@ func play_hit_reaction():
 # --- PRIVATE PROCESS FUNCTIONS ---
 func _process_march(delta):
 	# Follow the leader position
+	var old_pos: Vector3 = global_position
 	global_position = global_position.lerp(leader.global_position, delta * 5.0)
+
+	# Track charge distance if charging
+	if current_order == OrderType.Type.CHARGE:
+		charge_distance_traveled = global_position.distance_to(charge_start_position)
 
 	# Update formation and melee area to follow regiment position
 	if formation:
@@ -423,6 +530,11 @@ func _process_march(delta):
 	if move_dir.length_squared() > 0.1:
 		# Track facing direction for flanking calculations
 		_facing_direction = move_dir.normalized()
+
+		# Sync heading so combat transition is smooth
+		_current_heading = atan2(move_dir.x, move_dir.z)
+		_target_heading = _current_heading
+
 		if formation and formation.has_method("set_facing_direction"):
 			formation.set_facing_direction(move_dir)
 		if sprite_overlay:
@@ -433,24 +545,10 @@ func _process_march(delta):
 		set_state(State.IDLE)
 
 
-var _combat_facing_timer: float = 0.0
-const COMBAT_FACING_UPDATE_INTERVAL: float = 0.2  # Update facing 5x per second to prevent jitter
-
-func _process_engage(delta):
-	# Throttle facing updates to prevent sprite spinning from micro-movements
-	_combat_facing_timer += delta
-	if _combat_facing_timer < COMBAT_FACING_UPDATE_INTERVAL:
-		return
-	_combat_facing_timer = 0.0
-
-	# Face the enemy during combat (for sprite direction)
-	var enemy = _find_current_combat_target()
-	if enemy and sprite_overlay:
-		var diff = enemy.global_position - global_position
-		# Only update facing if enemy is far enough away (prevents jitter when overlapping)
-		if diff.length_squared() > 4.0:  # Min 2 units distance
-			var dir_to_enemy = diff.normalized()
-			sprite_overlay.set_facing_direction(dir_to_enemy)
+func _process_engage(_delta):
+	# Combat facing is now handled by _update_combat_facing() in _process()
+	# This function can be used for other engage-specific state updates
+	pass
 
 
 func _process_route(_delta):
@@ -473,9 +571,13 @@ func _find_current_combat_target() -> Regiment:
 		return null
 	for melee in CombatManager.active_melees:
 		if melee.attacker == self:
-			return melee.defender
+			# Check if defender is still valid (not freed)
+			if is_instance_valid(melee.defender):
+				return melee.defender
 		if melee.defender == self:
-			return melee.attacker
+			# Check if attacker is still valid (not freed)
+			if is_instance_valid(melee.attacker):
+				return melee.attacker
 	# Fallback to nearest enemy if not found in active melees
 	return _find_nearest_enemy()
 
@@ -567,13 +669,22 @@ func set_formation(formation_type: FormationType.Type):
 	if not FormationType.can_unit_use(formation_type, data.unit_type):
 		return  # Can't use this formation
 
+	if formation_type == current_formation:
+		return  # Already in this formation
+
 	var old_formation: FormationType.Type = current_formation
+
+	# Start formation transition
+	is_reforming = true
+	reform_target = formation_type
+	reform_timer = FormationType.get_transition_time(formation_type, data.unit_type)
+
+	# Immediately update the target formation for visuals
 	current_formation = formation_type
 
-	# Apply formation modifiers
-	# These are checked in combat calculations
-
+	# Signal the change (visual update happens now, but combat penalties apply during transition)
 	BattleSignals.formation_type_changed.emit(self, old_formation, formation_type)
+	BattleSignals.formation_reform_started.emit(self, reform_timer)
 
 
 func get_formation_name() -> String:
@@ -589,6 +700,9 @@ func get_speed_modifier() -> float:
 
 func get_attack_modifier() -> float:
 	var base: float = FormationType.get_attack_modifier(current_formation)
+	# Penalty while reforming - vulnerable during transition
+	if is_reforming:
+		base *= FormationType.get_transition_combat_penalty()
 	if stamina:
 		base *= stamina.get_combat_modifier()
 	if veterancy:
@@ -600,6 +714,12 @@ func get_attack_modifier() -> float:
 
 func get_defense_modifier() -> float:
 	var base: float = FormationType.get_defense_modifier(current_formation)
+	# Penalty while reforming - vulnerable during transition
+	if is_reforming:
+		base *= FormationType.get_transition_defense_penalty()
+	# Stamina defense penalty (TotalWarSimulator)
+	if stamina:
+		base *= stamina.get_defense_modifier()
 	if is_braced:
 		base += 0.5  # +50% defense when braced
 	return base
@@ -642,6 +762,24 @@ func get_facing_direction() -> Vector3:
 func reset_charge_state():
 	## Reset charge flag when combat ends or unit disengages.
 	has_charged = false
+	charge_distance_traveled = 0.0
+	charge_start_position = Vector3.ZERO
+
+
+func has_valid_charge() -> bool:
+	## Returns true if unit charged far enough to apply charge bonus.
+	return current_order == OrderType.Type.CHARGE and charge_distance_traveled >= MIN_CHARGE_DISTANCE
+
+
+func get_charge_impact_damage() -> int:
+	## Calculate impact damage based on mass × velocity (speed).
+	## Used for cavalry charges - represents the crushing force of impact.
+	if not has_valid_charge():
+		return 0
+	# Impact damage = mass × speed × charge_bonus_modifier
+	# Base formula inspired by TotalWarSimulator: 70% of impact is armor-piercing
+	var impact: float = data.mass * data.speed * 2.0  # Multiplier for meaningful damage
+	return int(impact)
 
 
 # --- ABILITY SHORTCUTS ---

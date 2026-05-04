@@ -196,6 +196,7 @@ func _create_forces_panel(header_text: String, is_player: bool) -> PanelContaine
 	panel.add_theme_stylebox_override("panel", style)
 
 	var margin := MarginContainer.new()
+	margin.name = "MarginContainer"
 	margin.add_theme_constant_override("margin_left", 12)
 	margin.add_theme_constant_override("margin_right", 12)
 	margin.add_theme_constant_override("margin_top", 10)
@@ -235,6 +236,7 @@ func _create_forces_panel(header_text: String, is_player: bool) -> PanelContaine
 
 	# Scroll container for unit rows
 	var scroll := ScrollContainer.new()
+	scroll.name = "ScrollContainer"
 	scroll.custom_minimum_size = Vector2(0, 160)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO

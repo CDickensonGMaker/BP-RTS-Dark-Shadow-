@@ -89,11 +89,12 @@ func _physics_process(delta):
 		return
 
 	# If next position is basically our current position but we're not at target, move directly
-	if dist_to_next < 0.1 and dist_to_target > 1.0:
-		# Navigation is stuck - move directly towards target
+	# This handles: nav mesh not ready, position outside nav mesh, or nav stuck
+	if dist_to_next < 0.5 and dist_to_target > 1.0:
+		# Navigation is stuck or unavailable - move directly towards target
 		var dir_to_target = (nav_agent.target_position - global_position)
 		dir_to_target.y = 0
-		if dir_to_target.length() > 0.5:
+		if dir_to_target.length() > 0.1:
 			var direction = dir_to_target.normalized()
 			var new_pos = global_position + direction * move_speed * delta
 			if _terrain:

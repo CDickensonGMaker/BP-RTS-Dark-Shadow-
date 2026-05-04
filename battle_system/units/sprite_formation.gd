@@ -50,6 +50,10 @@ var _world_facing_angle: float = 0.0  # Store world-space facing for camera upda
 var _last_camera_rotation: float = 0.0
 var _direction_update_timer: float = 0.0
 const DIRECTION_UPDATE_INTERVAL: float = 0.05  # Update sprite directions 20x/sec when camera rotates
+const DIRECTION_HYSTERESIS: float = 0.15  # Radians (~8.5°) of hysteresis to prevent jitter
+
+# Direction tracking for hysteresis
+var _current_direction_index: int = -1  # -1 forces initial calculation
 
 # Animation state
 var _current_animation: String = "idle"
@@ -243,6 +247,7 @@ func set_facing_direction(direction: Vector3):
 	"""Set all soldiers to face a direction (camera-relative)."""
 	# Store world-space angle for later camera rotation updates
 	_world_facing_angle = atan2(direction.x, direction.z)
+	_current_direction_index = -1  # Force recalculation when facing changes
 	_apply_camera_relative_direction()
 
 
@@ -250,6 +255,7 @@ func set_facing_angle(angle_rad: float):
 	"""Set all soldiers to face an angle (radians, camera-relative)."""
 	# Store world-space angle for later camera rotation updates
 	_world_facing_angle = angle_rad
+	_current_direction_index = -1  # Force recalculation when facing changes
 	_apply_camera_relative_direction()
 
 
@@ -261,14 +267,25 @@ func _apply_camera_relative_direction():
 		camera_y_angle = camera.global_rotation.y
 		_last_camera_rotation = camera_y_angle
 
-	# Adjust by camera rotation for camera-relative direction
-	var camera_relative_angle := _world_facing_angle - camera_y_angle
+	# Fixed: Add PI offset for correct camera-relative direction
+	# This ensures sprites show the correct facing relative to camera view
+	var camera_relative_angle := _world_facing_angle - camera_y_angle + PI
 
-	var dir_index := SpriteUnitAtlas.direction_from_angle(camera_relative_angle)
+	var new_dir_index := SpriteUnitAtlas.direction_from_angle(camera_relative_angle)
+
+	# Hysteresis: Only change direction if clearly in new zone to prevent jitter
+	if new_dir_index != _current_direction_index and _current_direction_index >= 0:
+		var normalized := fmod(camera_relative_angle + TAU, TAU)
+		var center_of_new := float(new_dir_index) * (PI / 4.0)
+		var diff := absf(fmod(normalized - center_of_new + PI, TAU) - PI)
+		if diff > DIRECTION_HYSTERESIS:
+			return  # Stay with current direction until clearly past boundary
+
+	_current_direction_index = new_dir_index
 
 	for i in max_soldiers:
 		if _soldier_alive[i] > 0.5:
-			_soldier_directions[i] = float(dir_index)
+			_soldier_directions[i] = float(_current_direction_index)
 			_update_instance_custom_data(i)
 
 
@@ -402,13 +419,40 @@ func debug_set_direction(dir_index: int):
 
 func debug_get_status() -> Dictionary:
 	"""Get current debug status information."""
+	# Count dead soldiers (corpses)
+	var dead_count := 0
+	var visible_count := 0
+	for i in max_soldiers:
+		if _soldier_dead[i] > 0.5:
+			dead_count += 1
+		if _soldier_alive[i] > 0.5:
+			visible_count += 1
+
 	return {
 		"alive_count": alive_count,
+		"dead_count": dead_count,
+		"visible_count": visible_count,
 		"max_soldiers": max_soldiers,
 		"current_animation": _current_animation,
 		"atlas_loaded": atlas != null,
 		"texture_loaded": atlas != null and atlas.texture != null,
 		"atlas_size": atlas.texture.get_size() if atlas and atlas.texture else Vector2.ZERO,
 		"columns": atlas.columns if atlas else 0,
-		"rows": atlas.rows if atlas else 0
+		"rows": atlas.rows if atlas else 0,
+		"death_anim_start": atlas.get_animation_start("death") if atlas else -1,
+		"death_anim_frames": atlas.get_animation_frame_count("death") if atlas else 0
 	}
+
+
+func debug_print_soldier_states():
+	"""Print detailed soldier visibility states for debugging."""
+	print("=== SpriteFormation Debug ===")
+	print("Alive: ", alive_count, " / ", max_soldiers)
+	var corpse_indices: Array[int] = []
+	for i in max_soldiers:
+		if _soldier_dead[i] > 0.5:
+			corpse_indices.append(i)
+	print("Corpse indices: ", corpse_indices)
+	print("Death anim start: ", atlas.get_animation_start("death") if atlas else "NO ATLAS")
+	print("Death anim frames: ", atlas.get_animation_frame_count("death") if atlas else 0)
+	print("===============================")
