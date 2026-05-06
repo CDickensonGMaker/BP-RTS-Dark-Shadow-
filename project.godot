@@ -44,6 +44,7 @@ SpellEffects="*res://battle_system/effects/spell_effects.gd"
 ReinforcementManager="*res://battle_system/systems/reinforcement_manager.gd"
 SupplySystem="*res://battle_system/systems/supply_system.gd"
 LOSSystem="*res://battle_system/systems/los_system.gd"
+CorpseField="*res://battle_system/systems/corpse_field.gd"
 
 [display]
 

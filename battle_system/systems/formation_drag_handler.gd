@@ -16,8 +16,8 @@ var drag_start_screen: Vector2 = Vector2.ZERO
 var preview_line: MeshInstance3D = null
 var preview_material: StandardMaterial3D = null
 var min_drag_distance: float = 5.0  # Minimum pixels to start drag
-var min_formation_width: float = 5.0  # Minimum world units
-var max_formation_width: float = 50.0  # Maximum world units
+var min_formation_width: float = 3.0  # Minimum world units (narrow column)
+var max_formation_width: float = 80.0  # Maximum world units (very wide line)
 
 # Ghost markers for unit positions (spring1944-style preview)
 # Phase 10.2: Rectangular footprints instead of rings
@@ -29,6 +29,7 @@ var ghost_material_invalid: StandardMaterial3D = null    # Phase 10.3: Red for i
 const GHOST_MARKER_RADIUS: float = 1.5  # Base size reference
 const MAX_GHOST_MARKERS: int = 20  # Max markers to pool
 const SOLDIER_SPACING: float = 1.5  # Units between soldiers in formation
+const MIN_FILES_PER_REGIMENT: int = 2  # Allow narrow formations (columns) - was 8
 
 
 func _ready():
@@ -170,8 +171,9 @@ func _update_ghost_markers():
 	var num_regiments := regiments.size()
 
 	# Phase 10.1: Calculate per-regiment dimensions
+	# Use MIN_FILES_PER_REGIMENT to prevent squished formations when drag is narrow
 	var width_per_regiment: float = total_width / maxf(float(num_regiments), 1.0)
-	var files_per_regiment: int = clampi(roundi(width_per_regiment / SOLDIER_SPACING), 2, 20)
+	var files_per_regiment: int = clampi(roundi(width_per_regiment / SOLDIER_SPACING), MIN_FILES_PER_REGIMENT, 40)
 
 	# Calculate target positions
 	var target_positions: Array[Vector3] = []
@@ -406,9 +408,10 @@ func _apply_formation(center: Vector3, facing: Vector3, width: float):
 
 	# Phase 10.1: Calculate per-regiment width from total drag width
 	# Each regiment gets a portion of the formation line
+	# Use MIN_FILES_PER_REGIMENT to prevent squished formations when drag is narrow
 	var width_per_regiment: float = width / maxf(float(num_regiments), 1.0)
 	# Convert world width to file count (soldiers per row)
-	var files_per_regiment: int = clampi(roundi(width_per_regiment / SOLDIER_SPACING), 2, 20)
+	var files_per_regiment: int = clampi(roundi(width_per_regiment / SOLDIER_SPACING), MIN_FILES_PER_REGIMENT, 40)
 
 	# Apply assignments
 	for regiment: Regiment in assignments.keys():
@@ -740,8 +743,9 @@ func _raycast_enemy(screen_pos: Vector2) -> Regiment:
 
 
 func _calculate_spread_positions(regiments: Array[Regiment], center: Vector3) -> Dictionary:
-	## Calculate spread positions to prevent unit clustering (spring1944-inspired).
-	## Uses normal/tangent spread vectors based on unit count and weapon range.
+	## Calculate DETERMINISTIC grid positions to prevent unit clustering.
+	## Uses a grid layout instead of random spread for predictable behavior.
+	## Same click = same positions every time.
 	var result: Dictionary = {}
 
 	if regiments.size() <= 1:
@@ -768,44 +772,47 @@ func _calculate_spread_positions(regiments: Array[Regiment], center: Vector3) ->
 	approach_dir.y = 0
 	if approach_dir.length_squared() < 0.1:
 		approach_dir = Vector3.FORWARD
-
 	approach_dir = approach_dir.normalized()
 
-	# Normal (perpendicular to approach) and tangent (along approach) vectors
-	var normal := approach_dir
-	var tangent := Vector3(-normal.z, 0, normal.x)
+	# Tangent vector (perpendicular to approach)
+	var tangent := Vector3(-approach_dir.z, 0, approach_dir.x)
 
-	# Spread radius scales with unit count
-	var base_spread: float = 5.0  # Base spread per unit
-	var t_radius: float = base_spread * sqrt(float(regiments.size()))
+	# Deterministic grid spacing based on unit count
+	var base_spread: float = 6.0  # Base spacing between units
+	var num_units: int = regiments.size()
 
-	for regiment in regiments:
-		if not is_instance_valid(regiment):
-			continue
+	# Calculate grid dimensions
+	var grid_cols: int = ceili(sqrt(float(num_units)))
+	var grid_rows: int = ceili(float(num_units) / float(grid_cols))
 
-		# Calculate spread vector (spring1944 pattern)
-		var spread := _get_spread_vector(regiment, normal, tangent, t_radius)
+	# Sort regiments by current tangent position to preserve relative positions
+	# (leftmost stays leftmost)
+	var sorted_regiments: Array[Regiment] = []
+	for r in regiments:
+		if is_instance_valid(r):
+			sorted_regiments.append(r)
+	sorted_regiments.sort_custom(func(a, b):
+		if not is_instance_valid(a) or not is_instance_valid(b):
+			return false
+		return a.global_position.dot(tangent) < b.global_position.dot(tangent)
+	)
+
+	var idx := 0
+	for regiment in sorted_regiments:
+		var col: int = idx % grid_cols
+		var row: int = idx / grid_cols
+
+		# Calculate offset from center
+		var col_offset: float = (float(col) - float(grid_cols - 1) / 2.0) * base_spread
+		var row_offset: float = (float(row) - float(grid_rows - 1) / 2.0) * base_spread * 0.5
+
+		# Apply offsets along tangent (width) and approach (depth)
+		var spread: Vector3 = tangent * col_offset - approach_dir * row_offset
 		result[regiment] = center + spread
 
+		idx += 1
+
 	return result
-
-
-func _get_spread_vector(regiment: Regiment, normal: Vector3, tangent: Vector3, t_radius: float) -> Vector3:
-	## Calculate spread offset for a single unit (spring1944-inspired).
-	## - Tangent spread: random along the line perpendicular to approach
-	## - Normal spread: slight offset toward approach (based on weapon range)
-
-	# Tangent spread (random left/right)
-	var t_spread: float = randf_range(-t_radius, t_radius)
-
-	# Normal spread (slight forward offset based on weapon range)
-	var n_radius: float = t_radius * 0.25
-	if regiment.data and regiment.data.range_distance > 0:
-		# Ranged units spread more in normal direction
-		n_radius = 0.35 + 0.5 * regiment.data.range_distance * 0.1
-	var n_spread: float = -randf() * n_radius
-
-	return n_spread * normal + t_spread * tangent
 
 
 func _issue_attack_order(regiment: Regiment, target: Regiment) -> void:

@@ -493,7 +493,7 @@ func set_soldier_count(count: int):
 
 
 func kill_soldiers(amount: int):
-	"""Kill soldiers from back of formation - they stay visible as corpses at death position."""
+	"""Kill soldiers from back of formation - transfer corpses to CorpseField immediately."""
 	# Safety check - arrays must be initialized
 	if _soldier_alive.is_empty() or _soldier_dead.is_empty():
 		return
@@ -504,9 +504,7 @@ func kill_soldiers(amount: int):
 			break
 		# Only kill soldiers that are alive and not already dead
 		if _soldier_alive[i] > 0.5 and _soldier_dead[i] < 0.5:
-			_soldier_dead[i] = 1.0  # Mark as dead corpse (stays visible)
-
-			# Store world position where soldier died - corpse stays here
+			# Calculate world position where soldier died
 			var world_pos: Vector3 = global_position + _soldier_positions[i]
 			# Drop corpse to ground level (Phase 6.4: use helper)
 			var terrain := TerrainHelperScript.get_terrain(get_tree())
@@ -514,14 +512,16 @@ func kill_soldiers(amount: int):
 				world_pos.y = terrain.get_height_at(world_pos) + 0.1  # Slight offset above ground
 			else:
 				world_pos.y = global_position.y - height_offset + 0.1
-			_corpse_world_positions[i] = world_pos
-			_is_corpse[i] = 1.0
 
-			# Update position to corpse world position (converted to local space)
-			_soldier_positions[i] = world_pos - global_position
-			_soldier_positions[i].y = 0.1  # Ground level in local space
+			# Transfer corpse to CorpseField immediately (fixes Bug #1 and #2)
+			# Corpses are owned by CorpseField in world space, not local to regiment
+			var corpse_field := get_node_or_null("/root/CorpseField")
+			if corpse_field and atlas:
+				corpse_field.add_corpse(world_pos, atlas, int(_soldier_directions[i]))
 
-			# Don't set _soldier_alive to 0 - we want them to stay rendered
+			# Mark as dead and HIDE locally (corpse is now in CorpseField)
+			_soldier_dead[i] = 1.0  # Track that this slot was killed
+			_soldier_alive[i] = 0.0  # Hide from local MultiMesh (no longer rendered here)
 			_update_instance(i)
 			killed += 1
 			alive_count -= 1
@@ -669,33 +669,24 @@ func _update_instance_custom_data(index: int):
 
 
 func _update_soldier_terrain_positions():
-	"""Update soldier Y positions based on terrain height. (Phase 6.4: use helper)"""
+	"""Update soldier Y positions based on terrain height. (Phase 6.4: use helper)
+	Note: Corpses are now handled by CorpseField in world space, not here."""
 	var terrain := TerrainHelperScript.get_terrain(get_tree())
 	if not terrain:
 		return
 
 	for i in max_soldiers:
-		if _soldier_alive[i] > 0.5:
-			# Corpses stay at their death world position - convert back to local space
-			if _is_corpse[i] > 0.5:
-				var local_corpse_pos: Vector3 = _corpse_world_positions[i] - global_position
-				local_corpse_pos.y = 0.1  # Keep at ground level
-				if _soldier_positions[i].distance_to(local_corpse_pos) > 0.01:
-					_soldier_positions[i] = local_corpse_pos
-					var xform := Transform3D()
-					xform.origin = _soldier_positions[i]
-					_multimesh.set_instance_transform(i, xform)
-			else:
-				# Living soldiers follow terrain
-				var world_pos: Vector3 = global_position + _soldier_positions[i]
-				var terrain_height: float = terrain.get_height_at(world_pos)
-				var local_y := terrain_height - global_position.y + sprite_scale.y * 0.5
+		# Only update LIVING soldiers - corpses are in CorpseField now
+		if _soldier_alive[i] > 0.5 and _soldier_dead[i] < 0.5:
+			var world_pos: Vector3 = global_position + _soldier_positions[i]
+			var terrain_height: float = terrain.get_height_at(world_pos)
+			var local_y := terrain_height - global_position.y + sprite_scale.y * 0.5
 
-				if absf(_soldier_positions[i].y - local_y) > 0.01:
-					_soldier_positions[i].y = local_y
-					var xform := Transform3D()
-					xform.origin = _soldier_positions[i]
-					_multimesh.set_instance_transform(i, xform)
+			if absf(_soldier_positions[i].y - local_y) > 0.01:
+				_soldier_positions[i].y = local_y
+				var xform := Transform3D()
+				xform.origin = _soldier_positions[i]
+				_multimesh.set_instance_transform(i, xform)
 
 
 # --- COMPATIBILITY METHODS ---

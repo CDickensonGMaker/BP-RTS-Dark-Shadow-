@@ -39,7 +39,7 @@ ambient_light_energy = 0.7
 
 [node name="BattleScene" type="Node3D"]
 script = ExtResource("0_main")
-stress_test_mode = true
+stress_test_mode = false
 stress_test_units_per_side = 20
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]

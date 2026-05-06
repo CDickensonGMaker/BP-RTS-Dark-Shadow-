@@ -455,6 +455,10 @@ func _resolve_all_melees() -> void:
 
 	# Process only combats that belong to the current bucket
 	for i in melee_count:
+		# Safety check: array may have shrunk if regiments died during iteration
+		if i >= active_melees.size():
+			break
+
 		# Skip combats not in this frame's bucket
 		if i % BUCKET_COUNT != _update_bucket:
 			continue

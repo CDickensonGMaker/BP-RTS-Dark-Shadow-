@@ -35,6 +35,11 @@ var _stuck_time: float = 0.0
 const STUCK_THRESHOLD: float = 3.0  # Seconds before attempting unstuck
 const STUCK_MOVE_THRESHOLD: float = 0.5  # Must move more than this to not be stuck
 
+# === VELOCITY-BASED MOVEMENT (Fix for rubberbanding) ===
+# Leader computes velocity, Regiment applies it. This breaks the feedback loop
+# where both Regiment (parent) and Leader (child) were writing to global_position.
+var current_velocity: Vector3 = Vector3.ZERO  # Published for Regiment to read
+
 
 ## Get the effective movement speed based on mode and charge distance
 func get_effective_speed() -> float:
@@ -79,6 +84,7 @@ func reset_charge_burst() -> void:
 func _ready():
 	# Initialize target to current position to prevent spurious movement
 	target_position = global_position
+	current_velocity = Vector3.ZERO
 	if nav_agent:
 		nav_agent.target_position = global_position
 
@@ -93,6 +99,7 @@ func stop_movement():
 	target_position = global_position
 	nav_agent.target_position = global_position
 	nav_agent.set_velocity(Vector3.ZERO)  # Force velocity stop to prevent rubberbanding
+	current_velocity = Vector3.ZERO  # Clear published velocity
 
 
 const ARENA_MARGIN: float = 5.0  # Stay this far inside arena bounds
@@ -121,13 +128,16 @@ func move_to(pos: Vector3):
 
 
 func _physics_process(delta):
-	# Always follow terrain height
-	_apply_terrain_height()
-	# Per-frame arena bounds safety net (Phase 9.3)
-	_enforce_arena_bounds()
+	# === VELOCITY-BASED MOVEMENT ===
+	# Leader computes velocity, Regiment applies it. Leader no longer writes global_position
+	# directly (except for facing). This breaks the parent-child feedback loop.
+
+	# Note: Terrain height and arena bounds are now applied by Regiment after it moves.
+	# Leader only computes the desired velocity vector.
 
 	if nav_agent.is_navigation_finished():
 		_stuck_time = 0.0  # Reset stuck timer when navigation complete
+		current_velocity = Vector3.ZERO
 		return
 
 	# Stuck detection (spring1944-inspired)
@@ -150,7 +160,11 @@ func _physics_process(delta):
 
 	# Check if we've arrived at target
 	if dist_to_target < 1.0:
+		current_velocity = Vector3.ZERO
 		return
+
+	# Calculate direction to move
+	var direction: Vector3
 
 	# If next position is basically our current position but we're not at target, move directly
 	# This handles: nav mesh not ready, position outside nav mesh, or nav stuck
@@ -159,43 +173,29 @@ func _physics_process(delta):
 		var dir_to_target = (nav_agent.target_position - global_position)
 		dir_to_target.y = 0
 		if dir_to_target.length() > 0.1:
-			var direction = dir_to_target.normalized()
-			# Get speed based on movement mode (walk/run/charge)
-			var effective_speed: float = get_effective_speed()
-			var move_dist: float = effective_speed * delta
-			var new_pos = global_position + direction * move_dist
-			# Track charge distance
-			if move_mode == MoveMode.CHARGE:
-				_charge_distance_used += move_dist
-			var terrain := _get_terrain()
-			if terrain:
-				new_pos.y = terrain.get_height_at(new_pos)
-			global_position = new_pos
-			# Face movement direction
-			if direction.length() > 0.01:
-				look_at(global_position + direction, Vector3.UP)
-		return
+			direction = dir_to_target.normalized()
+		else:
+			current_velocity = Vector3.ZERO
+			return
+	else:
+		direction = (next - global_position).normalized()
+		direction.y = 0  # Keep movement horizontal
 
-	var direction = (next - global_position).normalized()
-	direction.y = 0  # Keep movement horizontal
+	if direction.length_squared() < 0.01:
+		current_velocity = Vector3.ZERO
+		return
 
 	# Get speed based on movement mode (walk/run/charge)
 	var effective_speed: float = get_effective_speed()
-	var move_dist: float = effective_speed * delta
-	var new_pos = global_position + direction * move_dist
 
 	# Track charge distance used
 	if move_mode == MoveMode.CHARGE:
-		_charge_distance_used += move_dist
+		_charge_distance_used += effective_speed * delta
 
-	# Apply terrain height (Phase 6.4: use helper)
-	var terrain := _get_terrain()
-	if terrain:
-		new_pos.y = terrain.get_height_at(new_pos)
+	# SET VELOCITY instead of writing position - Regiment will apply this
+	current_velocity = direction * effective_speed
 
-	global_position = new_pos
-
-	# Face movement direction
+	# Update facing based on velocity direction (rotation is fine to set here)
 	if direction.length() > 0.01:
 		var look_target = global_position + direction
 		look_at(look_target, Vector3.UP)

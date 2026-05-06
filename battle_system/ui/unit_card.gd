@@ -105,6 +105,27 @@ var _ammo_low_warning_played: bool = false
 const AMMO_LOW_THRESHOLD: float = 0.25  # 25%
 const AMMO_WARNING_FLASH_SPEED: float = 4.0  # Flashes per second
 
+# === CACHED STYLEBOXES (Performance Optimization) ===
+# These are created once and reused to avoid per-frame allocations
+var _cached_morale_style: StyleBoxFlat = null
+var _cached_health_style: StyleBoxFlat = null
+var _cached_ammo_style: StyleBoxFlat = null
+var _cached_panel_style: StyleBoxFlat = null
+
+# === STATE HASHES FOR DIRTY CHECKING ===
+# Only rebuild UI elements when underlying state actually changes
+var _last_chevron_level: int = -1
+var _last_status_hash: int = -1  # Bitmask: braced|charging|inspired|hold_fire
+var _last_morale_band: int = -1  # 0=broken, 1=shaken, 2=wavering, 3=steady
+var _last_health_band: int = -1  # 0=critical, 1=low, 2=healthy
+var _last_ammo_band: int = -1    # 0=empty, 1=low, 2=normal
+var _last_card_state: CardState = CardState.NORMAL
+var _last_ability_hash: int = -1
+
+# === THROTTLED UPDATE TIMER ===
+var _slow_update_timer: float = 0.0
+const SLOW_UPDATE_INTERVAL: float = 0.25  # 4Hz instead of 60Hz for non-critical updates
+
 
 func _ready():
 	_setup_ui()
@@ -261,6 +282,19 @@ func _setup_ui():
 	ability_cooldown_container.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
 	add_child(ability_cooldown_container)
 
+	# === CREATE CACHED STYLEBOXES (Performance Optimization) ===
+	_cached_morale_style = StyleBoxFlat.new()
+	_cached_morale_style.bg_color = COLOR_MORALE_STEADY
+
+	_cached_health_style = StyleBoxFlat.new()
+	_cached_health_style.bg_color = Color(0.2, 0.8, 0.2)
+
+	_cached_ammo_style = StyleBoxFlat.new()
+	_cached_ammo_style.bg_color = Color(0.3, 0.7, 0.9)
+
+	# Panel style will be set in setup() from regiment faction color
+	_cached_panel_style = null
+
 
 func _add_morale_marker(threshold: float, color: Color):
 	var marker = ColorRect.new()
@@ -279,17 +313,33 @@ func setup(reg: Regiment):
 
 	name_label.text = regiment.data.regiment_name
 	_setup_unit_type_badge()
-	_update_display()
 
-	# Set faction color as background
-	var style = StyleBoxFlat.new()
-	style.bg_color = regiment.data.faction_color
-	style.bg_color.a = 0.3
-	style.corner_radius_top_left = 4
-	style.corner_radius_top_right = 4
-	style.corner_radius_bottom_left = 4
-	style.corner_radius_bottom_right = 4
-	add_theme_stylebox_override("panel", style)
+	# Initialize cached panel style with faction color (reused for all state changes)
+	_cached_panel_style = StyleBoxFlat.new()
+	_cached_panel_style.bg_color = regiment.data.faction_color
+	_cached_panel_style.bg_color.a = 0.3
+	_cached_panel_style.corner_radius_top_left = 4
+	_cached_panel_style.corner_radius_top_right = 4
+	_cached_panel_style.corner_radius_bottom_left = 4
+	_cached_panel_style.corner_radius_bottom_right = 4
+	_cached_panel_style.border_width_left = 1
+	_cached_panel_style.border_width_right = 1
+	_cached_panel_style.border_width_top = 1
+	_cached_panel_style.border_width_bottom = 1
+	_cached_panel_style.border_color = COLOR_BORDER_NORMAL
+	add_theme_stylebox_override("panel", _cached_panel_style)
+
+	# Reset dirty-check state for fresh regiment
+	_last_chevron_level = -1
+	_last_status_hash = -1
+	_last_morale_band = -1
+	_last_health_band = -1
+	_last_ammo_band = -1
+	_last_card_state = CardState.NORMAL
+	_last_ability_hash = -1
+
+	# Force initial update
+	_update_display_throttled()
 
 	# Show ammo container for ranged units
 	if regiment.data.max_ammo > 0:
@@ -315,15 +365,27 @@ func _setup_unit_type_badge():
 
 
 func _process(delta: float):
-	if regiment:
-		_update_card_state(delta)
-		_update_display()
-		_update_chevrons()
-		_update_status_icons()
-		_update_morale_display()
-		_update_ammo_warning(delta)
-		_update_ability_cooldowns()
-		_apply_card_state_visuals()
+	if not regiment:
+		return
+
+	# === 60Hz UPDATES (animations that need smooth playback) ===
+	_update_card_state(delta)
+	_update_ammo_warning(delta)
+
+	# Apply card state visuals only when state actually changes
+	if card_state != _last_card_state:
+		_apply_card_state_visuals_cached()
+		_last_card_state = card_state
+
+	# === 4Hz THROTTLED UPDATES (non-critical visual updates) ===
+	_slow_update_timer += delta
+	if _slow_update_timer >= SLOW_UPDATE_INTERVAL:
+		_slow_update_timer = 0.0
+		_update_display_throttled()
+		_update_chevrons_throttled()
+		_update_status_icons_throttled()
+		_update_morale_display_throttled()
+		_update_ability_cooldowns_throttled()
 
 
 # === CARD STATE SYSTEM (Task 1) ===
@@ -356,69 +418,73 @@ func _update_card_state(delta: float):
 		card_state = CardState.NORMAL
 
 
-func _apply_card_state_visuals():
-	var style = get_theme_stylebox("panel")
-	if not style or not style is StyleBoxFlat:
+func _apply_card_state_visuals_cached():
+	# Uses cached panel style - no duplicate() per frame
+	if not _cached_panel_style:
 		return
-
-	style = style.duplicate() as StyleBoxFlat
 
 	match card_state:
 		CardState.NORMAL:
-			style.border_width_left = 1
-			style.border_width_right = 1
-			style.border_width_top = 1
-			style.border_width_bottom = 1
-			style.border_color = COLOR_BORDER_NORMAL
+			_cached_panel_style.border_width_left = 1
+			_cached_panel_style.border_width_right = 1
+			_cached_panel_style.border_width_top = 1
+			_cached_panel_style.border_width_bottom = 1
+			_cached_panel_style.border_color = COLOR_BORDER_NORMAL
 			modulate = Color.WHITE
 
 		CardState.SELECTED:
-			style.border_width_left = 3
-			style.border_width_right = 3
-			style.border_width_top = 3
-			style.border_width_bottom = 3
-			style.border_color = COLOR_BORDER_SELECTED
+			_cached_panel_style.border_width_left = 3
+			_cached_panel_style.border_width_right = 3
+			_cached_panel_style.border_width_top = 3
+			_cached_panel_style.border_width_bottom = 3
+			_cached_panel_style.border_color = COLOR_BORDER_SELECTED
 			modulate = Color.WHITE
 
 		CardState.TAKING_DAMAGE:
 			var flash_intensity = sin(_damage_flash_timer * DAMAGE_FLASH_SPEED) * 0.5 + 0.5
-			style.border_width_left = 4
-			style.border_width_right = 4
-			style.border_width_top = 4
-			style.border_width_bottom = 4
+			_cached_panel_style.border_width_left = 4
+			_cached_panel_style.border_width_right = 4
+			_cached_panel_style.border_width_top = 4
+			_cached_panel_style.border_width_bottom = 4
 			var border_color = COLOR_BORDER_DAMAGE
 			border_color.a = 0.7 + flash_intensity * 0.3
-			style.border_color = border_color
+			_cached_panel_style.border_color = border_color
 			modulate = Color(1.0 + flash_intensity * 0.2, 1.0, 1.0)
 
 		CardState.WAVERING:
 			var pulse = sin(_wavering_pulse_timer) * 0.5 + 0.5
-			style.border_width_left = 2
-			style.border_width_right = 2
-			style.border_width_top = 2
-			style.border_width_bottom = 2
+			_cached_panel_style.border_width_left = 2
+			_cached_panel_style.border_width_right = 2
+			_cached_panel_style.border_width_top = 2
+			_cached_panel_style.border_width_bottom = 2
 			var border_color = COLOR_BORDER_WAVERING
 			border_color.a = 0.6 + pulse * 0.4
-			style.border_color = border_color
+			_cached_panel_style.border_color = border_color
 			modulate = Color.WHITE
 
 		CardState.ROUTING:
-			style.border_width_left = 2
-			style.border_width_right = 2
-			style.border_width_top = 2
-			style.border_width_bottom = 2
-			style.border_color = COLOR_BORDER_ROUTING
+			_cached_panel_style.border_width_left = 2
+			_cached_panel_style.border_width_right = 2
+			_cached_panel_style.border_width_top = 2
+			_cached_panel_style.border_width_bottom = 2
+			_cached_panel_style.border_color = COLOR_BORDER_ROUTING
 			modulate = COLOR_MODULATE_ROUTING
 
 		CardState.DEAD:
-			style.border_width_left = 1
-			style.border_width_right = 1
-			style.border_width_top = 1
-			style.border_width_bottom = 1
-			style.border_color = Color(0.2, 0.2, 0.2, 0.5)
+			_cached_panel_style.border_width_left = 1
+			_cached_panel_style.border_width_right = 1
+			_cached_panel_style.border_width_top = 1
+			_cached_panel_style.border_width_bottom = 1
+			_cached_panel_style.border_color = Color(0.2, 0.2, 0.2, 0.5)
 			modulate = COLOR_MODULATE_DEAD
 
-	add_theme_stylebox_override("panel", style)
+	# Style is already applied - Godot will detect property changes automatically
+	# No need to call add_theme_stylebox_override again
+
+
+# Legacy function for compatibility - redirects to cached version
+func _apply_card_state_visuals():
+	_apply_card_state_visuals_cached()
 
 
 func _on_regiment_attacked(attacker: Regiment, defender: Regiment, damage: int):
@@ -476,15 +542,21 @@ func _flash_ability_ready(_ability_id: int) -> void:
 
 # === CHEVRON BADGES (Task 2) ===
 
-func _update_chevrons():
-	# Clear existing chevrons
-	for child in chevron_container.get_children():
-		child.queue_free()
-
+func _update_chevrons_throttled():
 	if not regiment or not regiment.veterancy:
 		return
 
 	var level: int = regiment.veterancy.current_level
+
+	# Skip if unchanged - dirty check
+	if level == _last_chevron_level:
+		return
+	_last_chevron_level = level
+
+	# Only now do we clear and rebuild
+	for child in chevron_container.get_children():
+		child.queue_free()
+
 	if level == 0:
 		return  # FRESH - no chevrons
 
@@ -493,6 +565,11 @@ func _update_chevrons():
 	for i in range(level):
 		var chevron = _create_chevron(color)
 		chevron_container.add_child(chevron)
+
+
+# Legacy function for compatibility
+func _update_chevrons():
+	_update_chevrons_throttled()
 
 
 func _create_chevron(color: Color) -> Control:
@@ -522,26 +599,47 @@ func _create_chevron(color: Color) -> Control:
 
 # === STATUS ICONS (Task 3) ===
 
-func _update_status_icons():
-	# Clear existing status icons
-	for child in status_container.get_children():
-		child.queue_free()
-
+func _update_status_icons_throttled():
 	if not regiment:
 		return
 
-	# Check each status and add icons
+	# Compute status bitmask for dirty checking
+	var status_hash: int = 0
 	if regiment.is_braced:
+		status_hash |= 1
+	if regiment.has_charged and regiment.state == Regiment.State.MARCHING:
+		status_hash |= 2
+	if regiment.inspire_active:
+		status_hash |= 4
+	if regiment.hold_fire:
+		status_hash |= 8
+
+	# Skip if unchanged
+	if status_hash == _last_status_hash:
+		return
+	_last_status_hash = status_hash
+
+	# Only now do we clear and rebuild
+	for child in status_container.get_children():
+		child.queue_free()
+
+	# Check each status and add icons
+	if status_hash & 1:
 		_add_status_icon("B", COLOR_STATUS_BRACED, "Braced")
 
-	if regiment.has_charged and regiment.state == Regiment.State.MARCHING:
+	if status_hash & 2:
 		_add_status_icon("!", COLOR_STATUS_CHARGING, "Charging")
 
-	if regiment.inspire_active:
+	if status_hash & 4:
 		_add_status_icon("*", COLOR_STATUS_INSPIRED, "Inspired")
 
-	if regiment.hold_fire:
+	if status_hash & 8:
 		_add_status_icon("X", COLOR_STATUS_HOLD_FIRE, "Hold Fire")
+
+
+# Legacy function for compatibility
+func _update_status_icons():
+	_update_status_icons_throttled()
 
 
 func _add_status_icon(letter: String, color: Color, tooltip: String):
@@ -570,49 +668,70 @@ func _add_status_icon(letter: String, color: Color, tooltip: String):
 
 # === MORALE DISPLAY (Task 4) ===
 
-func _update_morale_display():
+func _update_morale_display_throttled():
 	if not regiment:
 		return
 
 	var morale = regiment.current_morale
 	morale_bar.value = morale
 
-	# Update color based on morale state
-	var morale_style = StyleBoxFlat.new()
+	# Determine morale band (0-3) for dirty checking
+	var morale_band: int
+	var state_name: String
 	if morale >= MORALE_STEADY_THRESHOLD:
-		morale_style.bg_color = COLOR_MORALE_STEADY
-	elif morale >= MORALE_WAVERING_THRESHOLD:
-		morale_style.bg_color = COLOR_MORALE_WAVERING
-	elif morale >= MORALE_SHAKEN_THRESHOLD:
-		morale_style.bg_color = COLOR_MORALE_SHAKEN
-	else:
-		morale_style.bg_color = COLOR_MORALE_BROKEN
-
-	morale_bar.add_theme_stylebox_override("fill", morale_style)
-
-	# Update tooltip with morale breakdown
-	var state_name = "Unknown"
-	if morale >= MORALE_STEADY_THRESHOLD:
+		morale_band = 3
 		state_name = "Steady"
 	elif morale >= MORALE_WAVERING_THRESHOLD:
+		morale_band = 2
 		state_name = "Wavering"
 	elif morale >= MORALE_SHAKEN_THRESHOLD:
+		morale_band = 1
 		state_name = "Shaken"
 	else:
+		morale_band = 0
 		state_name = "Broken"
 
+	# Only update style if band changed
+	if morale_band != _last_morale_band:
+		_last_morale_band = morale_band
+		match morale_band:
+			3: _cached_morale_style.bg_color = COLOR_MORALE_STEADY
+			2: _cached_morale_style.bg_color = COLOR_MORALE_WAVERING
+			1: _cached_morale_style.bg_color = COLOR_MORALE_SHAKEN
+			0: _cached_morale_style.bg_color = COLOR_MORALE_BROKEN
+		morale_bar.add_theme_stylebox_override("fill", _cached_morale_style)
+
+	# Tooltip can be updated (strings are cheap)
 	morale_bar.tooltip_text = "Morale: %.0f%% (%s)" % [morale, state_name]
+
+
+# Legacy function for compatibility
+func _update_morale_display():
+	_update_morale_display_throttled()
 
 
 # === ABILITY COOLDOWNS (Task 5) ===
 
-func _update_ability_cooldowns():
-	# Clear existing badges
-	for child in ability_cooldown_container.get_children():
-		child.queue_free()
-
+func _update_ability_cooldowns_throttled():
 	if not regiment or not regiment.abilities:
 		return
+
+	# Compute hash of cooldown states for dirty checking
+	var ability_hash: int = 0
+	for ability in regiment.abilities.available_abilities:
+		var ratio = regiment.abilities.get_cooldown_ratio(ability)
+		# Hash: ability ID + quantized ratio (4 levels: 0, 0.33, 0.66, 1.0)
+		var quantized: int = int(ratio * 3)
+		ability_hash = ability_hash * 17 + ability * 4 + quantized
+
+	# Skip if unchanged
+	if ability_hash == _last_ability_hash:
+		return
+	_last_ability_hash = ability_hash
+
+	# Only now do we clear and rebuild
+	for child in ability_cooldown_container.get_children():
+		child.queue_free()
 
 	# Check each ability for cooldown
 	for ability in regiment.abilities.available_abilities:
@@ -622,6 +741,11 @@ func _update_ability_cooldowns():
 			var remaining = ratio * data.get("cooldown", 0.0)
 			var badge = _create_cooldown_badge(remaining)
 			ability_cooldown_container.add_child(badge)
+
+
+# Legacy function for compatibility
+func _update_ability_cooldowns():
+	_update_ability_cooldowns_throttled()
 
 
 func _create_cooldown_badge(seconds: float) -> Control:
@@ -647,7 +771,7 @@ func _create_cooldown_badge(seconds: float) -> Control:
 
 # === EXISTING FUNCTIONALITY ===
 
-func _update_display():
+func _update_display_throttled():
 	if not regiment or not regiment.data:
 		return
 
@@ -656,51 +780,70 @@ func _update_display():
 
 	soldier_count_label.text = "%d / %d" % [regiment.current_soldiers, regiment.data.max_soldiers]
 
+	# Determine health band for dirty checking
+	var health_band: int
+	if health_pct > 60:
+		health_band = 2
+	elif health_pct > 30:
+		health_band = 1
+	else:
+		health_band = 0
+
+	# Only update health style if band changed
+	if health_band != _last_health_band:
+		_last_health_band = health_band
+		match health_band:
+			2: _cached_health_style.bg_color = Color(0.2, 0.8, 0.2)
+			1: _cached_health_style.bg_color = Color(0.9, 0.7, 0.2)
+			0: _cached_health_style.bg_color = Color(0.8, 0.2, 0.2)
+		health_bar.add_theme_stylebox_override("fill", _cached_health_style)
+
 	# Update ammo display for ranged units
 	if regiment.data.max_ammo > 0:
 		var ammo_ratio: float = float(regiment.current_ammo) / float(regiment.data.max_ammo)
 		ammo_bar.value = regiment.current_ammo
 		ammo_label.text = "%d / %d" % [regiment.current_ammo, regiment.data.max_ammo]
 
-		# Update ammo bar color based on ammo level
-		var ammo_style = StyleBoxFlat.new()
+		# Determine ammo band for dirty checking
+		var ammo_band: int
 		if regiment.current_ammo <= 0:
-			ammo_style.bg_color = Color(0.8, 0.2, 0.2)
-			ammo_warning_label.visible = true
-			ammo_label.visible = false
-			_ammo_warning_active = true
-
-			if not _ammo_empty_warning_played:
-				_ammo_empty_warning_played = true
-				_play_ammo_warning_sound("ammo_empty")
-
+			ammo_band = 0
 		elif ammo_ratio <= AMMO_LOW_THRESHOLD:
-			ammo_style.bg_color = Color(0.9, 0.6, 0.1)
-			ammo_warning_label.visible = false
-			ammo_label.visible = true
-			_ammo_warning_active = true
-
-			if not _ammo_low_warning_played:
-				_ammo_low_warning_played = true
-				_play_ammo_warning_sound("ammo_low")
-
+			ammo_band = 1
 		else:
-			ammo_style.bg_color = Color(0.3, 0.7, 0.9)
-			ammo_warning_label.visible = false
-			ammo_label.visible = true
-			_ammo_warning_active = false
+			ammo_band = 2
 
-		ammo_bar.add_theme_stylebox_override("fill", ammo_style)
+		# Only update ammo style if band changed
+		if ammo_band != _last_ammo_band:
+			_last_ammo_band = ammo_band
+			match ammo_band:
+				0:
+					_cached_ammo_style.bg_color = Color(0.8, 0.2, 0.2)
+					ammo_warning_label.visible = true
+					ammo_label.visible = false
+					_ammo_warning_active = true
+					if not _ammo_empty_warning_played:
+						_ammo_empty_warning_played = true
+						_play_ammo_warning_sound("ammo_empty")
+				1:
+					_cached_ammo_style.bg_color = Color(0.9, 0.6, 0.1)
+					ammo_warning_label.visible = false
+					ammo_label.visible = true
+					_ammo_warning_active = true
+					if not _ammo_low_warning_played:
+						_ammo_low_warning_played = true
+						_play_ammo_warning_sound("ammo_low")
+				2:
+					_cached_ammo_style.bg_color = Color(0.3, 0.7, 0.9)
+					ammo_warning_label.visible = false
+					ammo_label.visible = true
+					_ammo_warning_active = false
+			ammo_bar.add_theme_stylebox_override("fill", _cached_ammo_style)
 
-	# Update health bar color based on health
-	var health_style = StyleBoxFlat.new()
-	if health_pct > 60:
-		health_style.bg_color = Color(0.2, 0.8, 0.2)
-	elif health_pct > 30:
-		health_style.bg_color = Color(0.9, 0.7, 0.2)
-	else:
-		health_style.bg_color = Color(0.8, 0.2, 0.2)
-	health_bar.add_theme_stylebox_override("fill", health_style)
+
+# Legacy function for compatibility
+func _update_display():
+	_update_display_throttled()
 
 
 func _update_ammo_warning(delta: float):

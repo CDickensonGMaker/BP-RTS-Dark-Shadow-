@@ -616,10 +616,38 @@ func _process_march(delta):
 	if state == State.ENGAGING:
 		return
 
-	# Follow the leader position with clamped lerp coefficient
-	var old_pos: Vector3 = global_position
-	var lerp_speed := clampf(delta * 5.0, 0.0, 0.9)  # Clamp to prevent overshoot
-	global_position = global_position.lerp(leader.global_position, lerp_speed)
+	# === VELOCITY-BASED MOVEMENT (Fix for rubberbanding) ===
+	# Regiment reads leader's computed velocity and applies it directly.
+	# This breaks the feedback loop where both parent and child wrote to global_position.
+
+	if not leader:
+		return
+
+	var velocity: Vector3 = leader.current_velocity
+	if velocity.length_squared() > 0.0001:
+		# Apply velocity to regiment position
+		var movement = velocity * delta
+		global_position += movement
+
+		# Sync leader position back to regiment (child follows parent)
+		leader.global_position = global_position
+
+		# Apply terrain height
+		if leader.has_method("get_terrain_height"):
+			var terrain_height = leader.get_terrain_height(global_position)
+			global_position.y = terrain_height
+			leader.global_position.y = terrain_height
+
+		# Apply arena bounds
+		var map_bound: float = 90.0
+		if AIAutoload:
+			map_bound = AIAutoload.get_map_bounds()
+		var hard_limit: float = map_bound - 1.0
+		if absf(global_position.x) > hard_limit:
+			global_position.x = signf(global_position.x) * hard_limit
+		if absf(global_position.z) > hard_limit:
+			global_position.z = signf(global_position.z) * hard_limit
+		leader.global_position = global_position
 
 	# Track charge distance if charging
 	if current_order == OrderType.Type.CHARGE:
@@ -628,24 +656,39 @@ func _process_march(delta):
 	# NOTE: formation, sprite_overlay, and melee_area are children of Regiment node
 	# and inherit transforms automatically — no manual position writes needed.
 
-	# Update soldier facing direction based on leader's facing
-	var move_dir = leader.target_position - global_position
-	move_dir.y = 0
-	if move_dir.length_squared() > 0.1:
-		# Track facing direction for flanking calculations
-		_facing_direction = move_dir.normalized()
+	# Update soldier facing direction based on ACTUAL movement velocity (not target direction)
+	# This fixes sprites facing wrong direction when moving along curved paths
+	var velocity_dir: Vector3 = leader.current_velocity
+	velocity_dir.y = 0
 
+	# Use velocity for sprite direction if moving fast enough, otherwise use target direction
+	var sprite_facing_dir: Vector3
+	if velocity_dir.length_squared() > 0.5:
+		sprite_facing_dir = velocity_dir.normalized()
+	else:
+		# Fallback to target direction when nearly stopped
+		sprite_facing_dir = (leader.target_position - global_position)
+		sprite_facing_dir.y = 0
+		if sprite_facing_dir.length_squared() < 0.1:
+			sprite_facing_dir = _facing_direction  # Keep current facing
+
+	# Track regiment-level facing for flanking calculations (use target direction)
+	var target_dir = leader.target_position - global_position
+	target_dir.y = 0
+	if target_dir.length_squared() > 0.1:
+		_facing_direction = target_dir.normalized()
 		# Sync heading so combat transition is smooth
-		_current_heading = atan2(move_dir.x, move_dir.z)
+		_current_heading = atan2(target_dir.x, target_dir.z)
 		_target_heading = _current_heading
 
+	# Set sprite/formation direction based on actual movement
+	if sprite_facing_dir.length_squared() > 0.01:
 		if formation and formation.has_method("set_facing_direction"):
-			formation.set_facing_direction(move_dir)
+			formation.set_facing_direction(sprite_facing_dir)
 		if sprite_overlay:
-			sprite_overlay.set_facing_direction(move_dir)
+			sprite_overlay.set_facing_direction(sprite_facing_dir)
 
 	if leader and leader.nav_agent and leader.nav_agent.is_navigation_finished():
-		global_position = leader.global_position
 		clear_movement_group()  # Clear group sync when arrived
 		set_state(State.IDLE)
 
@@ -1234,6 +1277,7 @@ func sync_all_positions(pos: Vector3) -> void:
 	if leader:
 		leader.global_position = pos
 		leader.target_position = pos  # Clear any pending movement
+		leader.current_velocity = Vector3.ZERO  # Clear velocity to prevent drift
 		if leader.nav_agent:
 			leader.nav_agent.target_position = pos
 	if formation:

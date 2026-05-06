@@ -38,6 +38,12 @@ const MELEE_HEIGHT_PENALTY: float = 0.15
 const HEIGHT_ADVANTAGE_THRESHOLD: float = 1.5
 const SLOPE_WS_BONUS: int = 2  # +2 effective WS when defending uphill
 
+# === FRONT RANK COMBAT LIMITING (Historical melee realism) ===
+# Only soldiers who can physically reach the enemy can fight.
+# This dramatically slows combat and creates tactical depth.
+const DEFAULT_FILES_PER_RANK: int = 8  # Default front rank width
+const SUPPORT_RANK_MULTIPLIER: float = 0.5  # Second rank fights at 50% effectiveness
+
 # References to helper systems
 var flanking  # FlankingCalculator
 var charge    # ChargeSystem
@@ -46,6 +52,46 @@ var charge    # ChargeSystem
 func _init() -> void:
 	flanking = FlankingCalculatorScript.new()
 	charge = ChargeSystemScript.new()
+
+
+## Get the number of soldiers that can fight in the front rank.
+## Uses formation width if available, otherwise defaults to 8.
+func get_front_rank_size(regiment: Node) -> int:
+	# Try to get formation width from regiment
+	if "formation" in regiment and regiment.formation:
+		var formation = regiment.formation
+		# SoldierFormation stores 'rows' which is ranks deep
+		# Files = soldiers / ranks
+		var alive_count: int = regiment.current_soldiers if "current_soldiers" in regiment else 20
+		if "alive_count" in formation:
+			alive_count = formation.alive_count
+		var ranks: int = 3  # Default
+		if "rows" in formation:
+			ranks = formation.rows
+		return ceili(float(alive_count) / float(maxi(ranks, 1)))
+
+	# Fallback to default
+	return DEFAULT_FILES_PER_RANK
+
+
+## Calculate effective number of attacks based on front rank limiting.
+## Only front rank attacks at full strength, support rank at 50%.
+func calculate_effective_attacks(regiment: Node) -> int:
+	var total_soldiers: int = 20
+	if "current_soldiers" in regiment:
+		total_soldiers = regiment.current_soldiers
+
+	var front_rank_size: int = get_front_rank_size(regiment)
+
+	# Front rank: min(files, soldiers) at full effectiveness
+	var front_attacks: int = mini(front_rank_size, total_soldiers)
+
+	# Support rank: min(files, remaining) at half effectiveness
+	var remaining: int = maxi(total_soldiers - front_attacks, 0)
+	var support_soldiers: int = mini(front_rank_size, remaining)
+	var support_attacks: int = int(float(support_soldiers) * SUPPORT_RANK_MULTIPLIER)
+
+	return front_attacks + support_attacks
 
 
 ## Calculate To Hit chance based on Weapon Skill comparison.
@@ -248,13 +294,11 @@ func resolve_bidirectional_melee(
 		charge_negated = true
 		result.charge_blocked_by_terrain = true
 
-	# Number of attacks = number of soldiers (Warhammer style: each model attacks)
-	var att_soldiers: int = attacker.current_soldiers if attacker.has_method("get") else 20
-	var def_soldiers: int = defender.current_soldiers if defender.has_method("get") else 20
-
-	# Each soldier gets 1 attack roll
-	var att_attacks: int = att_soldiers
-	var def_attacks: int = def_soldiers
+	# Number of attacks LIMITED BY FRONT RANK (historical melee realism)
+	# Only soldiers who can physically reach the enemy can fight.
+	# Front rank attacks at full strength, support rank at 50%.
+	var att_attacks: int = calculate_effective_attacks(attacker)
+	var def_attacks: int = calculate_effective_attacks(defender)
 
 	# === ATTACKER'S ATTACKS ===
 	var att_total_casualties: int = 0
