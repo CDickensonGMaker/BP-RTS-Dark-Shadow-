@@ -14,41 +14,52 @@ signal combat_started(attacker: Regiment, defender: Regiment, combat_type: Strin
 signal combat_ended(attacker: Regiment, defender: Regiment, result: Dictionary)
 signal damage_dealt(target: Regiment, amount: int, source: Regiment, damage_type: String)
 
+# === EXTRACTED COMBAT SYSTEMS ===
+# These handle specific combat calculations with single responsibility
+# Preload scripts to avoid parse-order issues with class_name
+const FlankingCalculatorScript = preload("res://battle_system/systems/combat/flanking_calculator.gd")
+const BattleStatisticsScript = preload("res://battle_system/systems/combat/battle_statistics.gd")
+const ChargeSystemScript = preload("res://battle_system/systems/combat/charge_system.gd")
+const MeleeResolverScript = preload("res://battle_system/systems/combat/melee_resolver.gd")
+const RangedResolverScript = preload("res://battle_system/systems/combat/ranged_resolver.gd")
+const CasualtyProcessorScript = preload("res://battle_system/systems/combat/casualty_processor.gd")
+const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.gd")
+
+var flanking  # FlankingCalculator
+var statistics  # BattleStatistics
+var charge_system  # ChargeSystem
+var melee_resolver  # MeleeResolver
+var ranged_resolver  # RangedResolver
+var casualty_processor  # CasualtyProcessor
+
 # === AUDIO INTEGRATION ===
 # Helper functions to safely call AudioManager methods
 # Handles case where audio files don't exist yet or AudioManager is unavailable
 
-func _play_combat_sfx(sfx_name: String, position: Vector3 = Vector3.ZERO) -> void:
+func _cache_audio_manager() -> void:
+	## Cache AudioManager reference to avoid per-call lookups.
 	if Engine.has_singleton("AudioManager"):
-		var audio = Engine.get_singleton("AudioManager")
-		if audio and audio.has_method("play_sfx"):
-			audio.play_sfx(sfx_name, position)
+		_audio_manager = Engine.get_singleton("AudioManager")
 	elif has_node("/root/AudioManager"):
-		var audio = get_node("/root/AudioManager")
-		if audio and audio.has_method("play_sfx"):
-			audio.play_sfx(sfx_name, position)
+		_audio_manager = get_node("/root/AudioManager")
+	# Also cache for CasualtyProcessor
+	if casualty_processor:
+		casualty_processor.cache_audio_manager(get_tree())
+
+
+func _play_combat_sfx(sfx_name: String, position: Vector3 = Vector3.ZERO) -> void:
+	if _audio_manager and _audio_manager.has_method("play_sfx"):
+		_audio_manager.play_sfx(sfx_name, position)
 
 
 func _play_combat_sfx_random(base_name: String, variant_count: int, position: Vector3 = Vector3.ZERO) -> void:
-	if Engine.has_singleton("AudioManager"):
-		var audio = Engine.get_singleton("AudioManager")
-		if audio and audio.has_method("play_sfx_random"):
-			audio.play_sfx_random(base_name, variant_count, position)
-	elif has_node("/root/AudioManager"):
-		var audio = get_node("/root/AudioManager")
-		if audio and audio.has_method("play_sfx_random"):
-			audio.play_sfx_random(base_name, variant_count, position)
+	if _audio_manager and _audio_manager.has_method("play_sfx_random"):
+		_audio_manager.play_sfx_random(base_name, variant_count, position)
 
 
 func _play_morale_sfx(event_name: String) -> void:
-	if Engine.has_singleton("AudioManager"):
-		var audio = Engine.get_singleton("AudioManager")
-		if audio and audio.has_method("play_morale_event"):
-			audio.play_morale_event(event_name)
-	elif has_node("/root/AudioManager"):
-		var audio = get_node("/root/AudioManager")
-		if audio and audio.has_method("play_morale_event"):
-			audio.play_morale_event(event_name)
+	if _audio_manager and _audio_manager.has_method("play_morale_event"):
+		_audio_manager.play_morale_event(event_name)
 
 
 func _play_death_cry(position: Vector3, casualty_count: int = 1) -> void:
@@ -86,61 +97,44 @@ func _play_ranged_attack_animation(regiment: Regiment) -> void:
 # Each entry: { attacker: Regiment, defender: Regiment, charge_applied: bool, charge_timer: float, charge_time: float }
 var active_melees: Array[Dictionary] = []
 
-# Combat timing - SLOWED BY 70%
-const MELEE_TICK_RATE: float = 2.5  # resolve combat every 2.5 seconds (was 1.0)
-const CHARGE_BONUS_DURATION: float = 3.0
-const CHARGE_DECAY_DURATION: float = 10.0  # Charge bonus decays linearly over 10 seconds
-const COMBAT_DAMAGE_MULTIPLIER: float = 0.36  # 64% less damage overall (20% faster than before)
+# Combat timing - ADJUSTED FOR BETTER PACING
+const MELEE_TICK_RATE: float = 1.875  # resolve combat every 1.875 seconds (25% slower than 1.5)
+const COMBAT_DAMAGE_MULTIPLIER: float = 0.50  # 50% of base damage (was 36%)
+const FRIENDLY_FIRE_CHANCE: float = 0.15  # 15% chance to hit friendly when shooting into melee
 
-# Total War-style hit chance formula
-# TotalWarSimulator-style hit chance formula
-const BASE_HIT_CHANCE: float = 0.35  # 35% base hit chance (TotalWarSimulator)
-const HIT_CHANCE_PER_SKILL: float = 0.01  # +1% per point of attack vs defense
-const MIN_HIT_CHANCE: float = 0.08  # Minimum 8% hit chance (TotalWarSimulator)
-const MAX_HIT_CHANCE: float = 0.90  # Maximum 90% hit chance
+# Charge impact constants
+const CHARGE_AP_RATIO: float = 0.7  # 70% of charge impact is armor-piercing
+const CHARGE_MORALE_RATIO: float = 0.5  # Morale damage from charge impact
 
-# Debug mode
-var debug_combat: bool = true
+# Melee morale constants
+const MELEE_MORALE_PER_CASUALTY: float = 0.5  # Base morale damage per casualty
 
-# Battle statistics tracking
-var battle_stats: Dictionary = {
-	"player_kills": 0,
-	"player_losses": 0,
-	"enemy_kills": 0,
-	"enemy_losses": 0,
-	"player_unit_stats": {},  # unit_name -> {kills, losses, starting}
-	"enemy_unit_stats": {},   # unit_name -> {kills, losses, starting}
-	"battle_start_time": 0.0,
-	"battle_ended": false
-}
+# Ranged combat constants
+const RANGED_HIGH_GROUND_BONUS: float = 1.15  # +15% damage from high ground
+const RANGED_LOW_GROUND_PENALTY: float = 0.85  # -15% damage from low ground
+const RANGED_MORALE_RATIO: float = 0.3  # Morale damage ratio for ranged hits
 
-# Height/terrain combat modifiers
-const MELEE_HEIGHT_BONUS: float = 0.15  # +15% damage when attacker is higher
-const MELEE_HEIGHT_PENALTY: float = 0.15  # -15% damage when attacker is lower
-const HEIGHT_ADVANTAGE_THRESHOLD: float = 1.5  # Min height diff for bonus
-const SLOPE_DEFENSE_BONUS: int = 3  # +3 defense when defending uphill
+# Hit chance constants - use melee_resolver.calculate_hit_chance() for calculations
 
-# Flanking combat modifiers
-const FLANK_REAR_ANGLE: float = 135.0     # Angle threshold for rear attack (degrees)
-const FLANK_SIDE_ANGLE: float = 45.0      # Angle threshold for flank attack (degrees)
-const FLANK_REAR_DAMAGE_MULT: float = 2.0   # Rear attacks deal 2x damage
-const FLANK_SIDE_DAMAGE_MULT: float = 1.5   # Side attacks deal 1.5x damage
-const FLANK_REAR_MORALE_MULT: float = 1.5   # Rear attacks deal 50% more morale damage
-const FLANK_SIDE_MORALE_MULT: float = 1.25  # Side attacks deal 25% more morale damage
+# Debug mode - set to false for production
+var debug_combat: bool = false
 
-# Charge impact
-const CHARGE_KNOCKBACK_FORCE: float = 2.0  # Units pushed back on charge impact
+# Battle statistics tracking - synced from BattleStatistics system
+var battle_stats: Dictionary = {}
 
 var melee_timer: float = 0.0
-var _terrain: Node3D = null
+# Phase 6.4: Terrain access via TerrainHelper (removed _terrain variable)
 
 # Staggered update system - process 1/BUCKET_COUNT of combats per frame
 var _update_bucket: int = 0
-const BUCKET_COUNT: int = 16
+const BUCKET_COUNT: int = 4  # Reduced from 16 for more responsive combat
 
 # Projectile pool for performance (upgraded pooling system)
 var _projectile_pool: ProjectilePool = null
 var _projectile_scene: PackedScene = null
+
+# Cached AudioManager reference (optimization - avoid per-call lookups)
+var _audio_manager: Node = null
 
 # Projectile configurations per unit type
 const PROJECTILE_CONFIG_ARROW: Dictionary = {
@@ -199,6 +193,14 @@ const PROJECTILE_CONFIG_JAVELIN: Dictionary = {
 }
 
 func _ready() -> void:
+	# Initialize extracted combat systems using preloaded scripts
+	flanking = FlankingCalculatorScript.new()
+	statistics = BattleStatisticsScript.new()
+	charge_system = ChargeSystemScript.new()
+	melee_resolver = MeleeResolverScript.new()
+	ranged_resolver = RangedResolverScript.new()
+	casualty_processor = CasualtyProcessorScript.new()
+
 	# Create projectile pool
 	_projectile_pool = ProjectilePool.new()
 	_projectile_pool.name = "ProjectilePool"
@@ -207,76 +209,38 @@ func _ready() -> void:
 	# Keep scene reference for fallback
 	_projectile_scene = load("res://battle_system/nodes/projectile.tscn")
 
-	call_deferred("_find_terrain")
+	# Cache AudioManager reference (optimization - avoid per-call lookups)
+	call_deferred("_cache_audio_manager")
+
 	call_deferred("_init_battle_stats")
 
 	# Connect to regiment_dead signal for death effects
 	if BattleSignals:
-		BattleSignals.regiment_dead.connect(_on_regiment_dead)
+		if not BattleSignals.regiment_dead.is_connected(_on_regiment_dead):
+			BattleSignals.regiment_dead.connect(_on_regiment_dead)
 
 
 ## Initialize battle statistics at start
 func _init_battle_stats() -> void:
-	battle_stats.battle_start_time = Time.get_ticks_msec() / 1000.0
-	battle_stats.battle_ended = false
-	battle_stats.player_kills = 0
-	battle_stats.player_losses = 0
-	battle_stats.enemy_kills = 0
-	battle_stats.enemy_losses = 0
-	battle_stats.player_unit_stats = {}
-	battle_stats.enemy_unit_stats = {}
-
-	# Record starting strength of all regiments
-	for regiment in get_tree().get_nodes_in_group("all_regiments"):
-		if not is_instance_valid(regiment):
-			continue
-		var stats_dict = battle_stats.player_unit_stats if regiment.is_player_controlled else battle_stats.enemy_unit_stats
-		stats_dict[regiment.name] = {
-			"display_name": regiment.data.regiment_name if regiment.data else regiment.name,
-			"starting": regiment.current_soldiers,
-			"kills": 0,
-			"losses": 0
-		}
-
-	if debug_combat:
-		print("[COMBAT] Battle stats initialized - Player units: %d, Enemy units: %d" % [
-			battle_stats.player_unit_stats.size(),
-			battle_stats.enemy_unit_stats.size()
-		])
+	# Delegate to BattleStatistics system
+	statistics.debug_combat = debug_combat
+	statistics.setup(get_tree())
+	# Keep local reference synced for backwards compatibility
+	battle_stats = statistics.get_stats()
 
 
-## Track a kill for statistics
+## Track a kill for statistics and WINNING morale modifier
 func _track_kill(attacker: Regiment, defender: Regiment, casualties: int) -> void:
-	if not is_instance_valid(attacker) or not is_instance_valid(defender):
-		return
+	# Delegate to BattleStatistics system
+	statistics.track_kill(attacker, defender, casualties)
+	# Keep local reference synced
+	battle_stats = statistics.get_stats()
 
-	# Track kills for attacker
-	var attacker_stats = battle_stats.player_unit_stats if attacker.is_player_controlled else battle_stats.enemy_unit_stats
-	if attacker.name in attacker_stats:
-		attacker_stats[attacker.name].kills += casualties
-
-	# Track losses for defender
-	var defender_stats = battle_stats.player_unit_stats if defender.is_player_controlled else battle_stats.enemy_unit_stats
-	if defender.name in defender_stats:
-		defender_stats[defender.name].losses += casualties
-
-	# Track global totals
-	if attacker.is_player_controlled:
-		battle_stats.player_kills += casualties
-	else:
-		battle_stats.enemy_kills += casualties
-
-	if defender.is_player_controlled:
-		battle_stats.player_losses += casualties
-	else:
-		battle_stats.enemy_losses += casualties
-
-	if debug_combat:
-		print("[COMBAT] %s killed %d from %s (Total: P:%d/%d E:%d/%d)" % [
-			attacker.name, casualties, defender.name,
-			battle_stats.player_kills, battle_stats.player_losses,
-			battle_stats.enemy_kills, battle_stats.enemy_losses
-		])
+	# Track for WINNING morale modifier
+	if attacker.unit_morale:
+		attacker.unit_morale.track_casualties_inflicted(casualties)
+	if defender.unit_morale:
+		defender.unit_morale.track_casualties_received(casualties)
 
 	# Check for battle end
 	_check_battle_end()
@@ -284,71 +248,13 @@ func _track_kill(attacker: Regiment, defender: Regiment, casualties: int) -> voi
 
 ## Check if battle has ended
 func _check_battle_end() -> void:
-	if battle_stats.battle_ended:
-		return
-
-	var player_alive := 0
-	var enemy_alive := 0
-
-	for regiment in get_tree().get_nodes_in_group("all_regiments"):
-		if not is_instance_valid(regiment):
-			continue
-		if regiment.state == Regiment.State.DEAD:
-			continue
-		if regiment.current_soldiers <= 0:
-			continue
-		if regiment.is_player_controlled:
-			player_alive += 1
-		else:
-			enemy_alive += 1
-
-	if player_alive == 0 or enemy_alive == 0:
-		battle_stats.battle_ended = true
-		var start_time: float = battle_stats.battle_start_time
-		var duration: float = (Time.get_ticks_msec() / 1000.0) - start_time
-		var winner: String = "PLAYER" if enemy_alive == 0 else "ENEMY"
-
-		var separator: String = "=".repeat(60)
-		print("\n" + separator)
-		print("[BATTLE OVER] %s VICTORY!" % winner)
-		print(separator)
-		print("Duration: %.1f seconds" % duration)
-		print("\n--- PLAYER FORCES ---")
-		print("Total Kills: %d | Total Losses: %d" % [battle_stats.player_kills, battle_stats.player_losses])
-		for unit_name in battle_stats.player_unit_stats:
-			var s = battle_stats.player_unit_stats[unit_name]
-			var remaining = s.starting - s.losses
-			print("  %s: %d/%d remaining (K:%d L:%d)" % [s.display_name, remaining, s.starting, s.kills, s.losses])
-
-		print("\n--- ENEMY FORCES ---")
-		print("Total Kills: %d | Total Losses: %d" % [battle_stats.enemy_kills, battle_stats.enemy_losses])
-		for unit_name in battle_stats.enemy_unit_stats:
-			var s = battle_stats.enemy_unit_stats[unit_name]
-			var remaining = s.starting - s.losses
-			print("  %s: %d/%d remaining (K:%d L:%d)" % [s.display_name, remaining, s.starting, s.kills, s.losses])
-		print(separator + "\n")
-
-		# Emit battle ended signal with proper Dictionary format
-		var result: Dictionary = {
-			"winner": winner,
-			"player_victory": winner == "PLAYER",
-			"casualties": {
-				"player_kills": battle_stats.player_kills,
-				"player_losses": battle_stats.player_losses,
-				"enemy_kills": battle_stats.enemy_kills,
-				"enemy_losses": battle_stats.enemy_losses,
-				"player_unit_stats": battle_stats.player_unit_stats,
-				"enemy_unit_stats": battle_stats.enemy_unit_stats
-			},
-			"duration": duration
-		}
+	# Delegate to BattleStatistics system
+	var result: Dictionary = statistics.check_battle_end()
+	if result.size() > 0:
+		# Battle has ended - emit signal
 		BattleSignals.battle_ended.emit(result)
-
-
-func _find_terrain() -> void:
-	var terrains: Array[Node] = get_tree().get_nodes_in_group("terrain")
-	if terrains.size() > 0:
-		_terrain = terrains[0]
+		# Keep local reference synced
+		battle_stats = statistics.get_stats()
 
 
 ## Get AI stat multiplier for a regiment.
@@ -370,89 +276,36 @@ func _get_ai_stat_multiplier(regiment: Regiment) -> float:
 
 ## Get height modifier for melee combat (higher ground = bonus)
 func _get_height_modifier(attacker: Regiment, defender: Regiment) -> float:
-	var height_diff: float = attacker.global_position.y - defender.global_position.y
-	if height_diff > HEIGHT_ADVANTAGE_THRESHOLD:
-		return 1.0 + MELEE_HEIGHT_BONUS  # Attacking downhill
-	elif height_diff < -HEIGHT_ADVANTAGE_THRESHOLD:
-		return 1.0 - MELEE_HEIGHT_PENALTY  # Attacking uphill
-	return 1.0
+	return melee_resolver.get_height_modifier(attacker, defender)
 
 
-## Get defense bonus for defending on a slope
+## Get defense bonus for defending on a slope (Phase 6.4: use helper)
 func _get_slope_defense_bonus(defender: Regiment) -> int:
-	if _terrain and _terrain.has_method("get_slope_at"):
-		var slope: float = _terrain.get_slope_at(defender.global_position)
-		if slope > 10.0:  # On a significant slope
-			return SLOPE_DEFENSE_BONUS
+	# MeleeResolver handles height-based defense, but terrain slope needs terrain reference
+	var slope: float = TerrainHelperScript.get_slope_at(get_tree(), defender.global_position)
+	if slope > 10.0:  # On a significant slope
+		return melee_resolver.SLOPE_DEFENSE_BONUS
 	return 0
 
 
-## Calculate attack angle for flanking detection.
-## Returns the angle (in degrees) between attacker's attack direction and defender's facing.
-## 0 = frontal attack, 90 = side, 180 = rear
+## Delegate flanking calculations to FlankingCalculator
 func _calculate_attack_angle(attacker: Regiment, defender: Regiment) -> float:
-	# Direction from defender to attacker (where attack is coming from)
-	var attack_dir: Vector3 = (attacker.global_position - defender.global_position).normalized()
-	attack_dir.y = 0  # Flatten to horizontal plane
+	return flanking.calculate_attack_angle(attacker, defender)
 
-	# Defender's facing direction
-	var defender_facing: Vector3 = defender.get_facing_direction()
-	defender_facing.y = 0
-
-	if attack_dir.length_squared() < 0.001 or defender_facing.length_squared() < 0.001:
-		return 0.0  # Default to frontal if invalid
-
-	# Calculate angle between attack direction and defender's facing
-	# Dot product gives us cos(angle), which is 1 for frontal (same direction),
-	# -1 for rear (opposite direction)
-	var dot: float = attack_dir.normalized().dot(defender_facing.normalized())
-
-	# Convert to angle in degrees (0-180 range)
-	var angle: float = rad_to_deg(acos(clampf(dot, -1.0, 1.0)))
-
-	return angle
-
-
-## Get flanking damage multiplier based on attack angle.
-## Returns: 1.0 for frontal, 1.5 for flank, 2.0 for rear
 func _get_flank_damage_modifier(attacker: Regiment, defender: Regiment) -> float:
-	var angle: float = _calculate_attack_angle(attacker, defender)
+	return flanking.get_damage_modifier(attacker, defender)
 
-	if angle > FLANK_REAR_ANGLE:
-		return FLANK_REAR_DAMAGE_MULT  # Rear attack
-	elif angle > FLANK_SIDE_ANGLE:
-		return FLANK_SIDE_DAMAGE_MULT  # Flank attack
-	return 1.0  # Frontal attack
-
-
-## Check if this is a frontal attack (for bracing check).
-## Returns true if attacker is hitting defender from the front arc.
 func _is_frontal_attack(attacker: Regiment, defender: Regiment) -> bool:
-	var angle: float = _calculate_attack_angle(attacker, defender)
-	return angle <= FLANK_SIDE_ANGLE  # Front is within side flank angle threshold
+	return flanking.is_frontal_attack(attacker, defender)
 
-
-## Get flanking morale damage multiplier.
 func _get_flank_morale_modifier(attacker: Regiment, defender: Regiment) -> float:
-	var angle: float = _calculate_attack_angle(attacker, defender)
+	return flanking.get_morale_modifier(attacker, defender)
 
-	if angle > FLANK_REAR_ANGLE:
-		return FLANK_REAR_MORALE_MULT
-	elif angle > FLANK_SIDE_ANGLE:
-		return FLANK_SIDE_MORALE_MULT
-	return 1.0
-
-
-## Check if attack is a flank attack (for UI/debug)
 func is_flank_attack(attacker: Regiment, defender: Regiment) -> bool:
-	var angle: float = _calculate_attack_angle(attacker, defender)
-	return angle > FLANK_SIDE_ANGLE
+	return flanking.is_flank_attack(attacker, defender)
 
-
-## Check if attack is a rear attack (for UI/debug)
 func is_rear_attack(attacker: Regiment, defender: Regiment) -> bool:
-	var angle: float = _calculate_attack_angle(attacker, defender)
-	return angle > FLANK_REAR_ANGLE
+	return flanking.is_rear_attack(attacker, defender)
 
 ## Get projectile configuration based on unit type
 func _get_projectile_config(regiment: Regiment) -> Dictionary:
@@ -480,6 +333,10 @@ func _get_projectile_config(regiment: Regiment) -> Dictionary:
 
 ## Start a melee combat between two regiments
 func begin_melee(attacker: Regiment, defender: Regiment) -> void:
+	# Don't start combat during deployment phase
+	if DeploymentManager and DeploymentManager.is_deployment_phase():
+		return
+
 	# Check not already in this melee pair
 	for m in active_melees:
 		if (m["attacker"] == attacker and m["defender"] == defender) or \
@@ -493,8 +350,7 @@ func begin_melee(attacker: Regiment, defender: Regiment) -> void:
 	if attacker.current_order == OrderType.Type.CHARGE:
 		# Check if charge traveled minimum distance
 		if not valid_charge:
-			print("CombatManager: Charge INVALID - %s only traveled %.1f (need %.1f)" % [
-				attacker.name, attacker.charge_distance_traveled, attacker.MIN_CHARGE_DISTANCE])
+			pass  # Charge invalid - insufficient distance
 		else:
 			var was_braced: bool = defender.is_braced
 			# Check if bracing applies (frontal charges only)
@@ -503,7 +359,6 @@ func begin_melee(attacker: Regiment, defender: Regiment) -> void:
 			if was_braced and is_frontal_charge:
 				# Defender braced against frontal charge - negate bonus, reduce impact
 				charge_negated = true
-				print("CombatManager: Charge impact NEGATED! %s charged braced %s (frontal)" % [attacker.name, defender.name])
 				# Spawn block effect for braced defender
 				if CombatEffects:
 					CombatEffects.spawn_block(defender.global_position + Vector3(0, 1.2, 0))
@@ -512,17 +367,12 @@ func begin_melee(attacker: Regiment, defender: Regiment) -> void:
 				var impact_damage: int = attacker.get_charge_impact_damage()
 				if impact_damage > 0:
 					# Apply impact damage (partially armor-piercing per TotalWarSimulator)
-					var ap_damage: int = int(impact_damage * 0.7)  # 70% armor-piercing
+					var ap_damage: int = int(float(impact_damage) * CHARGE_AP_RATIO)
 					var normal_damage: int = impact_damage - ap_damage
 					# Impact causes instant casualties
 					var total_impact_casualties: int = max(1, impact_damage / 3)
 					defender.take_casualties(total_impact_casualties)
-					defender.take_morale_damage(float(impact_damage) * 0.5)
-					print("CombatManager: Charge impact! %s hit %s for %d impact damage (%d casualties)" % [
-						attacker.name, defender.name, impact_damage, total_impact_casualties])
-
-				print("CombatManager: Charge bonus: %d, distance: %.1f" % [
-					attacker.data.charge_bonus, attacker.charge_distance_traveled])
+					defender.take_morale_damage(float(impact_damage) * CHARGE_MORALE_RATIO)
 
 			# Emit charge impact signal
 			BattleSignals.charge_impact.emit(attacker, defender, was_braced and is_frontal_charge)
@@ -530,8 +380,8 @@ func begin_melee(attacker: Regiment, defender: Regiment) -> void:
 			# Play charge impact audio
 			_play_combat_sfx("cavalry_charge_01", defender.global_position)
 
-		# Mark attacker as having charged
-		attacker.has_charged = true
+		# Mark attacker as having charged via CombatState
+		CombatState.set_charged(attacker, true, "charge_impact")
 
 	active_melees.append({
 		"attacker": attacker,
@@ -558,32 +408,39 @@ func disengage_regiment(regiment: Regiment) -> void:
 	if not is_instance_valid(regiment):
 		return
 
-	print("[COMBAT] Disengaging regiment: ", regiment.name)
-
 	# Find and remove all melees involving this regiment
 	var melees_to_end: Array[Dictionary] = []
+	var opponents_to_check: Array[Regiment] = []
 	for melee in active_melees:
 		if melee.get("attacker") == regiment or melee.get("defender") == regiment:
 			melees_to_end.append(melee)
+			# Track opponents that might need to return to IDLE
+			var other: Regiment = melee.get("defender") if melee.get("attacker") == regiment else melee.get("attacker")
+			if is_instance_valid(other) and other not in opponents_to_check:
+				opponents_to_check.append(other)
 
+	# Remove all melees involving this regiment first
 	for melee in melees_to_end:
 		var att = melee.get("attacker")
 		var def = melee.get("defender")
-
-		# The other regiment returns to IDLE
-		if att == regiment and is_instance_valid(def):
-			def.set_state(Regiment.State.IDLE)
-			def.has_charged = false
-		elif def == regiment and is_instance_valid(att):
-			att.set_state(Regiment.State.IDLE)
-			att.has_charged = false
-
-		# Remove the melee
 		end_melee(att, def)
+
+	# Now check each opponent - only set to IDLE if they have no other active melees
+	for opponent in opponents_to_check:
+		if not is_instance_valid(opponent):
+			continue
+		var still_in_combat: bool = false
+		for melee in active_melees:
+			if melee.size() > 0 and (melee.get("attacker") == opponent or melee.get("defender") == opponent):
+				still_in_combat = true
+				break
+		if not still_in_combat and opponent.state == Regiment.State.ENGAGING:
+			opponent.set_state(Regiment.State.IDLE)
+			CombatState.set_charged(opponent, false, "melee_disengage")
 
 	# The disengaging regiment returns to IDLE (caller will set MARCHING)
 	regiment.set_state(Regiment.State.IDLE)
-	regiment.has_charged = false
+	CombatState.set_charged(regiment, false, "melee_disengage")
 
 
 ## Resolve active melee combats for the current bucket (staggered updates)
@@ -635,14 +492,20 @@ func _resolve_all_melees() -> void:
 		return m.size() > 0
 	)
 
-	# Transition disengaged regiments to IDLE so they can receive new orders
+	# Transition disengaged regiments to IDLE only if they have no other active melees
 	for regiment in regiments_to_disengage:
 		if is_instance_valid(regiment) and regiment.state == Regiment.State.ENGAGING:
-			print("[COMBAT] %s disengaging from melee -> IDLE" % regiment.name)
-			regiment.set_state(Regiment.State.IDLE)
-			regiment.reset_charge_state()
+			# Check if this regiment is still in any other active melee
+			var still_in_combat: bool = false
+			for melee in active_melees:
+				if melee.size() > 0 and (melee.get("attacker") == regiment or melee.get("defender") == regiment):
+					still_in_combat = true
+					break
+			if not still_in_combat:
+				regiment.set_state(Regiment.State.IDLE)
+				regiment.reset_charge_state()
 
-## Resolve one melee tick
+## Resolve one melee tick - delegates math to MeleeResolver, side effects to CasualtyProcessor.
 func _resolve_melee_tick(melee: Dictionary) -> void:
 	var att: Regiment = melee["attacker"]
 	var def: Regiment = melee["defender"]
@@ -650,203 +513,116 @@ func _resolve_melee_tick(melee: Dictionary) -> void:
 	# Update charge time for decay calculation
 	melee["charge_time"] += MELEE_TICK_RATE
 
-	# Calculate damage using regiment modifiers (formation + veterancy + stamina + buffs)
-	var att_base: int = att.data.attack
-	var att_modifier: float = att.get_attack_modifier()  # Includes formation, veterancy, inspire, stamina
-	var att_score: int = int(float(att_base) * att_modifier)
+	# Determine charge modifiers
+	var charge_negated: bool = melee.get("charge_negated", false)
+	var had_valid_charge: bool = melee.get("charge_applied", false) or att.has_valid_charge()
+	var weather_charge_mod: float = 1.0
+	var formation_charge_mod: float = 1.0
 
-	# Apply decaying charge bonus (Total War style - decays linearly over 10 seconds)
-	# Charge bonus requires minimum distance traveled and not negated by bracing
-	var charge_bonus_applied: bool = false
-	if att.data.charge_bonus > 0 and not melee.get("charge_negated", false):
-		# Check if attacker was charging AND traveled minimum distance
-		var had_valid_charge: bool = melee.get("charge_applied", false) or att.has_valid_charge()
+	if att.data.charge_bonus > 0 and not charge_negated:
 		if (att.current_order == OrderType.Type.CHARGE or melee.get("charge_applied", false)) and had_valid_charge:
-			# Calculate charge decay: 100% at t=0, 0% at t=CHARGE_DECAY_DURATION
-			var charge_decay: float = clampf(1.0 - (melee["charge_time"] / CHARGE_DECAY_DURATION), 0.0, 1.0)
-			if charge_decay > 0.0:
-				# Apply weather modifier to charge bonus (muddy/wet ground reduces charge effectiveness)
-				var weather_adjusted_charge: int = WeatherSystem.apply_charge_modifier(att.data.charge_bonus)
-				# Apply formation charge modifier (WEDGE: 1.5x, COLUMN: 1.3x, LINE: 0.9x, etc.)
-				var formation_charge_mod: float = att.get_charge_modifier()
-				# Apply decay to get effective charge bonus
-				var effective_charge: int = int(float(weather_adjusted_charge) * formation_charge_mod * charge_decay)
-				att_score += effective_charge
-				charge_bonus_applied = true
-				if debug_combat and effective_charge > 0:
-					print("[COMBAT] Charge bonus: %d (%.0f%% decay remaining)" % [effective_charge, charge_decay * 100.0])
+			weather_charge_mod = float(WeatherSystem.apply_charge_modifier(att.data.charge_bonus)) / float(att.data.charge_bonus) if att.data.charge_bonus > 0 else 1.0
+			formation_charge_mod = att.get_charge_modifier()
 
-	# Apply anti-cavalry modifier if attacker is cavalry
-	if att.data.unit_type == UnitType.Type.CAVALRY:
-		var anti_cav: float = def.get_anti_cavalry_modifier()
-		if anti_cav > 1.0:
-			# Reduce attacker effectiveness vs anti-cavalry formations
-			att_score = int(float(att_score) / anti_cav)
-
-	# Calculate defense using regiment modifiers (formation + braced status)
-	var def_base: int = def.data.defense
-	var def_modifier: float = def.get_defense_modifier()  # Includes formation, braced status
-	var def_score: int = int(float(def_base) * def_modifier) + _get_slope_defense_bonus(def)
-
-	# Total War-style hit chance: Base 40% + (attack - defense), clamped 10%-90%
-	var hit_chance: float = clampf(BASE_HIT_CHANCE + (float(att_score - def_score) * HIT_CHANCE_PER_SKILL), MIN_HIT_CHANCE, MAX_HIT_CHANCE)
-	if randf() > hit_chance:
-		# Miss - no damage this tick
-		if debug_combat:
-			print("[COMBAT] %s MISSED %s (%.0f%% hit chance)" % [att.name, def.name, hit_chance * 100.0])
-		melee["charge_applied"] = true  # Still mark charge as applied even on miss
-		return
-
-	# Calculate base casualties
-	var base_casualties: int = _calculate_casualties(att_score, def_score, att.data.strength)
-
-	# Apply height modifier
-	var height_mod: float = _get_height_modifier(att, def)
-
-	# Apply flanking modifier (MAJOR ADDITION)
-	var flank_mod: float = _get_flank_damage_modifier(att, def)
-	var flank_morale_mod: float = _get_flank_morale_modifier(att, def)
-
-	# Apply AI personality stat_multiplier (affects AI damage output)
-	var ai_stat_mod: float = _get_ai_stat_multiplier(att)
-
-	# Calculate final casualties with all modifiers (including global slowdown)
-	var casualties: int = maxi(1, int(float(base_casualties) * height_mod * flank_mod * ai_stat_mod * COMBAT_DAMAGE_MULTIPLIER))
-
-	# Debug combat output
-	if debug_combat:
-		print("[COMBAT] %s(%d) attacks %s(%d) - ATK:%d vs DEF:%d = %d casualties" % [
-			att.name, att.current_soldiers, def.name, def.current_soldiers,
-			att_score, def_score, casualties
-		])
-
-	# Log flanking attacks for debugging
-	if flank_mod > 1.0:
-		var flank_type: String = "REAR" if flank_mod >= FLANK_REAR_DAMAGE_MULT else "FLANK"
-		print("[COMBAT] %s attack! %s -> %s (%.1fx damage)" % [flank_type, att.name, def.name, flank_mod])
+	# Delegate ALL combat math to MeleeResolver
+	var result: Dictionary = melee_resolver.resolve_bidirectional_melee(
+		att, def,
+		melee["charge_time"],
+		charge_negated,
+		_get_ai_stat_multiplier(att),
+		_get_ai_stat_multiplier(def),
+		weather_charge_mod,
+		formation_charge_mod
+	)
 
 	# Apply high ground morale modifier
-	_apply_height_morale_modifier(att, def)
+	casualty_processor.apply_height_morale_modifier(att, def, melee_resolver.HEIGHT_ADVANTAGE_THRESHOLD)
 
-	# Defender takes damage
-	def.take_casualties(casualties)
+	# === ATTACKER'S ATTACK ===
+	if result.attacker.hit:
+		# Apply damage
+		def.take_casualties(result.attacker.casualties)
 
-	# Track statistics
-	_track_kill(att, def, casualties)
-
-	# Play melee hit audio and spawn visual effect
-	_play_combat_sfx_random("sword_hit", 5, def.global_position)
-	if CombatEffects:
-		CombatEffects.spawn_melee_hit(def.global_position + Vector3(0, 1.0, 0))
-
-	# Play death cries for casualties
-	if casualties > 0:
-		_play_death_cry(def.global_position, casualties)
-
-	# Apply morale damage with flank modifier
-	var morale_damage: float = casualties * 0.5 * flank_morale_mod
-	MoraleSystem.apply_morale_damage(def, morale_damage)
-	damage_dealt.emit(def, casualties, att, "melee")
-	BattleSignals.regiment_attacked.emit(att, def, casualties)
-
-	# Push per-soldier morale events for casualties
-	_push_casualty_morale_events(def, casualties, att)
-
-	# Apply flanking morale penalty events
-	if flank_mod > 1.0:
-		_apply_flank_morale_events(def, att, flank_mod >= FLANK_REAR_DAMAGE_MULT)
-
-	# Track kills for veterancy
-	if att.veterancy and casualties > 0:
-		for i in casualties:
-			att.veterancy.add_kill()
-
-	# Defender hits back (unless routing or dead)
-	if def.state != Regiment.State.ROUTING and def.current_soldiers > 0:
-		# Defender's attack with modifiers
-		var def_base2: int = def.data.attack
-		var def_modifier2: float = def.get_attack_modifier()
-		var def_score2: int = int(float(def_base2) * def_modifier2)
-
-		# Attacker's defense with modifiers
-		var att_base2: int = att.data.defense
-		var att_modifier2: float = att.get_defense_modifier()
-		var att_score2: int = int(float(att_base2) * att_modifier2) + _get_slope_defense_bonus(att)
-
-		# Anti-cavalry check for defender
-		if def.data.unit_type == UnitType.Type.CAVALRY:
-			var anti_cav2: float = att.get_anti_cavalry_modifier()
-			if anti_cav2 > 1.0:
-				def_score2 = int(float(def_score2) / anti_cav2)
-
-		# Total War-style hit chance for counter-attack
-		var counter_hit_chance: float = clampf(BASE_HIT_CHANCE + (float(def_score2 - att_score2) * HIT_CHANCE_PER_SKILL), MIN_HIT_CHANCE, MAX_HIT_CHANCE)
-		if randf() > counter_hit_chance:
-			# Counter-attack missed
-			if debug_combat:
-				print("[COMBAT] %s counter-attack MISSED %s (%.0f%% hit chance)" % [def.name, att.name, counter_hit_chance * 100.0])
-			melee["charge_applied"] = true
-			return
-
-		var base_counter: int = _calculate_casualties(def_score2, att_score2, def.data.strength)
-
-		# Apply height modifier (defender attacking, attacker defending)
-		var counter_height_mod: float = _get_height_modifier(def, att)
-
-		# Defender's counter-attack also checks flanking (they might be flanking the attacker)
-		var counter_flank_mod: float = _get_flank_damage_modifier(def, att)
-		var counter_flank_morale_mod: float = _get_flank_morale_modifier(def, att)
-
-		# Apply AI personality stat_multiplier for defender's counter-attack
-		var counter_ai_stat_mod: float = _get_ai_stat_multiplier(def)
-
-		var counter_casualties: int = maxi(1, int(float(base_counter) * counter_height_mod * counter_flank_mod * counter_ai_stat_mod * COMBAT_DAMAGE_MULTIPLIER))
-
-		# Debug counter-attack
+		# Debug output
 		if debug_combat:
-			print("[COMBAT] %s(%d) counter-attacks %s(%d) - ATK:%d vs DEF:%d = %d casualties" % [
-				def.name, def.current_soldiers, att.name, att.current_soldiers,
-				def_score2, att_score2, counter_casualties
+			print("[COMBAT] %s(%d) attacks %s(%d) = %d casualties" % [
+				att.name, att.current_soldiers, def.name, def.current_soldiers,
+				result.attacker.casualties
 			])
 
-		att.take_casualties(counter_casualties)
+		# Track statistics
+		_track_kill(att, def, result.attacker.casualties)
 
-		# Track statistics for counter-attack
-		_track_kill(def, att, counter_casualties)
+		# Process side effects (audio, visuals, morale, veterancy)
+		_play_combat_sfx_random("sword_hit", 5, def.global_position)
+		if CombatEffects:
+			CombatEffects.spawn_melee_hit(def.global_position + Vector3(0, 1.0, 0))
+		if result.attacker.casualties > 0:
+			_play_death_cry(def.global_position, result.attacker.casualties)
 
-		# Play melee hit audio and spawn visual effect for counter-attack
+		# Morale damage
+		var morale_damage: float = float(result.attacker.casualties) * MELEE_MORALE_PER_CASUALTY * result.attacker.flank_morale_mod
+		MoraleSystem.apply_morale_damage(def, morale_damage, "melee_casualties")
+		damage_dealt.emit(def, result.attacker.casualties, att, "melee")
+		BattleSignals.regiment_attacked.emit(att, def, result.attacker.casualties)
+
+		# Morale events
+		_push_casualty_morale_events(def, result.attacker.casualties, att)
+		if result.attacker.flank_mod > 1.0:
+			_apply_flank_morale_events(def, att, result.attacker.is_rear)
+
+		# Veterancy
+		if att.veterancy and result.attacker.casualties > 0:
+			for i in result.attacker.casualties:
+				att.veterancy.add_kill()
+	else:
+		if debug_combat:
+			print("[COMBAT] %s MISSED %s (%.0f%% hit chance)" % [
+				att.name, def.name, result.debug_info.attacker.hit_chance * 100.0
+			])
+
+	# === DEFENDER'S COUNTER-ATTACK ===
+	if result.defender_counter.hit and def.state != Regiment.State.ROUTING and def.current_soldiers > 0:
+		# Apply damage
+		att.take_casualties(result.defender_counter.casualties)
+
+		# Debug output
+		if debug_combat:
+			print("[COMBAT] %s(%d) counter-attacks %s(%d) = %d casualties" % [
+				def.name, def.current_soldiers, att.name, att.current_soldiers,
+				result.defender_counter.casualties
+			])
+
+		# Track statistics
+		_track_kill(def, att, result.defender_counter.casualties)
+
+		# Process side effects
 		_play_combat_sfx_random("sword_hit", 5, att.global_position)
 		if CombatEffects:
 			CombatEffects.spawn_melee_hit(att.global_position + Vector3(0, 1.0, 0))
+		if result.defender_counter.casualties > 0:
+			_play_death_cry(att.global_position, result.defender_counter.casualties)
 
-		# Play death cries for counter-attack casualties
-		if counter_casualties > 0:
-			_play_death_cry(att.global_position, counter_casualties)
+		# Morale damage
+		var counter_morale_damage: float = float(result.defender_counter.casualties) * MELEE_MORALE_PER_CASUALTY * result.defender_counter.flank_morale_mod
+		MoraleSystem.apply_morale_damage(att, counter_morale_damage, "melee_counter")
+		damage_dealt.emit(att, result.defender_counter.casualties, def, "melee")
 
-		var counter_morale_damage: float = counter_casualties * 0.5 * counter_flank_morale_mod
-		MoraleSystem.apply_morale_damage(att, counter_morale_damage)
-		damage_dealt.emit(att, counter_casualties, def, "melee")
+		# Morale events
+		_push_casualty_morale_events(att, result.defender_counter.casualties, def)
+		if result.defender_counter.flank_mod > 1.0:
+			_apply_flank_morale_events(att, def, result.defender_counter.is_rear)
 
-		# Push per-soldier morale events for casualties
-		_push_casualty_morale_events(att, counter_casualties, def)
-
-		# Apply flanking morale penalty events to attacker if being flanked
-		if counter_flank_mod > 1.0:
-			_apply_flank_morale_events(att, def, counter_flank_mod >= FLANK_REAR_DAMAGE_MULT)
-
-		# Track counter-attack kills for defender's veterancy
-		if def.veterancy and counter_casualties > 0:
-			for i in counter_casualties:
+		# Veterancy
+		if def.veterancy and result.defender_counter.casualties > 0:
+			for i in result.defender_counter.casualties:
 				def.veterancy.add_kill()
 
 	melee["charge_applied"] = true
 
-## Calculate casualties using simple formula
+## Calculate casualties using melee resolver formula
 func _calculate_casualties(attack: int, defense: int, strength: int) -> int:
-	# d10-style resolution
-	var margin: int = max(0, attack - defense)
-	var base: int = randi() % 3 + 1  # 1-3 base casualties
-	return base + int(margin / 5) + int(strength / 3)
+	return melee_resolver.calculate_casualties(attack, defense, strength)
 
 ## Update charge timers
 func _update_charge_timers(delta: float) -> void:
@@ -879,37 +655,27 @@ func _get_friendly_in_melee_with(target: Regiment, attacker_is_player: bool) -> 
 				return potential_friendly
 	return null
 
-## Friendly fire chance when shooting into melee
-const FRIENDLY_FIRE_CHANCE: float = 0.15  # 15% chance to hit friendly
 
 ## Fire ranged attack
 func fire_ranged(attacker: Regiment, target: Regiment) -> void:
-	print("[RANGED] fire_ranged called: %s -> %s" % [attacker.name, target.name])
-
 	if attacker.current_ammo <= 0:
-		print("[RANGED] BLOCKED: No ammo")
 		return
 	if attacker.data.ballistic_skill == 0:
-		print("[RANGED] BLOCKED: No ballistic_skill")
 		return
 
 	# Weather LOS check - weather may block ranged attacks at distance
 	if WeatherSystem.blocks_los(attacker.global_position.distance_to(target.global_position)):
-		print("[RANGED] BLOCKED: Weather blocks LOS")
 		return
 
 	# LoS check
 	if not _has_line_of_sight(attacker, target):
-		print("[RANGED] BLOCKED: No LOS")
 		return
 
 	# Range check
 	var dist: float = attacker.global_position.distance_to(target.global_position)
 	if dist > attacker.data.range_distance:
-		print("[RANGED] BLOCKED: Out of range (%.1f > %.1f)" % [dist, attacker.data.range_distance])
 		return
 
-	print("[RANGED] FIRING! ammo %d -> %d" % [attacker.current_ammo, attacker.current_ammo - 1])
 	attacker.current_ammo -= 1
 
 	# Play bow release audio
@@ -930,9 +696,6 @@ func fire_ranged(attacker: Regiment, target: Regiment) -> void:
 			if friendly and is_instance_valid(friendly):
 				actual_target = friendly
 				friendly_hit = true
-				print("CombatManager: FRIENDLY FIRE! %s hit %s while aiming at %s" % [
-					attacker.name, friendly.name, target.name
-				])
 
 	# Spawn projectile to actual target
 	_spawn_projectile(attacker, actual_target)
@@ -1006,30 +769,75 @@ func _spawn_projectile(from: Regiment, to: Regiment) -> void:
 		projectile.start_flight()
 
 ## Resolve ranged hit with damage multiplier (for piercing/AOE)
+## Total War style: arrows hit easily, armor saves block damage
+## Includes terrain: height bonus, forest defense, concealment
 func resolve_ranged_hit_with_multiplier(attacker: Regiment, defender: Regiment, damage_multiplier: float = 1.0) -> void:
-	# Calculate hit chance with attacker's ranged modifier (formation + veterancy + stamina)
-	var base_hit_chance: float = attacker.data.ballistic_skill / 20.0  # 0-1
-	var ranged_mod: float = attacker.get_ranged_modifier()
-	var hit_chance: float = base_hit_chance * ranged_mod
+	# Use RangedResolver for Total War style hit + armor save + terrain
+	var result: Dictionary = ranged_resolver.resolve_ranged_attack(attacker, defender)
 
-	# Apply weather accuracy modifier (rain, fog, storm reduce accuracy)
-	hit_chance = WeatherSystem.apply_accuracy_modifier(hit_chance)
+	# If target is concealed (hidden in forest), can't shoot them
+	if result.get("concealed", false):
+		if debug_combat:
+			print("[COMBAT] RANGED %s -> %s: CONCEALED (hidden in terrain)" % [
+				attacker.name, defender.name])
+		return
 
-	if randf() > hit_chance:
-		return  # Miss
+	# Apply weather accuracy modifier to the roll (pre-resolution)
+	# Note: This modifies the threshold, not re-rolling
+	var weather_mod: float = WeatherSystem.get_ranged_accuracy_modifier()
+
+	# Apply fire mode modifier (Stainless Steel pattern)
+	# VOLLEY: Fires more arrows but each is less accurate
+	# DIRECT: Fires fewer but more accurate shots
+	var fire_mode_mod: float = 1.0
+	if attacker.data.fire_mode == RegimentData.FireMode.DIRECT:
+		fire_mode_mod = 1.15  # +15% effective accuracy
+	else:
+		fire_mode_mod = 0.95  # -5% (volley compensates with volume)
+
+	# Combine modifiers for effective accuracy check
+	var effective_accuracy: float = result.accuracy * weather_mod * fire_mode_mod
+
+	# Re-check with modifiers if original was a miss but modifiers help
+	if not result.hit and not result.blocked:
+		if randf() < effective_accuracy:
+			# Weather/fire mode saved the shot - now check armor
+			var armor_save: float = ranged_resolver.calculate_armor_save(defender)
+			if randf() < armor_save:
+				result.blocked = true
+			else:
+				result.hit = true
+				result.damage = ranged_resolver.calculate_damage(attacker, defender)
+
+	# If blocked by armor/terrain, no damage
+	if result.blocked:
+		if debug_combat:
+			var terrain_info: String = ""
+			if result.get("terrain_defense_mod", 1.0) > 1.0:
+				terrain_info = " (terrain: +%.0f%%)" % [(result.terrain_defense_mod - 1.0) * 100]
+			print("[COMBAT] RANGED %s -> %s: BLOCKED%s (save: %.0f%%)" % [
+				attacker.name, defender.name, terrain_info, result.armor_save * 100])
+		return
+
+	# If miss, no effect
+	if not result.hit:
+		if debug_combat:
+			print("[COMBAT] RANGED %s -> %s: MISS (acc: %.0f%%)" % [
+				attacker.name, defender.name, effective_accuracy * 100])
+		return
+
+	# Hit connected - calculate final damage
+	var damage: int = result.damage
 
 	# Play arrow impact audio
 	_play_combat_sfx_random("arrow_hit", 3, defender.global_position)
 
-	# Base damage
-	var damage: int = max(1, attacker.data.strength - defender.data.defense / 2)
-
 	# Apply high ground bonus/penalty
 	var height_diff: float = attacker.global_position.y - defender.global_position.y
 	if height_diff > 1.0:
-		damage = int(float(damage) * 1.15)  # High ground bonus for ranged
+		damage = int(float(damage) * RANGED_HIGH_GROUND_BONUS)
 	elif height_diff < -1.0:
-		damage = int(float(damage) * 0.85)  # Low ground penalty for ranged
+		damage = int(float(damage) * RANGED_LOW_GROUND_PENALTY)
 
 	# Check for cover protection
 	var cover_reduction: float = _get_cover_damage_reduction(defender)
@@ -1051,9 +859,9 @@ func resolve_ranged_hit_with_multiplier(attacker: Regiment, defender: Regiment, 
 
 	# Debug ranged combat output
 	if debug_combat:
-		print("[COMBAT] RANGED(pierce) %s(%d) hits %s(%d) for %d damage" % [
-			attacker.name, attacker.current_soldiers, defender.name, defender.current_soldiers, damage
-		])
+		print("[COMBAT] RANGED %s(%d) hits %s(%d) for %d damage (acc:%.0f%% armor:%.0f%%)" % [
+			attacker.name, attacker.current_soldiers, defender.name, defender.current_soldiers,
+			damage, result.accuracy * 100, result.armor_save * 100])
 
 	# Apply damage
 	defender.take_casualties(damage)
@@ -1069,7 +877,7 @@ func resolve_ranged_hit_with_multiplier(attacker: Regiment, defender: Regiment, 
 	if damage > 0:
 		_play_death_cry(defender.global_position, damage)
 
-	MoraleSystem.apply_morale_damage(defender, damage * 0.3)
+	MoraleSystem.apply_morale_damage(defender, float(damage) * RANGED_MORALE_RATIO, "ranged_hit")
 	damage_dealt.emit(defender, damage, attacker, "ranged")
 	BattleSignals.regiment_attacked.emit(attacker, defender, damage)
 
@@ -1101,79 +909,51 @@ func get_projectile_stats() -> Dictionary:
 	return {}
 
 func _process(delta: float) -> void:
-	# Staggered combat resolution - process one bucket per frame
-	# Each combat gets resolved once every BUCKET_COUNT frames
-	# Combined with MELEE_TICK_RATE, effective tick rate = MELEE_TICK_RATE * BUCKET_COUNT frames
+	# Don't process combat during deployment phase
+	if DeploymentManager and DeploymentManager.is_deployment_phase():
+		return
+
+	# Advance bucket every frame so each melee gets serviced at the correct rate
+	_update_bucket = (_update_bucket + 1) % BUCKET_COUNT
+
+	# Staggered combat resolution - process one bucket per tick interval
+	# Each melee is resolved once every MELEE_TICK_RATE seconds
 	melee_timer += delta
-	if melee_timer >= MELEE_TICK_RATE / float(BUCKET_COUNT):
-		melee_timer = 0.0
+	var bucket_interval: float = MELEE_TICK_RATE / float(BUCKET_COUNT)
+	if melee_timer >= bucket_interval:
+		melee_timer -= bucket_interval  # Subtract, don't reset, to avoid drift
 		var start_time := Time.get_ticks_usec()
 		_resolve_all_melees()
 		var elapsed := (Time.get_ticks_usec() - start_time) / 1000.0
 		if elapsed > 16.0:  # More than 16ms = frame drop
 			print("[PERF_WARN] Combat _resolve_all_melees took %.1fms (melees=%d)" % [elapsed, active_melees.size()])
-		_update_bucket = (_update_bucket + 1) % BUCKET_COUNT
 	_update_charge_timers(delta)
 
 
 ## Push per-soldier morale events when casualties occur
+## Batched to prevent N separate events for N casualties
 func _push_casualty_morale_events(defender: Regiment, casualties: int, attacker: Regiment) -> void:
-	if not defender.unit_morale:
+	if not defender.unit_morale or casualties <= 0:
 		return
 
-	# For each casualty, push friend_killed event to nearby soldiers
-	for i in casualties:
-		var event: MoraleEvent = MoraleEvent.friend_killed(defender.global_position)
-		defender.unit_morale.apply_event_to_nearby(
-			event,
-			defender.global_position,
-			MoraleConstants.FRIEND_KILLED_RADIUS
-		)
+	# Batch casualties into single scaled event (cap at 5x multiplier)
+	var event: MoraleEvent = MoraleEvent.friend_killed(defender.global_position)
+	event.magnitude *= minf(float(casualties), 5.0)  # Scale by casualties, cap at 5x
+	defender.unit_morale.apply_event_to_nearby(
+		event,
+		defender.global_position,
+		MoraleConstants.FRIEND_KILLED_RADIUS
+	)
 
-	# Give kill morale boost to attacker
-	if attacker.unit_morale and casualties > 0:
+	# Give kill morale boost to attacker (also batched)
+	if attacker.unit_morale:
 		var kill_event: MoraleEvent = MoraleEvent.kill_enemy(defender.global_position)
+		kill_event.magnitude *= minf(float(casualties), 5.0)  # Scale by kills, cap at 5x
 		attacker.unit_morale.apply_event_to_nearby(
 			kill_event,
 			attacker.global_position,
 			MoraleConstants.FRIEND_KILLED_RADIUS
 		)
-
-
-## Apply high ground morale modifiers during melee combat
-func _apply_height_morale_modifier(attacker: Regiment, defender: Regiment) -> void:
-	var height_diff: float = attacker.global_position.y - defender.global_position.y
-
-	# Attacker on high ground
-	if height_diff > HEIGHT_ADVANTAGE_THRESHOLD:
-		if attacker.unit_morale:
-			attacker.unit_morale.set_continuous_modifier_all(
-				MoraleEvent.Source.HIGH_GROUND,
-				MoraleConstants.CONTINUOUS_HIGH_GROUND
-			)
-		if defender.unit_morale:
-			defender.unit_morale.set_continuous_modifier_all(
-				MoraleEvent.Source.HIGH_GROUND,
-				-MoraleConstants.CONTINUOUS_HIGH_GROUND
-			)
-	# Defender on high ground
-	elif height_diff < -HEIGHT_ADVANTAGE_THRESHOLD:
-		if defender.unit_morale:
-			defender.unit_morale.set_continuous_modifier_all(
-				MoraleEvent.Source.HIGH_GROUND,
-				MoraleConstants.CONTINUOUS_HIGH_GROUND
-			)
-		if attacker.unit_morale:
-			attacker.unit_morale.set_continuous_modifier_all(
-				MoraleEvent.Source.HIGH_GROUND,
-				-MoraleConstants.CONTINUOUS_HIGH_GROUND
-			)
-	# No significant height difference - clear modifiers
-	else:
-		if attacker.unit_morale:
-			attacker.unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.HIGH_GROUND)
-		if defender.unit_morale:
-			defender.unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.HIGH_GROUND)
 
 
 ## Apply morale events when a unit is flanked

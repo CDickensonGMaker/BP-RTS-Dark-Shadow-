@@ -44,8 +44,13 @@ func _get_destination() -> Vector3:
 	## Determine where to move.
 
 	# If we have a target, move towards it
-	var target: Node = blackboard.get("target")
-	if target and is_instance_valid(target):
+	# NOTE: blackboard may return a freed instance - check validity BEFORE accessing
+	var target: Variant = blackboard.get("target")
+	if target != null and is_instance_valid(target) and target is Node:
+		# Verify regiment is also valid before calculating
+		if not commander.regiment or not is_instance_valid(commander.regiment):
+			return Vector3.ZERO
+
 		# Get engagement distance based on unit type
 		var engage_dist: float = _get_engagement_distance()
 
@@ -57,6 +62,10 @@ func _get_destination() -> Vector3:
 			return target.global_position - dir * engage_dist
 		else:
 			return target.global_position
+	elif target != null and not is_instance_valid(target):
+		# Target was freed - clear it from blackboard to prevent future errors
+		blackboard.set("target", null)
+		commander.clear_target()
 
 	# Check for explicit destination
 	var dest: Variant = blackboard.get("destination")

@@ -7,6 +7,7 @@ extends BTNode
 var commander: CommanderAI
 const MELEE_RANGE: float = 7.0  # Slightly larger than MeleeArea radius (6.0) to stop before collision
 const CHARGE_RANGE: float = 15.0
+const DEFENSIVE_ENGAGE_RANGE: float = 18.0  # Auto-engage enemies within this range when DEFENSIVE
 
 func _init(p_commander: CommanderAI) -> void:
 	super._init("EngageMelee")
@@ -16,8 +17,13 @@ func _init(p_commander: CommanderAI) -> void:
 func tick(_delta: float) -> Status:
 	## Engage target in melee combat.
 
-	var target: Node = blackboard.get("target")
-	if not target or not is_instance_valid(target):
+	# Validate target - check for freed instances before accessing properties
+	var target_ref: Variant = blackboard.get("target")
+	if target_ref == null or not is_instance_valid(target_ref):
+		return Status.FAILURE
+
+	var target: Node = target_ref as Node
+	if not target:
 		return Status.FAILURE
 
 	if target.state == Regiment.State.DEAD:
@@ -25,6 +31,9 @@ func tick(_delta: float) -> Status:
 		return Status.FAILURE
 
 	var regiment: Node = commander.regiment
+	if not regiment or not is_instance_valid(regiment):
+		return Status.FAILURE
+
 	var distance: float = regiment.global_position.distance_to(target.global_position)
 
 	# Already engaged? Don't issue any new orders - let combat resolve
@@ -45,7 +54,20 @@ func tick(_delta: float) -> Status:
 		CombatManager.begin_melee(regiment, target)
 		return Status.RUNNING
 
-	# In charge range - charge!
+	# DEFENSIVE STANCE - hold position, only engage if enemy comes close
+	# Per game bible: "Holds position, will attack threats approaching"
+	if commander.current_stance == CommanderAI.Stance.DEFENSIVE:
+		if distance <= DEFENSIVE_ENGAGE_RANGE:
+			# Enemy close enough - short move to engage
+			if regiment.state != Regiment.State.MARCHING:
+				commander.issue_move_order(target.global_position)
+			return Status.RUNNING
+		else:
+			# Enemy too far - hold position, clear target, wait for them to approach
+			commander.clear_target()
+			return Status.FAILURE
+
+	# In charge range - charge! (only for non-DEFENSIVE stances)
 	if distance <= CHARGE_RANGE and regiment.data.charge_bonus > 0:
 		_initiate_charge(target)
 		return Status.RUNNING
@@ -58,7 +80,12 @@ func tick(_delta: float) -> Status:
 
 func _initiate_charge(target: Node) -> void:
 	## Begin a charge towards the target.
+	if not is_instance_valid(target):
+		return
+
 	var regiment: Node = commander.regiment
+	if not regiment or not is_instance_valid(regiment):
+		return
 
 	# Apply charge morale effect to enemy
 	if target.has_method("get") and target.get("unit_morale"):

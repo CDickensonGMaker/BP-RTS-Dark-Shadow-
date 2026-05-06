@@ -271,6 +271,10 @@ func calculate_wide_flank_waypoints(attacker: Node, defender: Node, arc_distance
 	## Returns Array[Vector3] forming an arc around the defender.
 	var waypoints: Array = []
 
+	# Validate both nodes before accessing positions
+	if not is_instance_valid(attacker) or not is_instance_valid(defender):
+		return waypoints
+
 	var start_pos: Vector3 = attacker.global_position
 	var target_pos: Vector3 = defender.global_position
 
@@ -328,7 +332,7 @@ func _is_valid_target(target: Node) -> bool:
 
 func _get_hp_ratio(regiment: Node) -> float:
 	## Get HP ratio (0-1).
-	if regiment is Regiment:
+	if regiment is Regiment and regiment.data and regiment.data.max_soldiers > 0:
 		return float(regiment.current_soldiers) / float(regiment.data.max_soldiers)
 	return 1.0
 

@@ -370,10 +370,13 @@ func _create_unit_card_bar():
 	scroll.offset_top = 8
 	scroll.offset_bottom = -8
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS  # Always show scrollbar for many units
+	scroll.follow_focus = true  # Auto-scroll to selected unit
 	bottom_panel.add_child(scroll)
 
 	unit_card_container = HBoxContainer.new()
-	unit_card_container.add_theme_constant_override("separation", 8)
+	unit_card_container.add_theme_constant_override("separation", 4)  # Smaller spacing for more units
+	unit_card_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(unit_card_container)
 
 
@@ -446,10 +449,14 @@ func _set_game_speed(speed: float):
 
 func _connect_signals():
 	if BattleSignals:
-		BattleSignals.regiment_selected.connect(_on_regiment_selected)
-		BattleSignals.regiment_dead.connect(_on_regiment_dead)
-		BattleSignals.deployment_ended.connect(_on_deployment_ended)
-		BattleSignals.battle_started.connect(_on_battle_started)
+		if not BattleSignals.regiment_selected.is_connected(_on_regiment_selected):
+			BattleSignals.regiment_selected.connect(_on_regiment_selected)
+		if not BattleSignals.regiment_dead.is_connected(_on_regiment_dead):
+			BattleSignals.regiment_dead.connect(_on_regiment_dead)
+		if not BattleSignals.deployment_ended.is_connected(_on_deployment_ended):
+			BattleSignals.deployment_ended.connect(_on_deployment_ended)
+		if not BattleSignals.battle_started.is_connected(_on_battle_started):
+			BattleSignals.battle_started.connect(_on_battle_started)
 
 
 func _on_deployment_ended():
@@ -468,6 +475,10 @@ func _populate_unit_cards():
 
 	await get_tree().process_frame
 	await get_tree().process_frame
+
+	# Safety check after await in case scene changed
+	if not is_instance_valid(self) or not is_instance_valid(unit_card_container):
+		return
 
 	var regiments = get_tree().get_nodes_in_group("player_regiments")
 	for regiment in regiments:

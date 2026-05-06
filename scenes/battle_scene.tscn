@@ -1,5 +1,6 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=22 format=3]
 
+[ext_resource type="Script" path="res://scenes/battle_scene.gd" id="0_main"]
 [ext_resource type="Script" path="res://battle_system/terrain/battle_terrain.gd" id="1"]
 [ext_resource type="Script" path="res://battle_system/nodes/regiment.gd" id="2"]
 [ext_resource type="Script" path="res://battle_system/nodes/regiment_leader.gd" id="3"]
@@ -22,6 +23,9 @@
 [ext_resource type="Resource" path="res://battle_system/data/regiments/biguns_regiment.tres" id="enemy_archer2"]
 [ext_resource type="Resource" path="res://battle_system/data/regiments/wolfride_regiment.tres" id="enemy_cavalry"]
 
+; Supply Wagon
+[ext_resource type="Script" path="res://battle_system/nodes/supply_wagon.gd" id="supply_wagon"]
+
 [sub_resource type="CapsuleShape3D" id="CapsuleShape_1"]
 radius = 8.0
 height = 10.0
@@ -34,6 +38,9 @@ ambient_light_color = Color(0.9, 0.9, 0.95, 1)
 ambient_light_energy = 0.7
 
 [node name="BattleScene" type="Node3D"]
+script = ExtResource("0_main")
+stress_test_mode = true
+stress_test_units_per_side = 20
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_1")
@@ -370,6 +377,26 @@ monitorable = true
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyWolfRiders/MeleeArea"]
 shape = SubResource("CapsuleShape_1")
+
+; ========== SUPPLY WAGONS ==========
+
+; Player Supply Wagon - Behind archers
+[node name="PlayerSupplyWagon" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -85, 10, 0)
+script = ExtResource("supply_wagon")
+supply_range = 50.0
+arrow_resupply_rate = 5.0
+provides_arrows = true
+faction = 0
+
+; Enemy Supply Wagon - Behind enemy archers
+[node name="EnemySupplyWagon" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 85, 10, 0)
+script = ExtResource("supply_wagon")
+supply_range = 50.0
+arrow_resupply_rate = 5.0
+provides_arrows = true
+faction = 1
 
 ; ========== UI LAYERS ==========
 
