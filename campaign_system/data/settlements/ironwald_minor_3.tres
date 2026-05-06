@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://umh5poavyjl3"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_74ry8"]
+
+[resource]
+script = ExtResource("1_74ry8")
+settlement_id = "ironwald_minor_3"
+settlement_name = "Ironwald Mill"
+settlement_type = 1
+region_id = "ironwald"
+map_position = Vector2(1071.0234, 610)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

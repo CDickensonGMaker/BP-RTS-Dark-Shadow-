@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://740r57yf6ffd"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_70w4o"]
+
+[resource]
+script = ExtResource("1_70w4o")
+settlement_id = "crows_ford_minor_2"
+settlement_name = "Crows Ford Village"
+settlement_type = 1
+region_id = "crows_ford"
+map_position = Vector2(1034.98126, 1424)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

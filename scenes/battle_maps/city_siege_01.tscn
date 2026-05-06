@@ -1,0 +1,72 @@
+[gd_scene load_steps=6 format=3 uid="uid://bp_city_siege_01"]
+
+[ext_resource type="Script" path="res://scenes/battle_scene.gd" id="1_main"]
+[ext_resource type="Script" path="res://battle_system/terrain/battle_terrain.gd" id="2_terrain"]
+[ext_resource type="Script" path="res://battle_system/ui/battle_over_screen.gd" id="3_battle_over"]
+[ext_resource type="Script" path="res://battle_system/objectives/capture_point.gd" id="4_capture"]
+[ext_resource type="Script" path="res://battle_system/objectives/siege_manager.gd" id="5_siege"]
+
+[node name="BattleScene" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="BattleTerrain" type="Node3D" parent="."]
+script = ExtResource("2_terrain")
+terrain_size = Vector2(350, 320)
+terrain_resolution = 96
+height_scale = 6.0
+tree_count = 10
+building_count = 40
+prop_count = 100
+rock_count = 10
+bush_count = 15
+
+[node name="SiegeManager" type="Node" parent="."]
+script = ExtResource("5_siege")
+require_all_points = false
+hold_time = 30.0
+
+[node name="CapturePointPalace" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -40)
+script = ExtResource("4_capture")
+capture_radius = 25.0
+capture_time = 90.0
+point_name = "Royal Palace"
+star_size = 5.0
+
+[node name="CapturePointMainGate" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 80)
+script = ExtResource("4_capture")
+capture_radius = 16.0
+capture_time = 30.0
+point_name = "City Gate"
+
+[node name="CapturePointCathedral" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 45, 0, 0)
+script = ExtResource("4_capture")
+capture_radius = 14.0
+capture_time = 25.0
+point_name = "Grand Cathedral"
+
+[node name="CapturePointGuildHall" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -50, 0, 20)
+script = ExtResource("4_capture")
+capture_radius = 12.0
+capture_time = 20.0
+point_name = "Guild Hall"
+
+[node name="CapturePointBarracks" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 0, -60)
+script = ExtResource("4_capture")
+capture_radius = 14.0
+capture_time = 25.0
+point_name = "City Barracks"
+
+[node name="CapturePointTreasury" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 35, 0, -50)
+script = ExtResource("4_capture")
+capture_radius = 10.0
+capture_time = 20.0
+point_name = "Treasury"
+
+[node name="BattleOverScreen" type="CanvasLayer" parent="."]
+script = ExtResource("3_battle_over")

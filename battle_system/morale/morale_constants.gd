@@ -59,6 +59,16 @@ const CONTINUOUS_OFFICER_AURA: float = 0.2        # Near regiment leader
 const CONTINUOUS_WINNING: float = 0.3             # Winning the current engagement
 const CONTINUOUS_HIGH_GROUND: float = 0.15        # On elevated terrain
 
+# Territory modifiers (DEI-inspired)
+const CONTINUOUS_FRIENDLY_TERRITORY: float = 0.2  # +10% morale in friendly territory
+const CONTINUOUS_ENEMY_TERRITORY: float = -0.2    # -10% morale in enemy territory
+
+# Unit type morale modifiers (DEI-inspired)
+const UNIT_TYPE_HEAVY_INFANTRY_SAVE: float = 0.05 # +5% morale save for heavy infantry
+const UNIT_TYPE_RANGED_MELEE_PENALTY: float = -0.15 # -15% morale when ranged in melee
+const UNIT_TYPE_CAVALRY_MORALE_BONUS: float = 0.1  # +10% morale for cavalry (mobile, can flee)
+const UNIT_TYPE_ARTILLERY_VULNERABLE: float = -0.2 # -20% morale when artillery in melee
+
 # Recovery
 const CONTINUOUS_NATURAL_RECOVERY: float = 0.5    # Base recovery when safe
 const CONTINUOUS_RALLY_RECOVERY: float = 1.5      # Recovery during active rally

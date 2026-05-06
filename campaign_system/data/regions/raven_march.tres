@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://cjxb1y7qyqf78"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "raven_march"
+region_name = "Raven March"
+map_polygon = PackedVector2Array(2385.1563, 120, 2480.5625, 120, 2575.9688, 120, 2671.375, 120, 2766.7813, 120, 2766.7813, 240, 2671.375, 240, 2671.375, 360, 2671.375, 480, 2575.9688, 480, 2480.5625, 480, 2385.1563, 480, 2289.75, 480, 2194.3438, 480, 2194.3438, 360, 2289.75, 360, 2289.75, 240, 2385.1563, 240)
+map_center = Vector2(2491.5708, 309.23077)
+terrain_type = 2
+movement_cost_modifier = 1.5
+capital_settlement_id = "raven_march_capital"
+minor_settlement_ids = Array[String](["raven_march_minor_1", "raven_march_minor_2"])
+attrition_damage = 0.0
+region_color = Color(0.35, 0.35, 0.4, 0.2)

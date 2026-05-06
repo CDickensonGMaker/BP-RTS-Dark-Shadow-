@@ -49,11 +49,20 @@ void vertex() {
 	vec3 camera_right = normalize(vec3(inv_view[0].x, inv_view[0].y, inv_view[0].z));
 	vec3 camera_up = normalize(vec3(inv_view[1].x, inv_view[1].y, inv_view[1].z));
 
-	// For Y-axis billboard (stay upright), use world up instead
-	camera_up = vec3(0.0, 1.0, 0.0);
-	// Recalculate right to be perpendicular to up and view direction
-	vec3 camera_forward = normalize(vec3(inv_view[2].x, inv_view[2].y, inv_view[2].z));
-	camera_right = normalize(cross(camera_up, camera_forward));
+	// Dead soldiers (corpses) lie flat on ground - rotate sprite to be horizontal
+	bool is_corpse = v_is_dead > 0.5;
+	if (is_corpse) {
+		// For corpses: use world forward (camera-facing horizontal) instead of up
+		vec3 camera_forward = normalize(vec3(inv_view[2].x, 0.0, inv_view[2].z));
+		camera_right = normalize(cross(vec3(0.0, 1.0, 0.0), camera_forward));
+		// Corpse lies flat - use forward as "up" direction, scaled down
+		camera_up = camera_forward * 0.5;  // Corpse sprite is flatter
+	} else {
+		// Living soldiers: Y-axis billboard (stay upright)
+		camera_up = vec3(0.0, 1.0, 0.0);
+		vec3 camera_forward = normalize(vec3(inv_view[2].x, inv_view[2].y, inv_view[2].z));
+		camera_right = normalize(cross(camera_up, camera_forward));
+	}
 
 	// Transform vertex position to face camera
 	vec3 world_offset = camera_right * VERTEX.x + camera_up * VERTEX.y;
@@ -122,8 +131,13 @@ void fragment() {
 			discard;
 		}
 
-		// Show actual sprite color (dead soldiers show death frame)
-		ALBEDO = tex_color.rgb;
+		// Show actual sprite color
+		// Dead soldiers (corpses) get darker tint to show they're dead
+		if (is_dead_soldier) {
+			ALBEDO = tex_color.rgb * 0.6;  // Darken corpses
+		} else {
+			ALBEDO = tex_color.rgb;
+		}
 		ALPHA = 1.0;  // Force opaque for visible pixels
 	}
 }

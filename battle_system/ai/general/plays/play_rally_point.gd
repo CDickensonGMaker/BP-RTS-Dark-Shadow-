@@ -247,14 +247,13 @@ func _boost_morale(regiment: Node) -> void:
 	if not is_instance_valid(regiment):
 		return
 
-	# Apply morale bonus for successful rally
+	# Apply morale bonus for successful rally via centralized MoraleSystem
 	var morale_boost: float = 20.0
+	MoraleSystem.apply_morale_bonus(regiment, morale_boost, "rally_success")
 
-	# Use morale system if available
+	# Also apply to per-soldier morale if available
 	if regiment.unit_morale:
 		regiment.unit_morale.apply_morale_modifier(morale_boost)
-	else:
-		regiment.current_morale = minf(100.0, regiment.current_morale + morale_boost)
 
 
 func _update_screening_units() -> void:

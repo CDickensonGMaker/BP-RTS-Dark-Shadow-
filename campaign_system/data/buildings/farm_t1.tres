@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+building_id = "farm_t1"
+building_name = "Small Farm"
+description = "Basic agricultural production providing income and supply."
+category = 0
+tier = 1
+prerequisite_building = ""
+required_settlement_type = 0
+required_tech = ""
+gold_cost = 200
+turns_to_build = 1
+upkeep = 10
+income_bonus = 25
+supply_bonus = 5
+replenishment_bonus = 0.0
+global_replenishment = false
+recruitment_bonus = {}
+unlocks_units = []
+armor_upgrade = 0
+attack_upgrade = 0
+tech_points_per_turn = 0

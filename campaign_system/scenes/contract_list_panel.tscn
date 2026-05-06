@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/ui/contract_list_panel.gd" id="1"]
+
+[node name="ContractListPanel" type="PanelContainer"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -340.0
+offset_top = 60.0
+offset_right = -20.0
+offset_bottom = 480.0
+script = ExtResource("1")

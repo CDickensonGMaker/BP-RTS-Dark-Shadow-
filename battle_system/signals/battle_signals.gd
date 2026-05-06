@@ -28,6 +28,9 @@ signal regiment_rallied(regiment: Regiment)
 signal regiment_dead(regiment: Regiment)
 signal general_died(general: General)
 
+# Combat State Flags
+signal combat_state_changed(regiment: Regiment, flag: int, value: bool)
+
 # Battle
 signal battle_started()
 signal battle_ended(result: Dictionary)
@@ -72,3 +75,15 @@ signal ability_ready(regiment: Regiment, ability: int)
 # Spells
 signal spell_cast(caster: Regiment, spell_id: String, target_pos: Vector3)
 signal spell_hit(spell_id: String, target: Regiment, damage: int)
+
+# Reinforcements
+signal reinforcements_available(wave: int, count: int)
+signal reinforcements_arrived(wave: int)
+signal reinforcements_requested()
+signal spawn_reinforcement(spawn_info: Dictionary)
+	# spawn_info = { regiment_data, position, facing, is_reinforcement, wave }
+
+# Supply System (spring1944-inspired)
+signal unit_resupplied(regiment: Regiment, resource_type: String, amount: int)
+signal entered_supply_range(regiment: Regiment, wagon: Node)
+signal left_supply_range(regiment: Regiment, wagon: Node)

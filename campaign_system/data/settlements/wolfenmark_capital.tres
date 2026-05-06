@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://kxv7esut0y26"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_r3nps"]
+
+[resource]
+script = ExtResource("1_r3nps")
+settlement_id = "wolfenmark_capital"
+settlement_name = "Wolfenmark Fortress"
+settlement_type = 4
+region_id = "wolfenmark"
+is_regional_capital = true
+map_position = Vector2(1383.3906, 1140)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

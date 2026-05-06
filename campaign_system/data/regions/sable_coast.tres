@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://pskr8ehm2xp8"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "sable_coast"
+region_name = "Sable Coast"
+owner_faction = "dwarves"
+map_polygon = PackedVector2Array(2385.1563, 720, 2480.5625, 720, 2575.9688, 720, 2575.9688, 840, 2671.375, 840, 2671.375, 960, 2671.375, 1080, 2575.9688, 1080, 2575.9688, 1200, 2480.5625, 1200, 2480.5625, 1320, 2385.1563, 1320, 2385.1563, 1440, 2289.75, 1440, 2289.75, 1320, 2289.75, 1200, 2194.3438, 1200, 2194.3438, 1080, 2289.75, 1080, 2289.75, 960, 2385.1563, 960, 2385.1563, 840)
+map_center = Vector2(2444.7852, 1050)
+terrain_type = 6
+capital_settlement_id = "sable_coast_capital"
+minor_settlement_ids = Array[String](["sable_coast_minor_1", "sable_coast_minor_2", "sable_coast_minor_3"])
+attrition_damage = 0.0
+region_color = Color(0.4, 0.5, 0.55, 0.2)

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://dfm5wg25815pj"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_uj1jp"]
+
+[resource]
+script = ExtResource("1_uj1jp")
+settlement_id = "sable_coast_minor_2"
+settlement_name = "Sable Coast Village"
+settlement_type = 1
+region_id = "sable_coast"
+map_position = Vector2(2544.7852, 1130)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

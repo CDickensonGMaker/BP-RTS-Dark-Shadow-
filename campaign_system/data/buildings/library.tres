@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+building_id = "library"
+building_name = "Library"
+description = "Center of learning. Generates tech points each turn."
+category = 1
+tier = 1
+prerequisite_building = ""
+required_settlement_type = 1
+required_tech = ""
+gold_cost = 450
+turns_to_build = 2
+upkeep = 25
+income_bonus = 0
+supply_bonus = 0
+replenishment_bonus = 0.0
+global_replenishment = false
+recruitment_bonus = {}
+unlocks_units = []
+armor_upgrade = 0
+attack_upgrade = 0
+tech_points_per_turn = 5

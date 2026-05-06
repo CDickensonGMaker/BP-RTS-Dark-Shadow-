@@ -225,7 +225,7 @@ func _update_homing(delta: float) -> void:
 
 func _find_target_regiment() -> void:
 	## Find nearest enemy regiment for homing.
-	if not caster or not AIAutoload:
+	if not caster or not AIAutoload or not AIAutoload.spatial_hash:
 		return
 
 	var my_faction: int = 0 if caster.is_player_controlled else 1
@@ -284,7 +284,7 @@ func _on_impact() -> void:
 
 func _find_regiment_at_position(pos: Vector3, radius: float) -> Regiment:
 	## Find a regiment near the given position.
-	if not caster or not AIAutoload:
+	if not caster or not AIAutoload or not AIAutoload.spatial_hash:
 		return null
 
 	var my_faction: int = 0 if caster.is_player_controlled else 1

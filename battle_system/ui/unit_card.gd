@@ -116,6 +116,9 @@ func _ready():
 		BattleSignals.regiment_attacked.connect(_on_regiment_attacked)
 		BattleSignals.regiment_routing.connect(_on_regiment_routing)
 		BattleSignals.regiment_rallied.connect(_on_regiment_rallied)
+		BattleSignals.stance_changed.connect(_on_stance_changed)
+		BattleSignals.formation_type_changed.connect(_on_formation_changed)
+		BattleSignals.ability_ready.connect(_on_ability_ready)
 
 
 func _setup_ui():
@@ -145,12 +148,14 @@ func _setup_ui():
 	chevron_container = HBoxContainer.new()
 	chevron_container.position = Vector2(4, 4)
 	chevron_container.add_theme_constant_override("separation", 2)
+	chevron_container.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
 	portrait_container.add_child(chevron_container)
 
 	# === UNIT TYPE BADGE (Task 3) ===
 	unit_type_badge = Panel.new()
 	unit_type_badge.custom_minimum_size = Vector2(16, 16)
 	unit_type_badge.position = Vector2(80, 4)  # Top-right of portrait
+	unit_type_badge.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
 	var badge_style = StyleBoxFlat.new()
 	badge_style.bg_color = Color(0.4, 0.5, 0.7)
 	badge_style.set_corner_radius_all(3)
@@ -164,6 +169,7 @@ func _setup_ui():
 	unit_type_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	unit_type_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	unit_type_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	unit_type_label.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Ignore clicks
 	unit_type_badge.add_child(unit_type_label)
 
 	# Unit name
@@ -177,6 +183,7 @@ func _setup_ui():
 	status_container.custom_minimum_size = Vector2(0, 14)
 	status_container.add_theme_constant_override("separation", 2)
 	status_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	status_container.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
 	vbox.add_child(status_container)
 
 	# Soldier count
@@ -251,6 +258,7 @@ func _setup_ui():
 	ability_cooldown_container.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	ability_cooldown_container.position = Vector2(-52, -16)
 	ability_cooldown_container.add_theme_constant_override("separation", 2)
+	ability_cooldown_container.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
 	add_child(ability_cooldown_container)
 
 
@@ -428,6 +436,44 @@ func _on_regiment_rallied(reg: Regiment):
 		card_state = CardState.NORMAL
 
 
+func _on_stance_changed(reg: Node, _old_stance: int, new_stance: int) -> void:
+	if reg != regiment:
+		return
+	_update_stance_indicator(new_stance)
+
+
+func _on_formation_changed(reg: Node, _old_formation: int, new_formation: int) -> void:
+	if reg != regiment:
+		return
+	_update_formation_indicator(new_formation)
+
+
+func _on_ability_ready(reg: Node, ability_id: int) -> void:
+	if reg != regiment:
+		return
+	_flash_ability_ready(ability_id)
+
+
+func _update_stance_indicator(_stance: int) -> void:
+	# Stance is already shown via status icons (braced, etc.)
+	# This could be enhanced to show a stance badge
+	pass
+
+
+func _update_formation_indicator(_formation: int) -> void:
+	# Formation changes trigger visual update in next _process tick
+	# Could add a formation badge similar to unit type badge
+	pass
+
+
+func _flash_ability_ready(_ability_id: int) -> void:
+	# Flash the ability cooldown badge to indicate ready
+	# Create a brief visual pulse effect
+	var tween := create_tween()
+	tween.tween_property(ability_cooldown_container, "modulate", Color(1.5, 1.5, 0.5), 0.2)
+	tween.tween_property(ability_cooldown_container, "modulate", Color.WHITE, 0.3)
+
+
 # === CHEVRON BADGES (Task 2) ===
 
 func _update_chevrons():
@@ -453,6 +499,7 @@ func _create_chevron(color: Color) -> Control:
 	# Create a simple chevron/triangle badge
 	var badge = Panel.new()
 	badge.custom_minimum_size = Vector2(10, 10)
+	badge.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
 
 	var style = StyleBoxFlat.new()
 	style.bg_color = color
@@ -467,6 +514,7 @@ func _create_chevron(color: Color) -> Control:
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Ignore clicks
 	badge.add_child(lbl)
 
 	return badge
@@ -500,6 +548,7 @@ func _add_status_icon(letter: String, color: Color, tooltip: String):
 	var icon = Panel.new()
 	icon.custom_minimum_size = Vector2(12, 12)
 	icon.tooltip_text = tooltip
+	icon.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
 
 	var style = StyleBoxFlat.new()
 	style.bg_color = color
@@ -513,6 +562,7 @@ func _add_status_icon(letter: String, color: Color, tooltip: String):
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Ignore clicks
 	icon.add_child(lbl)
 
 	status_container.add_child(icon)

@@ -6,8 +6,8 @@
 [ext_resource type="Resource" path="res://assets/sprites/units/grtsword_atlas.tres" id="4_atlas"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape_melee"]
-radius = 6.0
-height = 14.0
+radius = 2.0
+height = 4.0
 
 [node name="Regiment" type="Node3D"]
 script = ExtResource("1")
@@ -24,6 +24,7 @@ billboard = 2
 script = ExtResource("2")
 
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="RegimentLeader"]
+avoidance_enabled = false
 
 [node name="MeleeArea" type="Area3D" parent="."]
 collision_layer = 2

@@ -389,7 +389,7 @@ func _acquire_next_target() -> void:
 		return
 
 	# Get nearby enemies in direction of travel
-	var regiments: Array = get_tree().get_nodes_in_group("regiments")
+	var regiments: Array = get_tree().get_nodes_in_group("all_regiments")
 	var best_target: Regiment = null
 	var best_score: float = -1.0
 
@@ -431,7 +431,7 @@ func _trigger_aoe(pos: Vector3) -> void:
 		return
 
 	# Find all regiments in AOE radius
-	var regiments: Array = get_tree().get_nodes_in_group("regiments")
+	var regiments: Array = get_tree().get_nodes_in_group("all_regiments")
 
 	for reg in regiments:
 		if not is_instance_valid(reg):

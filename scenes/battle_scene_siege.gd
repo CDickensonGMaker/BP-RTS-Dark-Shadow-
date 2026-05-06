@@ -10,8 +10,8 @@ func _ready():
 	player_regiment.is_player_controlled = true
 	enemy_regiment.is_player_controlled = false
 
-	# Start the battle
-	BattleManager.start_battle()
+	# Don't auto-start battle - let deployment phase run first
+	# Player clicks "CLICK TO START" button in BattleHUD to begin combat
 
 	# Set initial camera position (higher for siege overview)
 	var camera = $RTSCamera

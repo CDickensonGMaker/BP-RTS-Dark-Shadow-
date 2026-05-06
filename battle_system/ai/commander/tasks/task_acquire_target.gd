@@ -22,6 +22,8 @@ func tick(_delta: float) -> Status:
 		return Status.FAILURE
 
 	# Get enemy candidates
+	if not AIAutoload:
+		return Status.FAILURE
 	var candidates: Array = AIAutoload.get_enemy_regiments(commander._faction)
 
 	if candidates.is_empty():
@@ -49,7 +51,7 @@ func _get_acquisition_range() -> float:
 		CommanderAI.Stance.PASSIVE:
 			return 0.0  # Don't acquire targets
 		CommanderAI.Stance.DEFENSIVE:
-			return 40.0  # Nearby threats (increased from 20)
+			return 25.0  # Nearby threats only - hold position behavior
 		CommanderAI.Stance.AGGRESSIVE:
 			return 120.0  # Full engagement range (increased from 80)
 		CommanderAI.Stance.FLANKING:

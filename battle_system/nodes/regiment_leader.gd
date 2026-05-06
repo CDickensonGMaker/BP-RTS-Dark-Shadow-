@@ -5,55 +5,113 @@
 class_name RegimentLeader
 extends Node3D
 
+# Preload to avoid parse-order issues with class_name
+const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.gd")
 
 @onready var nav_agent: NavigationAgent3D = $NavigationAgent3D
 var target_position: Vector3
-var move_speed: float = 1.5  # Reduced for Total War-like pacing (was 4.0)
 
-# Terrain reference for height following
-var _terrain: DaggerfallTerrain = null
+# Base speeds (set from RegimentData in Regiment._ready)
+var walk_speed: float = 1.75    # Normal marching pace (50% of old)
+var run_speed: float = 2.0      # Slightly faster (running)
+var charge_speed: float = 3.5   # Fast burst for charges (old infantry speed)
+var charge_speed_distance: float = 15.0  # Distance charge speed lasts
+
+# Speed modifier from parent regiment (fatigue, formation, etc.)
+# Updated each frame by Regiment - DEI-inspired fatigue system
+var speed_modifier: float = 1.0
+
+# Movement mode (set by Regiment based on orders)
+enum MoveMode { WALK, RUN, CHARGE }
+var move_mode: MoveMode = MoveMode.WALK
+
+# Charge burst tracking
+var _charge_start_pos: Vector3 = Vector3.ZERO
+var _charge_distance_used: float = 0.0
+
+# Stuck detection (spring1944-inspired)
+var _last_position: Vector3 = Vector3.ZERO
+var _stuck_time: float = 0.0
+const STUCK_THRESHOLD: float = 3.0  # Seconds before attempting unstuck
+const STUCK_MOVE_THRESHOLD: float = 0.5  # Must move more than this to not be stuck
+
+
+## Get the effective movement speed based on mode and charge distance
+func get_effective_speed() -> float:
+	var base_speed: float
+
+	match move_mode:
+		MoveMode.CHARGE:
+			# Charge speed only lasts for charge_speed_distance, then drops to run
+			if _charge_distance_used < charge_speed_distance:
+				base_speed = charge_speed
+			else:
+				base_speed = run_speed  # Slow down after charge burst expires
+		MoveMode.RUN:
+			base_speed = run_speed
+		_:  # WALK
+			base_speed = walk_speed
+
+	return base_speed * speed_modifier
+
+
+## Start a charge burst - resets charge distance tracking
+func start_charge() -> void:
+	move_mode = MoveMode.CHARGE
+	_charge_start_pos = global_position
+	_charge_distance_used = 0.0
+
+
+## Set movement mode (called by Regiment)
+func set_move_mode(mode: MoveMode) -> void:
+	if move_mode != mode:
+		move_mode = mode
+		if mode == MoveMode.CHARGE:
+			start_charge()
+
+
+## Reset charge state when combat ends or order changes
+func reset_charge_burst() -> void:
+	_charge_distance_used = 0.0
+	_charge_start_pos = global_position
 
 
 func _ready():
-	# Find the terrain for height following
-	await get_tree().process_frame
-	_find_terrain()
+	# Initialize target to current position to prevent spurious movement
+	target_position = global_position
+	if nav_agent:
+		nav_agent.target_position = global_position
 
 
-func _find_terrain():
-	# Search for DaggerfallTerrain in the scene
-	var terrains = get_tree().get_nodes_in_group("terrain")
-	if terrains.size() > 0:
-		_terrain = terrains[0]
-	else:
-		# Fallback: search by class
-		for node in get_tree().get_nodes_in_group("all_regiments"):
-			var parent = node.get_parent()
-			while parent:
-				if parent is DaggerfallTerrain:
-					_terrain = parent
-					return
-				for child in parent.get_children():
-					if child is DaggerfallTerrain:
-						_terrain = child
-						return
-				parent = parent.get_parent()
+func _get_terrain() -> DaggerfallTerrain:
+	## Get terrain via centralized helper (Phase 6.4 deduplication)
+	return TerrainHelperScript.get_terrain(get_tree())
 
 
 func stop_movement():
 	## Stop all movement immediately - for combat engagement
 	target_position = global_position
 	nav_agent.target_position = global_position
+	nav_agent.set_velocity(Vector3.ZERO)  # Force velocity stop to prevent rubberbanding
+
+
+const ARENA_MARGIN: float = 5.0  # Stay this far inside arena bounds
 
 
 func move_to(pos: Vector3):
-	# Re-find terrain if not set
-	if not _terrain:
-		_find_terrain()
+	# Clamp to arena bounds with safety margin (Phase 9.2)
+	var map_bound: float = 90.0
+	if AIAutoload:
+		map_bound = AIAutoload.get_map_bounds()
+	var safe_bound: float = map_bound - ARENA_MARGIN
+	pos.x = clampf(pos.x, -safe_bound, safe_bound)
+	pos.z = clampf(pos.z, -safe_bound, safe_bound)
+
 	target_position = pos
-	# Adjust target height to terrain
-	if _terrain:
-		pos.y = _terrain.get_height_at(pos)
+	# Adjust target height to terrain (Phase 6.4: use helper)
+	var terrain := _get_terrain()
+	if terrain:
+		pos.y = terrain.get_height_at(pos)
 
 	# Check if navigation map is available
 	var nav_map = nav_agent.get_navigation_map()
@@ -65,9 +123,15 @@ func move_to(pos: Vector3):
 func _physics_process(delta):
 	# Always follow terrain height
 	_apply_terrain_height()
+	# Per-frame arena bounds safety net (Phase 9.3)
+	_enforce_arena_bounds()
 
 	if nav_agent.is_navigation_finished():
+		_stuck_time = 0.0  # Reset stuck timer when navigation complete
 		return
+
+	# Stuck detection (spring1944-inspired)
+	_check_stuck(delta)
 
 	# Check if nav map is available
 	var nav_map = nav_agent.get_navigation_map()
@@ -96,9 +160,16 @@ func _physics_process(delta):
 		dir_to_target.y = 0
 		if dir_to_target.length() > 0.1:
 			var direction = dir_to_target.normalized()
-			var new_pos = global_position + direction * move_speed * delta
-			if _terrain:
-				new_pos.y = _terrain.get_height_at(new_pos)
+			# Get speed based on movement mode (walk/run/charge)
+			var effective_speed: float = get_effective_speed()
+			var move_dist: float = effective_speed * delta
+			var new_pos = global_position + direction * move_dist
+			# Track charge distance
+			if move_mode == MoveMode.CHARGE:
+				_charge_distance_used += move_dist
+			var terrain := _get_terrain()
+			if terrain:
+				new_pos.y = terrain.get_height_at(new_pos)
 			global_position = new_pos
 			# Face movement direction
 			if direction.length() > 0.01:
@@ -108,12 +179,19 @@ func _physics_process(delta):
 	var direction = (next - global_position).normalized()
 	direction.y = 0  # Keep movement horizontal
 
-	# Move horizontally
-	var new_pos = global_position + direction * move_speed * delta
+	# Get speed based on movement mode (walk/run/charge)
+	var effective_speed: float = get_effective_speed()
+	var move_dist: float = effective_speed * delta
+	var new_pos = global_position + direction * move_dist
 
-	# Apply terrain height
-	if _terrain:
-		new_pos.y = _terrain.get_height_at(new_pos)
+	# Track charge distance used
+	if move_mode == MoveMode.CHARGE:
+		_charge_distance_used += move_dist
+
+	# Apply terrain height (Phase 6.4: use helper)
+	var terrain := _get_terrain()
+	if terrain:
+		new_pos.y = terrain.get_height_at(new_pos)
 
 	global_position = new_pos
 
@@ -124,33 +202,119 @@ func _physics_process(delta):
 
 
 func _apply_terrain_height():
-	## Snap to terrain height
-	if _terrain:
-		var terrain_height = _terrain.get_height_at(global_position)
+	## Snap to terrain height (Phase 6.4: use helper)
+	var terrain := _get_terrain()
+	if terrain:
+		var terrain_height = terrain.get_height_at(global_position)
 		global_position.y = terrain_height
 
 
+func _enforce_arena_bounds() -> void:
+	## Per-frame safety net: clamp position to arena bounds (Phase 9.3).
+	## Catches edge cases where units drift outside via terrain push, formation reform, etc.
+	var map_bound: float = 90.0
+	if AIAutoload:
+		map_bound = AIAutoload.get_map_bounds()
+	var hard_limit: float = map_bound - 1.0  # 1 unit inside actual edge
+
+	var clamped: bool = false
+	if absf(global_position.x) > hard_limit:
+		global_position.x = signf(global_position.x) * hard_limit
+		clamped = true
+	if absf(global_position.z) > hard_limit:
+		global_position.z = signf(global_position.z) * hard_limit
+		clamped = true
+
+	if clamped and OS.is_debug_build():
+		var parent_name: String = get_parent().name if get_parent() else "?"
+		push_warning("RegimentLeader %s clamped to arena bounds at %s" % [parent_name, global_position])
+
+
 func get_terrain_height(pos: Vector3) -> float:
-	## Get terrain height at a position
-	if _terrain:
-		return _terrain.get_height_at(pos)
-	return 0.0
+	## Get terrain height at a position (Phase 6.4: use helper)
+	return TerrainHelperScript.get_height_at(get_tree(), pos)
 
 
 func get_terrain_slope() -> float:
-	## Get slope angle at current position (in degrees)
-	if not _terrain:
-		return 0.0
+	## Get slope angle at current position (in degrees) (Phase 6.4: use helper)
+	return TerrainHelperScript.get_slope_at(get_tree(), global_position)
 
-	# Sample heights in a small area to calculate slope
-	var sample_dist = 1.0
-	var h_center = _terrain.get_height_at(global_position)
-	var h_forward = _terrain.get_height_at(global_position + Vector3(0, 0, sample_dist))
-	var h_right = _terrain.get_height_at(global_position + Vector3(sample_dist, 0, 0))
 
-	# Calculate slope from height differences
-	var slope_z = (h_forward - h_center) / sample_dist
-	var slope_x = (h_right - h_center) / sample_dist
+func _check_stuck(delta: float) -> void:
+	## Check if unit is stuck and attempt recovery (spring1944-inspired).
+	var moved_dist: float = global_position.distance_to(_last_position)
 
-	var max_slope = maxf(absf(slope_z), absf(slope_x))
-	return rad_to_deg(atan(max_slope))
+	if moved_dist < STUCK_MOVE_THRESHOLD:
+		# Haven't moved much, might be stuck
+		_stuck_time += delta
+		if _stuck_time >= STUCK_THRESHOLD:
+			_attempt_unstuck()
+			_stuck_time = 0.0  # Reset timer after attempt
+	else:
+		# Moving normally, reset stuck timer
+		_stuck_time = 0.0
+
+	_last_position = global_position
+
+
+func _attempt_unstuck() -> void:
+	## Try to find a valid nearby position and walk there (spring1944-inspired).
+	## Uses tight radius search (max 6 units) to avoid large visible jumps.
+	## Walks to recovery point via nav mesh rather than teleporting.
+
+	var map_bound: float = 90.0
+	if AIAutoload:
+		map_bound = AIAutoload.get_map_bounds()
+	var safe_bound: float = map_bound - ARENA_MARGIN
+
+	# Tight search radii - never jump more than 6 units (Phase 9.1)
+	var search_radii := [2.0, 4.0, 6.0]
+	var angles := [0.0, PI/4, PI/2, 3*PI/4, PI, 5*PI/4, 3*PI/2, 7*PI/4]
+
+	var best_pos: Vector3 = Vector3.INF
+	var best_score: float = INF
+
+	for radius in search_radii:
+		for angle in angles:
+			var test_offset := Vector3(cos(angle) * radius, 0, sin(angle) * radius)
+			var test_pos := global_position + test_offset
+
+			# Skip positions outside safe arena bounds
+			if absf(test_pos.x) > safe_bound or absf(test_pos.z) > safe_bound:
+				continue
+
+			if not _is_valid_position(test_pos):
+				continue
+
+			# Prefer positions closer to original target (don't flee sideways)
+			var score: float = test_pos.distance_to(target_position)
+			if score < best_score:
+				best_score = score
+				best_pos = test_pos
+
+	if best_pos == Vector3.INF:
+		return  # No valid recovery - retry in 3 seconds
+
+	# Walk to recovery point via nav mesh, don't teleport
+	nav_agent.target_position = best_pos
+	_last_position = global_position  # Prevent immediate re-stuck detection
+
+
+func _is_valid_position(pos: Vector3) -> bool:
+	## Check if a position is valid for movement.
+	## Uses navigation map query if available, otherwise terrain check.
+
+	# Check nav map if available
+	var nav_map := nav_agent.get_navigation_map()
+	if nav_map != RID() and NavigationServer3D.map_get_iteration_id(nav_map) > 0:
+		var closest := NavigationServer3D.map_get_closest_point(nav_map, pos)
+		var dist_to_closest := pos.distance_to(closest)
+		return dist_to_closest < 1.5  # Tighter threshold - land ON the nav mesh
+
+	# Fallback: just check terrain height is reasonable (Phase 6.4: use helper)
+	var terrain := _get_terrain()
+	if terrain:
+		var height := terrain.get_height_at(pos)
+		return height > -100.0  # Not below water/void
+
+	return true  # Assume valid if no checks possible

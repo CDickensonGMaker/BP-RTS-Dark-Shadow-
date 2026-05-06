@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://1xomix5ew1tb"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_2fnin"]
+
+[resource]
+script = ExtResource("1_2fnin")
+settlement_id = "brimwater_capital"
+settlement_name = "Brimwater Hold"
+settlement_type = 4
+region_id = "brimwater"
+is_regional_capital = true
+map_position = Vector2(1955.8281, 1740)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

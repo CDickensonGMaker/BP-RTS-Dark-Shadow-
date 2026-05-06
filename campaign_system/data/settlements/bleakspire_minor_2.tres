@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://ckogbqrktv7nu"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_ihtbq"]
+
+[resource]
+script = ExtResource("1_ihtbq")
+settlement_id = "bleakspire_minor_2"
+settlement_name = "Bleakspire Watch"
+settlement_type = 1
+region_id = "bleakspire"
+map_position = Vector2(2055.8281, 380)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

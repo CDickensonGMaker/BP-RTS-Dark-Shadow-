@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://s2iwxdkfgex5"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_1u2g1"]
+
+[resource]
+script = ExtResource("1_1u2g1")
+settlement_id = "mourning_vale_capital"
+settlement_name = "Mourning Vale Citadel"
+settlement_type = 4
+region_id = "mourning_vale"
+is_regional_capital = true
+map_position = Vector2(1287.9844, 900)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

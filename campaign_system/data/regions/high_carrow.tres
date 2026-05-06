@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://5cpyvfgfk8y5"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "high_carrow"
+region_name = "High Carrow"
+owner_faction = "empire"
+map_polygon = PackedVector2Array(1717.3125, 360, 1812.7188, 360, 1812.7188, 480, 1812.7188, 600, 1717.3125, 600, 1621.9063, 600, 1621.9063, 720, 1526.5, 720, 1431.0938, 720, 1335.6875, 720, 1335.6875, 600, 1335.6875, 480, 1431.0938, 480, 1526.5, 480, 1621.9063, 480, 1717.3125, 480)
+map_center = Vector2(1563.6024, 566.6667)
+terrain_type = 2
+movement_cost_modifier = 1.5
+capital_settlement_id = "high_carrow_capital"
+minor_settlement_ids = Array[String](["high_carrow_minor_1"])
+attrition_damage = 0.0
+region_color = Color(0.4, 0.4, 0.35, 0.2)

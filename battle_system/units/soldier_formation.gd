@@ -1,6 +1,9 @@
 class_name SoldierFormation
 extends Node3D
 
+# Preload to avoid parse-order issues with class_name
+const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.gd")
+
 ## Manages a grid of 3D soldiers for a regiment
 ## Handles spawning, formation layout, and synchronized animations
 
@@ -17,7 +20,7 @@ signal formation_transition_complete
 
 var soldiers: Array[Node3D] = []  # Can be Soldier or SoldierBlock
 var alive_count: int = 0
-var _terrain: Node3D = null
+# Phase 6.4: Terrain access via TerrainHelper (removed _terrain variable)
 var _terrain_update_timer: float = 0.0
 const TERRAIN_UPDATE_INTERVAL: float = 0.1  # Update terrain positions 10x/sec
 var _current_facing: float = 0.0  # Current facing direction in radians
@@ -31,6 +34,10 @@ var _transition_duration: float = 0.5
 var _is_transitioning: bool = false
 var _parent_regiment: Regiment = null  # Reference to parent regiment for signal filtering
 
+# Staggered movement state (Phase 8.3 - aliveness)
+var _soldier_start_delays: Array[float] = []  # Per-soldier delay before starting movement
+var _soldier_speed_jitter: Array[float] = []  # Per-soldier speed multiplier (±15%)
+
 # Formation spacing constants
 const LOOSE_SPACING_MULT: float = 2.0
 const SHIELD_WALL_SPACING: float = 0.8
@@ -42,14 +49,7 @@ const SQUARE_SIDE_SPACING: float = 1.0
 func _ready():
 	if soldier_scene:
 		spawn_formation(max_soldiers)
-	call_deferred("_find_terrain")
 	call_deferred("_connect_formation_signal")
-
-
-func _find_terrain():
-	var terrains: Array[Node] = get_tree().get_nodes_in_group("terrain")
-	if terrains.size() > 0:
-		_terrain = terrains[0]
 
 
 func _connect_formation_signal():
@@ -85,12 +85,14 @@ func _process(delta: float):
 
 
 func _update_soldier_terrain_positions():
-	if not _terrain or not _terrain.has_method("get_height_at"):
+	## Phase 6.4: Use TerrainHelper for terrain access
+	var terrain := TerrainHelperScript.get_terrain(get_tree())
+	if not terrain:
 		return
 	for soldier in soldiers:
 		if is_instance_valid(soldier) and soldier.visible:
 			var world_pos: Vector3 = soldier.global_position
-			var terrain_height: float = _terrain.get_height_at(world_pos)
+			var terrain_height: float = terrain.get_height_at(world_pos)
 			soldier.global_position.y = terrain_height
 
 
@@ -226,7 +228,7 @@ func set_facing_angle(angle_rad: float):
 # =============================================================================
 
 func transition_to_formation(formation_type: int, duration: float = 0.5):
-	"""Begin animated transition to a new formation type"""
+	"""Begin animated transition to a new formation type with staggered movement."""
 	if soldiers.is_empty():
 		return
 
@@ -238,11 +240,30 @@ func transition_to_formation(formation_type: int, duration: float = 0.5):
 	var visible_count: int = _count_visible_soldiers()
 	_target_positions = _calculate_formation_positions(formation_type, visible_count)
 
-	# Store starting positions
+	# Store starting positions and calculate per-soldier stagger (Phase 8.3)
 	_start_positions.clear()
-	for soldier in soldiers:
+	_soldier_start_delays.clear()
+	_soldier_speed_jitter.clear()
+
+	var max_delay: float = duration * 0.35  # Outer soldiers start up to 35% later
+
+	for i in soldiers.size():
+		var soldier = soldiers[i]
 		if is_instance_valid(soldier):
 			_start_positions.append(soldier.position)
+
+			# Distance-based stagger: center soldiers move first, outer ranks last
+			var distance_from_center: float = soldier.position.length()
+			var distance_factor: float = clampf(distance_from_center / 8.0, 0.0, 1.0)
+			var delay: float = distance_factor * max_delay + randf_range(0.0, 0.15)
+			_soldier_start_delays.append(delay)
+
+			# Per-soldier speed jitter: ±15% kills lockstep feel
+			_soldier_speed_jitter.append(randf_range(0.85, 1.15))
+		else:
+			_start_positions.append(Vector3.ZERO)
+			_soldier_start_delays.append(0.0)
+			_soldier_speed_jitter.append(1.0)
 
 	_is_transitioning = true
 
@@ -256,12 +277,9 @@ func _count_visible_soldiers() -> int:
 
 
 func _update_formation_transition(delta: float):
-	"""Lerp soldiers toward target positions"""
+	"""Lerp soldiers toward target positions with staggered timing and natural movement."""
 	_transition_time += delta
-	var t: float = clampf(_transition_time / _transition_duration, 0.0, 1.0)
-
-	# Smooth easing
-	var eased_t: float = _ease_out_quad(t)
+	var all_done: bool = true
 
 	for i in soldiers.size():
 		var soldier = soldiers[i]
@@ -269,13 +287,58 @@ func _update_formation_transition(delta: float):
 			continue
 		if i >= _start_positions.size() or i >= _target_positions.size():
 			continue
+		if i >= _soldier_start_delays.size() or i >= _soldier_speed_jitter.size():
+			continue
 
-		soldier.position = _start_positions[i].lerp(_target_positions[i], eased_t)
+		# Per-soldier timing with stagger delay
+		var personal_elapsed: float = _transition_time - _soldier_start_delays[i]
+		if personal_elapsed <= 0.0:
+			# This soldier hasn't started yet - stay idle
+			if soldier.has_method("play_animation"):
+				soldier.play_animation("Idle")
+			all_done = false
+			continue
 
-	# Check if transition complete
-	if t >= 1.0:
+		# Adjust duration by speed jitter
+		var personal_duration: float = _transition_duration * (1.0 / _soldier_speed_jitter[i])
+		var t: float = clampf(personal_elapsed / personal_duration, 0.0, 1.0)
+		if t < 1.0:
+			all_done = false
+
+		# Smooth ease-in-out for natural acceleration/deceleration
+		var eased_t: float = _ease_in_out_cubic(t)
+
+		# Calculate base interpolated position
+		var base_pos: Vector3 = _start_positions[i].lerp(_target_positions[i], eased_t)
+
+		# Add perpendicular sway for natural weaving motion
+		var travel: Vector3 = _target_positions[i] - _start_positions[i]
+		var sway: Vector3 = Vector3.ZERO
+		if travel.length_squared() > 0.5:
+			var perp: Vector3 = Vector3(-travel.z, 0, travel.x).normalized()
+			sway = perp * sin(t * PI) * 0.15  # Subtle sine-wave weave
+
+		soldier.position = base_pos + sway
+
+		# Per-soldier animation: walk while moving, idle when arrived
+		if soldier.has_method("play_animation"):
+			if t < 1.0:
+				soldier.play_animation("Walk")
+			else:
+				soldier.play_animation("Idle")
+
+	# Grace period: don't end until all soldiers have had time to arrive
+	if all_done and _transition_time >= _transition_duration + 0.5:
 		_is_transitioning = false
 		formation_transition_complete.emit()
+
+
+func _ease_in_out_cubic(t: float) -> float:
+	"""Smooth ease-in-out for natural acceleration and deceleration."""
+	if t < 0.5:
+		return 4.0 * t * t * t
+	var f: float = -2.0 * t + 2.0
+	return 1.0 - f * f * f / 2.0
 
 
 func _ease_out_quad(t: float) -> float:
@@ -538,3 +601,24 @@ func get_current_formation_type() -> int:
 
 func is_transitioning() -> bool:
 	return _is_transitioning
+
+
+func set_formation_width(file_count: int, animate: bool = true) -> void:
+	"""Set the formation width (number of soldier files across the front rank).
+	Triggers a smooth transition to the new layout. Used by formation drag."""
+	var alive: int = _count_visible_soldiers()
+	if alive < 2:
+		return
+
+	# Clamp to physical limits — min 2 wide, min 2 deep
+	var max_width: int = maxi(2, alive / 2)
+	file_count = clampi(file_count, 2, max_width)
+
+	# Update rows based on desired width
+	rows = ceili(float(alive) / float(file_count))
+
+	if animate:
+		transition_to_formation(_current_formation_type, _transition_duration)
+	else:
+		var positions: Array[Vector3] = _calculate_formation_positions(_current_formation_type, alive)
+		_apply_positions_immediately(positions)

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://c7t2cc2ejukki"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "dreadfen"
+region_name = "Dreadfen"
+owner_faction = "orcs"
+map_polygon = PackedVector2Array(572.4375, 1440, 667.84375, 1440, 763.25, 1440, 858.65625, 1440, 954.0625, 1440, 954.0625, 1560, 1049.4688, 1560, 1049.4688, 1680, 954.0625, 1680, 954.0625, 1800, 954.0625, 1920, 858.65625, 1920, 763.25, 1920, 667.84375, 1920, 667.84375, 1800, 667.84375, 1680, 572.4375, 1680, 477.03125, 1680, 477.03125, 1560, 572.4375, 1560)
+map_center = Vector2(781.1387, 1657.5)
+terrain_type = 5
+movement_cost_modifier = 1.8
+capital_settlement_id = "dreadfen_capital"
+minor_settlement_ids = Array[String](["dreadfen_minor_1", "dreadfen_minor_2"])
+has_attrition_risk = true
+attrition_type = "swamp"
+attrition_damage = 0.03
+region_color = Color(0.25, 0.35, 0.3, 0.25)

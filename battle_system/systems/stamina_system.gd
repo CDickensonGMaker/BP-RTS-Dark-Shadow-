@@ -45,6 +45,10 @@ var movement_mode: MovementMode = MovementMode.IDLE
 var is_exhausted: bool = false
 var fatigue_state: FatigueState = FatigueState.FRESH
 
+# Armor weight multiplier (heavy armor = faster fatigue drain)
+# Light (0-3): 1.0x, Medium (4-7): 1.25x, Heavy (8+): 1.5x
+var armor_fatigue_multiplier: float = 1.0
+
 signal stamina_changed(new_value: float, max_value: float)
 signal exhausted()
 signal recovered()
@@ -59,9 +63,11 @@ func update(delta: float) -> void:
 		MovementMode.WALKING:
 			current_stamina = minf(current_stamina + WALK_RECOVERY_RATE * delta, MAX_STAMINA)
 		MovementMode.RUNNING:
-			current_stamina = maxf(current_stamina - RUN_DRAIN_RATE * delta, 0.0)
+			# Heavy armor drains stamina faster (Stainless Steel pattern)
+			current_stamina = maxf(current_stamina - RUN_DRAIN_RATE * armor_fatigue_multiplier * delta, 0.0)
 		MovementMode.CHARGING:
-			current_stamina = maxf(current_stamina - CHARGE_DRAIN_RATE * delta, 0.0)
+			# Heavy armor drains stamina faster during charges
+			current_stamina = maxf(current_stamina - CHARGE_DRAIN_RATE * armor_fatigue_multiplier * delta, 0.0)
 
 	# Check for fatigue state change (TotalWarSimulator)
 	var old_state: FatigueState = fatigue_state
@@ -160,3 +166,10 @@ func reset() -> void:
 	current_stamina = MAX_STAMINA
 	is_exhausted = false
 	movement_mode = MovementMode.IDLE
+
+
+func setup_from_regiment_data(regiment_data: RegimentData) -> void:
+	## Configure stamina system based on regiment data.
+	## Applies armor weight fatigue penalty (Stainless Steel pattern).
+	if regiment_data:
+		armor_fatigue_multiplier = regiment_data.get_armor_fatigue_multiplier()

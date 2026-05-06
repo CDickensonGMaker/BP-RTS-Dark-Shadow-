@@ -3,14 +3,22 @@
 extends Node2D
 
 
-@export var map_bounds: Rect2 = Rect2(0, 0, 1920, 1080)
+## Map size matches campaign_map.png (3053x2160)
+@export var map_bounds: Rect2 = Rect2(0, 0, 3053, 2160)
 
 @onready var camera: Camera2D = $CampaignCamera
 @onready var battalions_container: Node2D = $BattalionsContainer
 @onready var path_preview: Line2D = $PathPreview
 @onready var hud: CanvasLayer = $CampaignHUD
+@onready var fog_of_war: Node2D = $FogOfWar
+@onready var regions_container: Node2D = $RegionsContainer
 
 var battalion_scene: PackedScene = preload("res://campaign_system/scenes/map_battalion.tscn")
+
+## Loaded region data
+var regions: Array[RegionData] = []
+var region_renderer: RegionRenderer = null
+var settlement_renderer: SettlementRenderer = null
 var selected_battalion: Node2D = null
 
 # Path preview colors (legacy - kept for compatibility)
@@ -47,11 +55,17 @@ func _ready() -> void:
 	if camera:
 		camera.map_bounds = map_bounds
 
-	# Connect signals
-	CampaignSignals.battalion_selected.connect(_on_battalion_selected)
-	CampaignSignals.battalion_deselected.connect(_on_battalion_deselected)
-	CampaignSignals.turn_started.connect(_on_turn_started)
-	CampaignSignals.movement_points_changed.connect(_on_movement_points_changed)
+	# Connect signals (only if not already connected to prevent duplicates)
+	if not CampaignSignals.battalion_selected.is_connected(_on_battalion_selected):
+		CampaignSignals.battalion_selected.connect(_on_battalion_selected)
+	if not CampaignSignals.battalion_deselected.is_connected(_on_battalion_deselected):
+		CampaignSignals.battalion_deselected.connect(_on_battalion_deselected)
+	if not CampaignSignals.turn_started.is_connected(_on_turn_started):
+		CampaignSignals.turn_started.connect(_on_turn_started)
+	if not CampaignSignals.movement_points_changed.is_connected(_on_movement_points_changed):
+		CampaignSignals.movement_points_changed.connect(_on_movement_points_changed)
+	if not CampaignSignals.contract_selected.is_connected(_on_contract_selected):
+		CampaignSignals.contract_selected.connect(_on_contract_selected)
 
 	# Initialize path preview (legacy single line - hidden, we use segments now)
 	if path_preview:
@@ -69,6 +83,13 @@ func _ready() -> void:
 	if not CampaignManager.is_campaign_active:
 		CampaignManager.start_new_campaign()
 
+	# Load and render regions
+	_load_regions()
+	_setup_region_renderer()
+
+	# Load and render settlements
+	_setup_settlement_renderer()
+
 	# Spawn battalions from CampaignManager
 	_spawn_battalions()
 
@@ -85,9 +106,81 @@ func _spawn_battalions() -> void:
 		battalion_node.position = battalion_data.map_position
 		battalions_container.add_child(battalion_node)
 
+		# Reveal fog around starting position
+		if fog_of_war and fog_of_war.has_method("reveal_area"):
+			fog_of_war.reveal_area(battalion_data.map_position, 200.0)
+
 		# Select first battalion by default
 		if CampaignManager.battalions.size() == 1:
 			battalion_node.call_deferred("select")
+
+	# Update fog texture after initial reveals
+	if fog_of_war and fog_of_war.has_method("_update_fog_texture"):
+		fog_of_war.call_deferred("_update_fog_texture")
+
+
+func _load_regions() -> void:
+	## Load all region .tres files from the regions directory
+	regions.clear()
+	var dir_path := "res://campaign_system/data/regions/"
+	var dir := DirAccess.open(dir_path)
+
+	if not dir:
+		push_warning("CampaignMap: Could not open regions directory at %s" % dir_path)
+		return
+
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+
+	while file_name != "":
+		if file_name.ends_with(".tres"):
+			var region := load(dir_path + file_name)
+			if region is RegionData:
+				regions.append(region)
+				print("[CampaignMap] Loaded region: %s" % region.region_name)
+		file_name = dir.get_next()
+
+	dir.list_dir_end()
+	print("[CampaignMap] Loaded %d regions" % regions.size())
+
+
+func _setup_region_renderer() -> void:
+	## Create and configure the region renderer
+	if not regions_container:
+		return
+
+	region_renderer = RegionRenderer.new()
+	region_renderer.show_fills = true
+	region_renderer.show_borders = true
+	region_renderer.show_labels = true
+	regions_container.add_child(region_renderer)
+
+	region_renderer.setup_regions(regions)
+	region_renderer.region_clicked.connect(_on_region_clicked)
+
+
+func _setup_settlement_renderer() -> void:
+	## Create and configure the settlement renderer
+	settlement_renderer = SettlementRenderer.new()
+	settlement_renderer.show_labels = true
+	add_child(settlement_renderer)
+
+	settlement_renderer.load_settlements()
+	print("[CampaignMap] Settlement renderer created with %d settlements" % settlement_renderer.settlements.size())
+
+
+func _on_region_clicked(region: RegionData) -> void:
+	## Handle region click
+	print("[CampaignMap] Region clicked: %s" % region.region_name)
+	CampaignSignals.region_clicked.emit(region)
+
+
+func get_region_at(world_pos: Vector2) -> RegionData:
+	## Find which region contains a point
+	for region in regions:
+		if region.contains_point(world_pos):
+			return region
+	return null
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -359,9 +452,13 @@ func _on_turn_started(_turn: int) -> void:
 	# Brief delay for visual clarity before auto-movement
 	await get_tree().create_timer(0.3).timeout
 
+	# Safety check - scene might have changed during await
+	if not is_instance_valid(self) or not is_instance_valid(battalions_container):
+		return
+
 	# Continue movement for all battalions with queued paths
 	for battalion in battalions_container.get_children():
-		if battalion.battalion_data and battalion.battalion_data.has_queued_path():
+		if is_instance_valid(battalion) and battalion.battalion_data and battalion.battalion_data.has_queued_path():
 			_continue_queued_movement(battalion)
 
 
@@ -433,3 +530,81 @@ func _update_range_circle() -> void:
 func _hide_range_circle() -> void:
 	if movement_range_circle:
 		movement_range_circle.visible = false
+
+
+# =====================
+# Contract Map Features
+# =====================
+
+var contract_marker: Node2D = null
+var contract_marker_tween: Tween = null
+
+func _on_contract_selected(contract: Resource) -> void:
+	## Zoom camera to contract location and show marker
+	if not contract or not camera:
+		return
+
+	var target_pos: Vector2 = contract.map_position if "map_position" in contract else Vector2(500, 500)
+
+	# Create or update contract marker
+	_show_contract_marker(target_pos)
+
+	# Zoom camera to location
+	camera.focus_on(target_pos, true)
+
+
+func _show_contract_marker(position: Vector2) -> void:
+	## Show a pulsing marker at the contract location
+	if not contract_marker:
+		contract_marker = Node2D.new()
+		contract_marker.z_index = 10
+		add_child(contract_marker)
+
+		# Create marker visuals (diamond shape)
+		var polygon := Polygon2D.new()
+		polygon.polygon = PackedVector2Array([
+			Vector2(0, -20),
+			Vector2(15, 0),
+			Vector2(0, 20),
+			Vector2(-15, 0)
+		])
+		polygon.color = Color(0.85, 0.7, 0.4, 0.8)
+		contract_marker.add_child(polygon)
+
+		# Add outline
+		var outline := Line2D.new()
+		outline.points = PackedVector2Array([
+			Vector2(0, -20),
+			Vector2(15, 0),
+			Vector2(0, 20),
+			Vector2(-15, 0),
+			Vector2(0, -20)
+		])
+		outline.width = 2.0
+		outline.default_color = Color(0.95, 0.9, 0.7, 1.0)
+		contract_marker.add_child(outline)
+
+	contract_marker.position = position
+	contract_marker.visible = true
+
+	# Pulse animation
+	if contract_marker_tween:
+		contract_marker_tween.kill()
+
+	contract_marker_tween = create_tween().set_loops()
+	contract_marker_tween.tween_property(contract_marker, "scale", Vector2(1.3, 1.3), 0.5)
+	contract_marker_tween.tween_property(contract_marker, "scale", Vector2(1.0, 1.0), 0.5)
+
+	# Auto-hide after a few seconds
+	await get_tree().create_timer(5.0).timeout
+	# Safety check - scene might have changed during await
+	if is_instance_valid(self):
+		_hide_contract_marker()
+
+
+func _hide_contract_marker() -> void:
+	if contract_marker:
+		contract_marker.visible = false
+	if contract_marker_tween:
+		contract_marker_tween.kill()
+		contract_marker_tween = null

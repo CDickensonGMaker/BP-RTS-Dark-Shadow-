@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ContractData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/contract_data.gd" id="1"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/dwwar_regiment.tres" id="2"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/iron_regiment.tres" id="3"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/dwxbow_regiment.tres" id="4"]
+
+[resource]
+script = ExtResource("1")
+contract_id = "occupy_ironforge_001"
+contract_name = "Capture Ironforge Mine"
+description = "The abandoned Ironforge Mine still holds rich iron deposits. Seize control of the mine from its current occupiers - a band of dwarven exiles who have fortified the entrance. Hold it to establish a steady income from ore exports."
+region_name = "Ironwald"
+objective_type = 2
+target_settlement_id = "ironforge"
+target_region_id = ""
+threat_level = 4
+gold_reward = 800
+bonus_gold = 200
+ongoing_income = 200
+enemy_regiments = [ExtResource("2"), ExtResource("3"), ExtResource("4")]
+enemy_faction_name = "Ironforge Dwarves"
+terrain_type = "hills"
+time_of_day = "day"
+is_story_contract = false
+turns_available = -1
+map_position = Vector2(450, 300)
+always_visible = false

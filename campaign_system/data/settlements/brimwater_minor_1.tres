@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://objqvry7xilh"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_sfopk"]
+
+[resource]
+script = ExtResource("1_sfopk")
+settlement_id = "brimwater_minor_1"
+settlement_name = "Brimwater Ford"
+settlement_type = 1
+region_id = "brimwater"
+map_position = Vector2(2026.6406, 1737.6471)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

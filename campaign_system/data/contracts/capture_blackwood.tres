@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="ContractData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/contract_data.gd" id="1"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/blackorc_regiment.tres" id="2"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/biguns_regiment.tres" id="3"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/ntgoblin_regiment.tres" id="4"]
+
+[resource]
+script = ExtResource("1")
+contract_id = "capture_blackwood_001"
+contract_name = "Conquer the Blackwood Territory"
+description = "The Blackwood region has fallen to greenskin occupation. Three settlements - Woodshade, Thornhollow, and Darkfen - must be liberated. The orcs have fortified each location with Black Orc elites and goblin night runners. This is a multi-battle campaign requiring significant force."
+region_name = "Dreadfen"
+objective_type = 3
+target_settlement_id = ""
+target_region_id = "blackwood"
+threat_level = 5
+gold_reward = 3000
+bonus_gold = 500
+ongoing_income = 0
+enemy_regiments = [ExtResource("2"), ExtResource("3"), ExtResource("4"), ExtResource("4")]
+enemy_faction_name = "Blackwood Orcs"
+terrain_type = "forest"
+time_of_day = "day"
+is_story_contract = false
+turns_available = -1
+map_position = Vector2(320, 1380)
+always_visible = false
+settlements_to_capture = ["woodshade", "thornhollow", "darkfen"]

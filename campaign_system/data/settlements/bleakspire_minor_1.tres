@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://bkcr5e3pq35a6"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_epmtq"]
+
+[resource]
+script = ExtResource("1_epmtq")
+settlement_id = "bleakspire_minor_1"
+settlement_name = "Bleakspire Hamlet"
+settlement_type = 1
+region_id = "bleakspire"
+map_position = Vector2(1835.8281, 220)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3 uid="uid://bp_farmland_02"]
+
+[ext_resource type="Script" path="res://scenes/battle_scene.gd" id="1_main"]
+[ext_resource type="Script" path="res://battle_system/terrain/battle_terrain.gd" id="2_terrain"]
+[ext_resource type="Script" path="res://battle_system/ui/battle_over_screen.gd" id="3_battle_over"]
+
+[node name="BattleScene" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="BattleTerrain" type="Node3D" parent="."]
+script = ExtResource("2_terrain")
+terrain_size = Vector2(200, 220)
+terrain_resolution = 64
+height_scale = 3.0
+tree_count = 20
+building_count = 8
+prop_count = 50
+rock_count = 8
+bush_count = 25
+
+[node name="BattleOverScreen" type="CanvasLayer" parent="."]
+script = ExtResource("3_battle_over")

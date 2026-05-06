@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://cd06w6o4o3nt3"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_7545y"]
+
+[resource]
+script = ExtResource("1_7545y")
+settlement_id = "red_barrow_capital"
+settlement_name = "Red Barrow Citadel"
+settlement_type = 4
+region_id = "red_barrow"
+is_regional_capital = true
+map_position = Vector2(620.1406, 1020)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

@@ -244,7 +244,7 @@ func _raycast_beam(origin: Vector3, direction: Vector3) -> Vector3:
 
 func _find_regiment_along_beam(origin: Vector3, direction: Vector3, length: float) -> Regiment:
 	## Find closest enemy regiment along beam path.
-	if not caster or not AIAutoload:
+	if not caster or not AIAutoload or not AIAutoload.spatial_hash:
 		return null
 
 	var my_faction: int = 0 if caster.is_player_controlled else 1

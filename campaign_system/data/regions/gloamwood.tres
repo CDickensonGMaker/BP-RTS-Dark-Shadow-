@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://da1sfhoimrj0d"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "gloamwood"
+region_name = "Gloamwood"
+owner_faction = "orcs"
+map_polygon = PackedVector2Array(1049.4688, 720, 1144.875, 720, 1144.875, 840, 1144.875, 960, 1240.2813, 960, 1240.2813, 1080, 1144.875, 1080, 1144.875, 1200, 1049.4688, 1200, 1049.4688, 1080, 954.0625, 1080, 954.0625, 960, 858.65625, 960, 858.65625, 840, 954.0625, 840, 1049.4688, 840)
+map_center = Vector2(1061.3945, 960)
+terrain_type = 1
+movement_cost_modifier = 1.3
+capital_settlement_id = "gloamwood_capital"
+minor_settlement_ids = Array[String](["gloamwood_minor_1", "gloamwood_minor_2"])
+attrition_damage = 0.0
+region_color = Color(0.25, 0.35, 0.25, 0.25)

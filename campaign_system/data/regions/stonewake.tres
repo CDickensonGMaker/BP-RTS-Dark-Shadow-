@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://d3lfyeljwsucu"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "stonewake"
+region_name = "Stonewake"
+map_polygon = PackedVector2Array(1812.7188, 480, 1908.125, 480, 2003.5313, 480, 2098.9375, 480, 2194.3438, 480, 2194.3438, 600, 2098.9375, 600, 2098.9375, 720, 2003.5313, 720, 1908.125, 720, 1908.125, 600, 1812.7188, 600)
+map_center = Vector2(2003.5313, 580)
+terrain_type = 2
+movement_cost_modifier = 1.5
+capital_settlement_id = "stonewake_capital"
+minor_settlement_ids = Array[String](["stonewake_minor_1"])
+attrition_damage = 0.0
+region_color = Color(0.45, 0.4, 0.35, 0.2)

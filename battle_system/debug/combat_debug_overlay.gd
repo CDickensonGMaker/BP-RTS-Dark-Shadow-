@@ -38,6 +38,14 @@ const COLOR_AI_STATE: Color = Color(0.6, 0.8, 1.0, 1.0)         # Light blue
 const COLOR_FACING_ARROW: Color = Color(0.8, 0.8, 0.2, 0.9)     # Yellow
 const COLOR_TARGET_LINE: Color = Color(1.0, 0.4, 0.4, 0.6)      # Red (semi-transparent)
 const COLOR_TARGET_LINE_PLAYER: Color = Color(0.4, 0.8, 1.0, 0.6)  # Blue for player units
+const COLOR_MELEE_LINE: Color = Color(1.0, 0.6, 0.0, 0.9)        # Orange for active melee pairs
+const COLOR_MELEE_LINE_GLOW: Color = Color(1.0, 0.8, 0.2, 0.5)   # Yellow glow around melee lines
+
+## Expected engagement distance (must match Regiment.ENGAGEMENT_DISTANCE)
+const ENGAGEMENT_DISTANCE: float = 3.0
+
+## Toggle per-frame engagement position logging (F4)
+var log_engage_deltas: bool = false
 
 ## UI sizing
 const MORALE_BAR_WIDTH: float = 60.0
@@ -78,6 +86,8 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F3:
 			toggle_overlay()
+		elif event.keycode == KEY_F4:
+			toggle_engage_logging()
 
 
 func toggle_overlay() -> void:
@@ -88,6 +98,14 @@ func toggle_overlay() -> void:
 		print("CombatDebugOverlay: ENABLED (F3 to toggle)")
 	else:
 		print("CombatDebugOverlay: DISABLED")
+
+
+func toggle_engage_logging() -> void:
+	log_engage_deltas = not log_engage_deltas
+	if log_engage_deltas:
+		print("CombatDebugOverlay: Engage delta logging ENABLED (F4 to toggle)")
+	else:
+		print("CombatDebugOverlay: Engage delta logging DISABLED")
 
 
 func _process(delta: float) -> void:
@@ -136,6 +154,9 @@ func _on_draw() -> void:
 	if not is_enabled or not camera:
 		return
 
+	# Draw active melee pair connections first (so they appear behind other UI)
+	_draw_melee_pairs()
+
 	# Get all regiments
 	var all_regiments: Array = get_tree().get_nodes_in_group("all_regiments")
 
@@ -148,6 +169,10 @@ func _on_draw() -> void:
 			continue
 
 		_draw_regiment_debug(regiment)
+
+		# Log engagement position deltas if enabled
+		if log_engage_deltas and regiment.state == Regiment.State.ENGAGING:
+			_log_engage_delta(regiment)
 
 
 func _draw_regiment_debug(regiment: Regiment) -> void:
@@ -427,3 +452,65 @@ func _world_to_screen(world_pos: Vector3) -> Vector2:
 		return Vector2.ZERO
 
 	return camera.unproject_position(world_pos)
+
+
+func _draw_melee_pairs() -> void:
+	## Draw colored lines between all regiments in active melee combat.
+	if not CombatManager:
+		return
+
+	for melee in CombatManager.active_melees:
+		if melee.size() == 0:
+			continue
+
+		var attacker = melee.get("attacker")
+		var defender = melee.get("defender")
+
+		if not is_instance_valid(attacker) or not is_instance_valid(defender):
+			continue
+
+		var from_pos: Vector2 = _world_to_screen(attacker.global_position)
+		var to_pos: Vector2 = _world_to_screen(defender.global_position)
+
+		if from_pos == Vector2.ZERO or to_pos == Vector2.ZERO:
+			continue
+
+		# Draw glow line (wider, semi-transparent)
+		draw_control.draw_line(from_pos, to_pos, COLOR_MELEE_LINE_GLOW, 8.0)
+		# Draw main line
+		draw_control.draw_line(from_pos, to_pos, COLOR_MELEE_LINE, 3.0)
+
+		# Draw distance text at midpoint
+		var mid_pos: Vector2 = (from_pos + to_pos) / 2.0
+		var dist_3d: float = attacker.global_position.distance_to(defender.global_position)
+		var dist_text: String = "%.1fm" % dist_3d
+
+		var font: Font = ThemeDB.fallback_font
+		var font_size: int = 10
+		var text_size: Vector2 = font.get_string_size(dist_text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+		var text_pos: Vector2 = mid_pos - text_size / 2.0
+
+		# Background for readability
+		draw_control.draw_rect(Rect2(text_pos - Vector2(2, 2), text_size + Vector2(4, 4)), Color(0, 0, 0, 0.7))
+		draw_control.draw_string(font, text_pos + Vector2(0, font_size), dist_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, COLOR_MELEE_LINE)
+
+
+func _log_engage_delta(regiment: Regiment) -> void:
+	## Log position delta for engaged regiment (for debugging engagement distance issues).
+	# Find enemy in melee
+	if not CombatManager:
+		return
+
+	for melee in CombatManager.active_melees:
+		var enemy: Regiment = null
+		if melee.get("attacker") == regiment:
+			enemy = melee.get("defender")
+		elif melee.get("defender") == regiment:
+			enemy = melee.get("attacker")
+
+		if enemy and is_instance_valid(enemy):
+			var dist: float = regiment.global_position.distance_to(enemy.global_position)
+			var error: float = dist - ENGAGEMENT_DISTANCE
+			if absf(error) > 0.1:  # Only log significant deltas
+				print("[ENGAGE] %s <-> %s: dist=%.2f, error=%.2f" % [regiment.name, enemy.name, dist, error])
+			break  # Only log first melee pair for this regiment

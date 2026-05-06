@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://b2lfw700g8sv2"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_8mjwq"]
+
+[resource]
+script = ExtResource("1_8mjwq")
+settlement_id = "reikholt_capital"
+settlement_name = "Reikholt Castle"
+settlement_type = 4
+region_id = "reikholt"
+is_regional_capital = true
+map_position = Vector2(1669.6094, 900)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

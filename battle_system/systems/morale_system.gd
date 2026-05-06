@@ -41,21 +41,55 @@ const CACHE_REFRESH_INTERVAL: float = 1.0  # Refresh cache every second
 # MORALE MODIFIERS
 # =============================================================================
 
-func apply_morale_damage(regiment: Regiment, amount: float) -> void:
+## Apply morale damage to a regiment.
+## All morale damage should go through this method for centralized tracking.
+## @param regiment: The regiment taking morale damage
+## @param amount: Base morale damage amount (may be reduced by morale save)
+## @param source: Optional source identifier for debugging (e.g., "combat", "flanking", "casualties")
+func apply_morale_damage(regiment: Regiment, amount: float, source: String = "") -> void:
+	if not is_instance_valid(regiment) or regiment.state == Regiment.State.DEAD:
+		return
+
+	var old_morale: float = regiment.current_morale
+
 	# Morale save roll (d10 style)
 	var save_roll: int = randi() % 10
 	if save_roll < regiment.data.morale_save:
 		amount *= 0.5
+
 	regiment.current_morale = maxf(0.0, regiment.current_morale - amount)
 	BattleSignals.morale_changed.emit(regiment, regiment.current_morale, -amount)
-	if regiment.current_morale <= ROUTE_THRESHOLD:
+
+	# Debug output
+	if source != "" and OS.is_debug_build():
+		print("[MORALE] %s: %.1f -> %.1f (-%0.1f from %s)" % [
+			regiment.name, old_morale, regiment.current_morale, amount, source
+		])
+
+	if regiment.current_morale <= ROUTE_THRESHOLD and regiment.state != Regiment.State.ROUTING:
 		regiment.set_state(Regiment.State.ROUTING)
 		BattleSignals.regiment_routing.emit(regiment)
 
 
-func apply_morale_bonus(regiment: Regiment, amount: float) -> void:
+## Apply morale bonus to a regiment.
+## All morale bonuses should go through this method for centralized tracking.
+## @param regiment: The regiment receiving morale bonus
+## @param amount: Morale bonus amount
+## @param source: Optional source identifier for debugging (e.g., "rally", "leadership", "victory")
+func apply_morale_bonus(regiment: Regiment, amount: float, source: String = "") -> void:
+	if not is_instance_valid(regiment) or regiment.state == Regiment.State.DEAD:
+		return
+
+	var old_morale: float = regiment.current_morale
 	regiment.current_morale = minf(100.0, regiment.current_morale + amount)
 	BattleSignals.morale_changed.emit(regiment, regiment.current_morale, amount)
+
+	# Debug output
+	if source != "" and OS.is_debug_build():
+		print("[MORALE] %s: %.1f -> %.1f (+%0.1f from %s)" % [
+			regiment.name, old_morale, regiment.current_morale, amount, source
+		])
+
 	if regiment.state == Regiment.State.ROUTING and regiment.current_morale >= RALLY_THRESHOLD:
 		regiment.set_state(Regiment.State.RALLYING)
 		BattleSignals.regiment_rallied.emit(regiment)
@@ -108,6 +142,9 @@ func _check_routing_contagion(regiment: Regiment) -> void:
 	if regiment.state == Regiment.State.ROUTING or regiment.state == Regiment.State.DEAD:
 		return  # Already routing or dead, no need to check
 
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return  # Spatial hash not available
+
 	var my_faction: int = 0 if regiment.is_player_controlled else 1
 
 	# Use spatial hash for O(1) query instead of O(n) iteration
@@ -137,6 +174,9 @@ func _check_leadership_bonus(regiment: Regiment) -> void:
 	if regiment.state == Regiment.State.ROUTING or regiment.state == Regiment.State.DEAD:
 		return  # Routing/dead units don't benefit from leadership
 
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return  # Spatial hash not available
+
 	var my_faction: int = 0 if regiment.is_player_controlled else 1
 
 	# Query for generals within leadership radius
@@ -155,6 +195,8 @@ func _check_leadership_bonus(regiment: Regiment) -> void:
 
 	# Fallback: Check for nearby regiment leaders (commanders) if no general
 	# Regiment leaders boost nearby regiments even without a general
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return
 	var nearby_regiments: Array[Node] = AIAutoload.spatial_hash.query_regiments_in_radius(
 		regiment.global_position,
 		LEADERSHIP_BONUS_RADIUS,

@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="ContractData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/contract_data.gd" id="1"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/halb_regiment.tres" id="2"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/dwxbow_regiment.tres" id="3"]
+
+[resource]
+script = ExtResource("1")
+contract_id = "sack_thornwall_001"
+contract_name = "Sack the Town of Thornwall"
+description = "A rival noble house offers substantial payment to raid the town of Thornwall. The garrison is small but professional, consisting of halberdiers and crossbowmen manning the walls. Loot the town and burn what you cannot carry."
+region_name = "Thornreach"
+objective_type = 1
+target_settlement_id = "thornwall"
+target_region_id = ""
+threat_level = 3
+gold_reward = 1500
+bonus_gold = 0
+ongoing_income = 0
+enemy_regiments = [ExtResource("2"), ExtResource("3")]
+enemy_faction_name = "Thornwall Garrison"
+terrain_type = "village"
+time_of_day = "dusk"
+is_story_contract = false
+turns_available = -1
+map_position = Vector2(1300, 660)
+always_visible = false

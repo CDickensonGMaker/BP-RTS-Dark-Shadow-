@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://d2nhdiauf6w3k"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_6km2t"]
+
+[resource]
+script = ExtResource("1_6km2t")
+settlement_id = "ironwald_capital"
+settlement_name = "Ironwald Castle"
+settlement_type = 4
+region_id = "ironwald"
+is_regional_capital = true
+map_position = Vector2(1097.1719, 420)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

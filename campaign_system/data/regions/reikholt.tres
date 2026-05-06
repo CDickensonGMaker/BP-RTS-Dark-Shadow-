@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://clxgv04h8cda5"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "reikholt"
+region_name = "Reikholt"
+map_polygon = PackedVector2Array(1621.9063, 600, 1717.3125, 600, 1812.7188, 600, 1908.125, 600, 1908.125, 720, 1908.125, 840, 1908.125, 960, 1908.125, 1080, 1812.7188, 1080, 1717.3125, 1080, 1621.9063, 1080, 1526.5, 1080, 1526.5, 960, 1431.0938, 960, 1431.0938, 840, 1431.0938, 720, 1526.5, 720, 1621.9063, 720)
+map_center = Vector2(1697.67, 850.58826)
+terrain_type = 2
+movement_cost_modifier = 1.5
+capital_settlement_id = "reikholt_capital"
+minor_settlement_ids = Array[String](["reikholt_minor_1", "reikholt_minor_2", "reikholt_minor_3"])
+attrition_damage = 0.0
+region_color = Color(0.6, 0.5, 0.4, 1)

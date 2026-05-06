@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://0ytar10m3e74"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_nv8au"]
+
+[resource]
+script = ExtResource("1_nv8au")
+settlement_id = "dreadfen_capital"
+settlement_name = "Dreadfen Castle"
+settlement_type = 4
+region_id = "dreadfen"
+is_regional_capital = true
+map_position = Vector2(715.5469, 1620)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://bdpjscj3coaxu"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "grey_hollow"
+region_name = "Grey Hollow"
+owner_faction = "undead"
+map_polygon = PackedVector2Array(1144.875, 1200, 1240.2813, 1200, 1240.2813, 1320, 1335.6875, 1320, 1431.0938, 1320, 1526.5, 1320, 1526.5, 1440, 1621.9063, 1440, 1621.9063, 1560, 1717.3125, 1560, 1717.3125, 1680, 1812.7188, 1680, 1812.7188, 1800, 1812.7188, 1920, 1812.7188, 2040, 1717.3125, 2040, 1621.9063, 2040, 1526.5, 2040, 1431.0938, 2040, 1335.6875, 2040, 1240.2813, 2040, 1144.875, 2040, 1049.4688, 2040, 954.0625, 2040, 954.0625, 1920, 954.0625, 1800, 954.0625, 1680, 1049.4688, 1680, 1049.4688, 1560, 1049.4688, 1440, 1144.875, 1440, 1144.875, 1320)
+map_center = Vector2(1363.8201, 1709.2307)
+terrain_type = 1
+movement_cost_modifier = 1.3
+capital_settlement_id = "grey_hollow_capital"
+minor_settlement_ids = Array[String](["grey_hollow_minor_1", "grey_hollow_minor_2"])
+attrition_damage = 0.0
+region_color = Color(0.35, 0.38, 0.35, 0.2)

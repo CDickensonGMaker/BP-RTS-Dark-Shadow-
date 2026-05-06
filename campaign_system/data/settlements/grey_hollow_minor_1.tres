@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://be1sik0cpcpob"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_bjja7"]
+
+[resource]
+script = ExtResource("1_bjja7")
+settlement_id = "grey_hollow_minor_1"
+settlement_name = "Grey Hollow Watch"
+settlement_type = 1
+region_id = "grey_hollow"
+map_position = Vector2(1243.8201, 1629.2307)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

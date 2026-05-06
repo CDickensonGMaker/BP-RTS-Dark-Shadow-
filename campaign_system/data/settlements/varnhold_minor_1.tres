@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://dke7ebuuwte4p"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_31s83"]
+
+[resource]
+script = ExtResource("1_31s83")
+settlement_id = "varnhold_minor_1"
+settlement_name = "Varnhold Ford"
+settlement_type = 1
+region_id = "varnhold"
+map_position = Vector2(1873.9906, 1196)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

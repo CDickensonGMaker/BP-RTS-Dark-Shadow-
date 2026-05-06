@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://273aaajivxpl"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "east_wold"
+region_name = "East Wold"
+owner_faction = "dwarves"
+map_polygon = PackedVector2Array(2194.3438, 480, 2289.75, 480, 2385.1563, 480, 2385.1563, 600, 2480.5625, 600, 2480.5625, 720, 2385.1563, 720, 2385.1563, 840, 2289.75, 840, 2194.3438, 840, 2194.3438, 720, 2098.9375, 720, 2098.9375, 600, 2194.3438, 600)
+map_center = Vector2(2289.75, 660)
+capital_settlement_id = "east_wold_capital"
+minor_settlement_ids = Array[String](["east_wold_minor_1"])
+attrition_damage = 0.0
+region_color = Color(0.5, 0.5, 0.4, 0.2)

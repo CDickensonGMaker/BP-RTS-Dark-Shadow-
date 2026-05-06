@@ -30,7 +30,7 @@ func evaluate(analysis: BattlefieldAnalysis) -> float:
 		score += (0.6 - analysis.strength_ratio) * 80.0
 
 	# Good when many units are routing
-	if analysis.routing_friendly > 0:
+	if analysis.routing_friendly > 0 and analysis.friendly_regiments.size() > 0:
 		var routing_ratio: float = float(analysis.routing_friendly) / float(analysis.friendly_regiments.size())
 		score += routing_ratio * 50.0
 
@@ -43,6 +43,8 @@ func evaluate(analysis: BattlefieldAnalysis) -> float:
 	var total_hp_ratio: float = 0.0
 
 	for regiment in analysis.friendly_regiments:
+		if not regiment.data or regiment.data.max_soldiers <= 0:
+			continue
 		var hp_ratio: float = float(regiment.current_soldiers) / float(regiment.data.max_soldiers)
 		total_hp_ratio += hp_ratio
 		if hp_ratio < HP_THRESHOLD:
@@ -125,6 +127,8 @@ func _assign_units(analysis: BattlefieldAnalysis) -> void:
 	## Assign units to retreat or cover roles.
 
 	for regiment in analysis.friendly_regiments:
+		if not regiment.data or regiment.data.max_soldiers <= 0:
+			continue
 		var hp_ratio: float = float(regiment.current_soldiers) / float(regiment.data.max_soldiers)
 
 		# Damaged units or routing units retreat
@@ -143,10 +147,13 @@ func _assign_units(analysis: BattlefieldAnalysis) -> void:
 
 func _calculate_retreat_positions(analysis: BattlefieldAnalysis) -> void:
 	## Calculate retreat target positions for each unit.
+	## Clamps all positions to map bounds (configurable via AIAutoload).
 
 	# Find the map edge in retreat direction
 	# For now, use a fixed retreat distance
 	var retreat_base: Vector3 = analysis.friendly_center + _retreat_direction * RETREAT_DISTANCE
+	if AIAutoload:
+		retreat_base = AIAutoload.clamp_to_map(retreat_base)
 
 	# Spread units along a line perpendicular to retreat direction
 	var line_dir: Vector3 = _retreat_direction.cross(Vector3.UP).normalized()
@@ -159,10 +166,16 @@ func _calculate_retreat_positions(analysis: BattlefieldAnalysis) -> void:
 		var regiment = _retreat_units[i]
 		var offset: float = start_offset + i * unit_spacing
 		var retreat_pos: Vector3 = retreat_base + line_dir * offset
+		# Clamp to map bounds (configurable via AIAutoload)
+		if AIAutoload:
+			retreat_pos = AIAutoload.clamp_to_map(retreat_pos)
 		_retreat_positions[regiment] = retreat_pos
 
 	# Cover units position slightly behind retreating units
 	var cover_base: Vector3 = retreat_base - _retreat_direction * 15.0  # Behind retreating units
+	if AIAutoload:
+		cover_base = AIAutoload.clamp_to_map(cover_base)
+
 	var cover_count: int = _cover_units.size()
 	start_offset = -float(cover_count - 1) * unit_spacing / 2.0
 
@@ -170,6 +183,9 @@ func _calculate_retreat_positions(analysis: BattlefieldAnalysis) -> void:
 		var regiment = _cover_units[i]
 		var offset: float = start_offset + i * unit_spacing
 		var cover_pos: Vector3 = cover_base + line_dir * offset
+		# Clamp to map bounds (configurable via AIAutoload)
+		if AIAutoload:
+			cover_pos = AIAutoload.clamp_to_map(cover_pos)
 		_retreat_positions[regiment] = cover_pos
 
 
@@ -315,7 +331,7 @@ func _check_completion() -> bool:
 		return true
 
 	# Battle state changed significantly - enemy routed
-	if _analysis.routing_enemy >= _analysis.enemy_regiments.size() / 2:
+	if _analysis.enemy_regiments.size() > 0 and _analysis.routing_enemy >= _analysis.enemy_regiments.size() / 2:
 		status = Status.SUCCESS
 		_is_active = false
 		return true

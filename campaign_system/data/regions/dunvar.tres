@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://dtuekahe21f4v"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "dunvar"
+region_name = "Dunvar"
+owner_faction = "empire"
+map_polygon = PackedVector2Array(1431.0938, 120, 1526.5, 120, 1621.9063, 120, 1621.9063, 240, 1717.3125, 240, 1717.3125, 360, 1717.3125, 480, 1621.9063, 480, 1526.5, 480, 1431.0938, 480, 1431.0938, 360, 1335.6875, 360, 1335.6875, 240, 1431.0938, 240)
+map_center = Vector2(1542.401, 313.33334)
+terrain_type = 2
+movement_cost_modifier = 1.5
+capital_settlement_id = "dunvar_capital"
+minor_settlement_ids = Array[String](["dunvar_minor_1", "dunvar_minor_2"])
+attrition_damage = 0.0
+region_color = Color(0.4, 0.35, 0.3, 0.2)

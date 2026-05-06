@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://cldqky5awpqw2"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_na31h"]
+
+[resource]
+script = ExtResource("1_na31h")
+settlement_id = "crows_ford_capital"
+settlement_name = "Crows Ford Castle"
+settlement_type = 4
+region_id = "crows_ford"
+is_regional_capital = true
+map_position = Vector2(810.9531, 1380)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

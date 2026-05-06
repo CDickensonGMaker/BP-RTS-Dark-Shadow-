@@ -42,6 +42,14 @@ enum Source {
 	WINNING,
 	HIGH_GROUND,
 
+	# Territory modifiers (DEI-inspired)
+	FRIENDLY_TERRITORY,
+	ENEMY_TERRITORY,
+
+	# Unit type modifiers (DEI-inspired)
+	UNIT_TYPE_BONUS,
+	UNIT_TYPE_PENALTY,
+
 	# Recovery
 	NATURAL_RECOVERY,
 	RALLY_RECOVERY,
@@ -171,6 +179,10 @@ static func get_source_name(src: Source) -> String:
 		Source.OFFICER_AURA: return "Officer Nearby"
 		Source.WINNING: return "Winning"
 		Source.HIGH_GROUND: return "High Ground"
+		Source.FRIENDLY_TERRITORY: return "Home Territory"
+		Source.ENEMY_TERRITORY: return "Enemy Territory"
+		Source.UNIT_TYPE_BONUS: return "Unit Discipline"
+		Source.UNIT_TYPE_PENALTY: return "Out of Element"
 		Source.NATURAL_RECOVERY: return "Recovery"
 		Source.RALLY_RECOVERY: return "Rallying"
 		Source.CUSTOM: return "Custom"

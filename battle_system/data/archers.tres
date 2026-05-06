@@ -15,7 +15,6 @@ max_soldiers = 24
 current_soldiers = 24
 base_morale = 50.0
 morale_save = 4
-speed = 3.5
 charge_bonus = 0
 max_ammo = 24
 current_ammo = 24

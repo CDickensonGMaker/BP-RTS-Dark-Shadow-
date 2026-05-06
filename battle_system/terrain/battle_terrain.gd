@@ -64,6 +64,11 @@ func _ready():
 
 	_create_terrain()
 	_create_boundary_walls()
+
+	# Configure AI map bounds based on terrain size
+	if AIAutoload:
+		AIAutoload.set_map_bounds(terrain_size, 10.0)  # 10 unit margin from edge
+
 	# Wait for terrain to generate before spawning objects
 	await get_tree().create_timer(0.5).timeout
 	_spawn_objects()

@@ -42,6 +42,16 @@ var _average_morale: float = 80.0
 var _tick_accumulator: float = 0.0
 const TICK_INTERVAL: float = MoraleConstants.MORALE_TICK_RATE
 
+# Aura/environment tick (1 Hz = 1.0s tick rate for surrounding/winning/aura checks)
+var _aura_tick_accumulator: float = 0.0
+const AURA_TICK_INTERVAL: float = MoraleConstants.AURA_TICK_RATE
+
+# Combat tracking for WINNING modifier
+var _casualties_inflicted: int = 0
+var _casualties_received: int = 0
+var _last_casualties_inflicted: int = 0
+var _last_casualties_received: int = 0
+
 # =============================================================================
 # INITIALIZATION
 # =============================================================================
@@ -114,6 +124,12 @@ func update(delta: float) -> void:
 		_update_averages()
 		_check_unit_state()
 
+	# Aura/environment tick at 1 Hz (general aura, surrounded, winning)
+	_aura_tick_accumulator += delta
+	if _aura_tick_accumulator >= AURA_TICK_INTERVAL:
+		_aura_tick_accumulator -= AURA_TICK_INTERVAL
+		_update_environment_modifiers()
+
 
 func _tick_all_soldiers(tick_delta: float) -> void:
 	## Tick all registered soldier components.
@@ -136,6 +152,137 @@ func _update_averages() -> void:
 		_average_morale = new_average
 		average_morale_changed.emit(_average_morale)
 
+
+func _update_environment_modifiers() -> void:
+	## Update environment-based morale modifiers (1 Hz).
+	## Checks: General/Officer auras, Surrounded, Winning combat.
+	if not owner_regiment or not is_instance_valid(owner_regiment):
+		return
+
+	var position: Vector3 = owner_regiment.global_position
+
+	# --- WINNING MODIFIER ---
+	# Check if we're inflicting more casualties than receiving
+	var is_winning: bool = _check_winning_combat()
+	if is_winning:
+		set_continuous_modifier_all(MoraleEvent.Source.WINNING, MoraleConstants.CONTINUOUS_WINNING)
+	else:
+		clear_continuous_modifier_all(MoraleEvent.Source.WINNING)
+
+	# --- GENERAL AURA ---
+	# Check for nearby friendly general
+	var has_general_nearby: bool = _check_general_nearby(position)
+	if has_general_nearby:
+		set_continuous_modifier_all(MoraleEvent.Source.GENERAL_AURA, MoraleConstants.CONTINUOUS_GENERAL_AURA)
+	else:
+		clear_continuous_modifier_all(MoraleEvent.Source.GENERAL_AURA)
+
+	# --- OFFICER AURA ---
+	# Regiment leader provides officer aura (always present if regiment has leader)
+	if owner_regiment.leader and is_instance_valid(owner_regiment.leader):
+		set_continuous_modifier_all(MoraleEvent.Source.OFFICER_AURA, MoraleConstants.CONTINUOUS_OFFICER_AURA)
+	else:
+		clear_continuous_modifier_all(MoraleEvent.Source.OFFICER_AURA)
+
+	# --- SURROUNDED MODIFIER ---
+	# Check if enemies on 3+ sides
+	var is_surrounded: bool = _check_surrounded(position)
+	if is_surrounded:
+		set_continuous_modifier_all(MoraleEvent.Source.SURROUNDED, MoraleConstants.CONTINUOUS_SURROUNDED)
+	else:
+		clear_continuous_modifier_all(MoraleEvent.Source.SURROUNDED)
+
+
+func _check_winning_combat() -> bool:
+	## Check if regiment is inflicting more casualties than receiving.
+	## Compares casualties since last check.
+	var inflicted_delta: int = _casualties_inflicted - _last_casualties_inflicted
+	var received_delta: int = _casualties_received - _last_casualties_received
+
+	_last_casualties_inflicted = _casualties_inflicted
+	_last_casualties_received = _casualties_received
+
+	# Winning = inflicted at least 2 more than received in last period
+	return inflicted_delta > received_delta + 1
+
+
+func _check_general_nearby(position: Vector3) -> bool:
+	## Check if a friendly general is within aura range.
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return false
+
+	# Query for generals within aura range
+	var nearby: Array = AIAutoload.spatial_hash.query_radius(
+		position,
+		MoraleConstants.GENERAL_AURA_RADIUS,
+		faction,
+		SpatialHash.EntityType.GENERAL
+	)
+
+	return nearby.size() > 0
+
+
+func _check_surrounded(position: Vector3) -> bool:
+	## Check if enemies are on 3+ sides (N/S/E/W quadrants).
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return false
+
+	var enemy_faction: int = 1 if faction == 0 else 0
+	var nearby_enemies: Array = AIAutoload.spatial_hash.query_radius_enemies(
+		position, 25.0, faction
+	)
+
+	if nearby_enemies.size() < 2:
+		return false  # Need at least 2 enemies to be surrounded
+
+	# Count enemies in each quadrant (N, S, E, W)
+	var quadrants_with_enemies: int = 0
+	var north: bool = false
+	var south: bool = false
+	var east: bool = false
+	var west: bool = false
+
+	for enemy in nearby_enemies:
+		if not is_instance_valid(enemy):
+			continue
+		var dir: Vector3 = enemy.global_position - position
+		dir.y = 0
+
+		# Determine quadrant based on dominant axis
+		if absf(dir.z) > absf(dir.x):
+			if dir.z > 0:
+				south = true
+			else:
+				north = true
+		else:
+			if dir.x > 0:
+				east = true
+			else:
+				west = true
+
+	# Count occupied quadrants
+	if north:
+		quadrants_with_enemies += 1
+	if south:
+		quadrants_with_enemies += 1
+	if east:
+		quadrants_with_enemies += 1
+	if west:
+		quadrants_with_enemies += 1
+
+	# Surrounded = enemies in 3+ quadrants
+	return quadrants_with_enemies >= 3
+
+
+func track_casualties_inflicted(count: int) -> void:
+	## Called when this regiment inflicts casualties (for WINNING check).
+	_casualties_inflicted += count
+
+
+func track_casualties_received(count: int) -> void:
+	## Called when this regiment receives casualties (for WINNING check).
+	_casualties_received += count
+
 # =============================================================================
 # STATE CHECKING
 # =============================================================================
@@ -147,9 +294,14 @@ func _check_unit_state() -> void:
 
 	var broken_ratio: float = float(_broken_count) / float(_total_count)
 
+	# Check if unit can rout (Fanatic units cannot rout - they fight to the death)
+	var can_unit_rout: bool = true
+	if owner_regiment and owner_regiment.data and not owner_regiment.data.can_rout():
+		can_unit_rout = false
+
 	# Check for shattered (too many broken to rally)
 	if broken_ratio >= MoraleConstants.UNIT_SHATTERED_RATIO:
-		if not _is_shattered:
+		if not _is_shattered and can_unit_rout:
 			_is_shattered = true
 			_is_routing = true
 			unit_shattered.emit()
@@ -157,7 +309,7 @@ func _check_unit_state() -> void:
 
 	# Check for routing
 	if broken_ratio >= MoraleConstants.UNIT_ROUT_BROKEN_RATIO:
-		if not _is_routing:
+		if not _is_routing and can_unit_rout:
 			_is_routing = true
 			unit_routed.emit()
 			BattleSignals.regiment_routing.emit(owner_regiment)
@@ -192,17 +344,48 @@ func _on_soldier_state_changed(old_state: MoraleEvent.State, new_state: MoraleEv
 
 func apply_event_to_all(event: MoraleEvent) -> void:
 	## Apply an event to all soldiers in the unit.
+	## Disciplined units take less morale damage.
+	var modified_event: MoraleEvent = _apply_morale_resistance(event)
 	for component in _soldier_components:
-		component.apply_event(event)
+		component.apply_event(modified_event)
 
 
 func apply_event_to_nearby(event: MoraleEvent, center: Vector3, radius: float) -> void:
 	## Apply event only to soldiers near a position.
-	for component in _soldier_components:
-		if component.owner and is_instance_valid(component.owner):
-			var dist: float = component.owner.global_position.distance_to(center)
-			if dist <= radius:
-				component.apply_event(event)
+	## Disciplined units take less morale damage.
+	## Optimization: if radius > 15 units, skip per-soldier distance checks (covers whole formation)
+	var modified_event: MoraleEvent = _apply_morale_resistance(event)
+
+	if radius >= 15.0:
+		# Large radius - apply to all soldiers without distance check (optimization)
+		for component in _soldier_components:
+			component.apply_event(modified_event)
+	else:
+		# Small radius - check distance per soldier
+		for component in _soldier_components:
+			if component.owner and is_instance_valid(component.owner):
+				var dist: float = component.owner.global_position.distance_to(center)
+				if dist <= radius:
+					component.apply_event(modified_event)
+
+
+func _apply_morale_resistance(event: MoraleEvent) -> MoraleEvent:
+	## Apply personality-based morale resistance to negative events.
+	## Disciplined units take 25% less morale damage.
+	if event.magnitude >= 0:
+		return event  # Only modify negative (damaging) events
+
+	if owner_regiment and owner_regiment.data:
+		var resistance: float = owner_regiment.data.get_morale_resistance_modifier()
+		if resistance != 1.0:
+			# Create modified event with reduced damage
+			var modified: MoraleEvent = MoraleEvent.new()
+			modified.source = event.source
+			modified.magnitude = event.magnitude * resistance
+			modified.source_position = event.source_position
+			return modified
+
+	return event
 
 
 func set_continuous_modifier_all(source: MoraleEvent.Source, per_second: float) -> void:

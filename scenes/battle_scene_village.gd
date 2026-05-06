@@ -14,5 +14,5 @@ func _ready():
 	var camera = $RTSCamera
 	camera.position = Vector3(0, 0, 20)
 
-	# Start the battle
-	BattleManager.start_battle()
+	# Don't auto-start battle - let deployment phase run first
+	# Player clicks "CLICK TO START" button in BattleHUD to begin combat

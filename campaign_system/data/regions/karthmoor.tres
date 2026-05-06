@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://ct633kyg01tfx"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "karthmoor"
+region_name = "Karthmoor"
+owner_faction = "undead"
+map_polygon = PackedVector2Array(1621.9063, 1080, 1717.3125, 1080, 1717.3125, 1200, 1717.3125, 1320, 1812.7188, 1320, 1908.125, 1320, 1908.125, 1440, 2003.5313, 1440, 2003.5313, 1560, 2003.5313, 1680, 1908.125, 1680, 1812.7188, 1680, 1717.3125, 1680, 1717.3125, 1560, 1621.9063, 1560, 1621.9063, 1440, 1526.5, 1440, 1526.5, 1320, 1526.5, 1200, 1621.9063, 1200)
+map_center = Vector2(1758.2009, 1431.4286)
+attrition_damage = 0.0
+capital_settlement_id = "karthmoor_capital"
+minor_settlement_ids = Array[String](["karthmoor_minor_1", "karthmoor_minor_2"])
+region_color = Color(0.5, 0.48, 0.45, 0.2)

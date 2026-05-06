@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://bsk4gwcyjismt"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_cy6gk"]
+
+[resource]
+script = ExtResource("1_cy6gk")
+settlement_id = "high_carrow_minor_1"
+settlement_name = "High Carrow Watch"
+settlement_type = 1
+region_id = "high_carrow"
+map_position = Vector2(1443.6024, 486.6667)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

@@ -1,0 +1,149 @@
+[gd_scene load_steps=2 format=3 uid="uid://d8k9n5p2qr9yv"]
+
+[ext_resource type="Script" path="res://ui/main_menu/options_menu.gd" id="1_options"]
+
+[node name="OptionsMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_options")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.04, 0.035, 0.03, 1)
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -350.0
+offset_top = -300.0
+offset_right = 350.0
+offset_bottom = 300.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 30
+theme_override_constants/margin_bottom = 20
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Panel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="TitleLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "OPTIONS"
+horizontal_alignment = 1
+
+[node name="SettingsContainer" type="VBoxContainer" parent="Panel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 20
+
+[node name="AudioLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer"]
+layout_mode = 2
+text = "— AUDIO —"
+horizontal_alignment = 1
+
+[node name="AudioSettings" type="GridContainer" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer"]
+layout_mode = 2
+columns = 2
+
+[node name="MasterLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer/AudioSettings"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Master Volume:"
+
+[node name="MasterSlider" type="HSlider" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer/AudioSettings"]
+custom_minimum_size = Vector2(250, 20)
+layout_mode = 2
+max_value = 100.0
+value = 80.0
+
+[node name="MusicLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer/AudioSettings"]
+layout_mode = 2
+text = "Music Volume:"
+
+[node name="MusicSlider" type="HSlider" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer/AudioSettings"]
+custom_minimum_size = Vector2(250, 20)
+layout_mode = 2
+max_value = 100.0
+value = 70.0
+
+[node name="SFXLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer/AudioSettings"]
+layout_mode = 2
+text = "SFX Volume:"
+
+[node name="SFXSlider" type="HSlider" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer/AudioSettings"]
+custom_minimum_size = Vector2(250, 20)
+layout_mode = 2
+max_value = 100.0
+value = 80.0
+
+[node name="DisplayLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer"]
+layout_mode = 2
+text = "— DISPLAY —"
+horizontal_alignment = 1
+
+[node name="DisplaySettings" type="VBoxContainer" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="FullscreenCheck" type="CheckButton" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer/DisplaySettings"]
+layout_mode = 2
+text = "Fullscreen"
+
+[node name="VSyncCheck" type="CheckButton" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer/DisplaySettings"]
+layout_mode = 2
+button_pressed = true
+text = "VSync"
+
+[node name="GameplayLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer"]
+layout_mode = 2
+text = "— GAMEPLAY —"
+horizontal_alignment = 1
+
+[node name="GameplaySettings" type="GridContainer" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer"]
+layout_mode = 2
+columns = 2
+
+[node name="CameraLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer/GameplaySettings"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Camera Speed:"
+
+[node name="CameraSpeedSlider" type="HSlider" parent="Panel/MarginContainer/VBoxContainer/SettingsContainer/GameplaySettings"]
+custom_minimum_size = Vector2(250, 20)
+layout_mode = 2
+max_value = 100.0
+value = 50.0
+
+[node name="ButtonContainer" type="HBoxContainer" parent="Panel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 20
+
+[node name="BackButton" type="Button" parent="Panel/MarginContainer/VBoxContainer/ButtonContainer"]
+custom_minimum_size = Vector2(150, 50)
+layout_mode = 2
+text = "BACK"
+
+[node name="ApplyButton" type="Button" parent="Panel/MarginContainer/VBoxContainer/ButtonContainer"]
+custom_minimum_size = Vector2(150, 50)
+layout_mode = 2
+text = "APPLY"

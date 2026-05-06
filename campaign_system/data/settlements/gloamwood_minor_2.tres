@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://1m3dpv8u3ri7"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_tmu1t"]
+
+[resource]
+script = ExtResource("1_tmu1t")
+settlement_id = "gloamwood_minor_2"
+settlement_name = "Ork Village"
+settlement_type = 1
+region_id = "gloamwood"
+map_position = Vector2(1161.3945, 1040)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

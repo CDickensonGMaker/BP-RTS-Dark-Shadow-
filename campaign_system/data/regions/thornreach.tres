@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://cgeyhcqhq0ocu"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "thornreach"
+region_name = "Thornreach"
+map_polygon = PackedVector2Array(1908.125, 720, 2003.5313, 720, 2098.9375, 720, 2194.3438, 720, 2194.3438, 840, 2289.75, 840, 2289.75, 960, 2289.75, 1080, 2194.3438, 1080, 2098.9375, 1080, 2003.5313, 1080, 1908.125, 1080, 1908.125, 960, 1908.125, 840)
+map_center = Vector2(2085.9275, 910.9091)
+terrain_type = 3
+movement_cost_modifier = 2.5
+capital_settlement_id = "thornreach_capital"
+minor_settlement_ids = Array[String](["thornreach_minor_1", "thornreach_minor_2"])
+has_attrition_risk = true
+attrition_type = "cold"
+attrition_damage = 0.04
+region_color = Color(0.4, 0.4, 0.45, 1)

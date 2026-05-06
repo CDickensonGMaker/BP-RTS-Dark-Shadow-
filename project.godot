@@ -15,7 +15,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="BP RTS Dark Shadows"
-run/main_scene="res://scenes/battle_scene.tscn"
+run/main_scene="res://ui/main_menu/main_menu.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
@@ -27,10 +27,13 @@ WeatherSystem="*res://battle_system/systems/weather_system.gd"
 CampaignSignals="*res://campaign_system/signals/campaign_signals.gd"
 CampaignManager="*res://campaign_system/systems/campaign_manager.gd"
 BattleTransition="*res://campaign_system/systems/battle_transition.gd"
+BuildingManager="*res://campaign_system/systems/building_manager.gd"
+ContractManager="*res://campaign_system/systems/contract_manager.gd"
 BattleSignals="*res://battle_system/signals/battle_signals.gd"
 AIAutoload="*res://battle_system/ai/ai_autoload.gd"
 SelectionManager="*res://battle_system/systems/selection_manager.gd"
 MoraleSystem="*res://battle_system/systems/morale_system.gd"
+CombatState="*res://battle_system/systems/combat_state.gd"
 CombatManager="*res://battle_system/systems/combat_manager.gd"
 BattleManager="*res://battle_system/systems/battle_manager.gd"
 DeploymentManager="*res://battle_system/systems/deployment_manager.gd"
@@ -38,6 +41,9 @@ FormationDragHandler="*res://battle_system/systems/formation_drag_handler.gd"
 UnitCatalog="*res://battle_system/data/unit_catalog.gd"
 AbilityEffects="*res://battle_system/effects/ability_effects.gd"
 SpellEffects="*res://battle_system/effects/spell_effects.gd"
+ReinforcementManager="*res://battle_system/systems/reinforcement_manager.gd"
+SupplySystem="*res://battle_system/systems/supply_system.gd"
+LOSSystem="*res://battle_system/systems/los_system.gd"
 
 [display]
 
@@ -45,6 +51,10 @@ window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/stretch/mode="canvas_items"
 window/stretch/scale="1.0"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/battle_scene_editor/plugin.cfg", "res://addons/campaign_map_editor/plugin.cfg")
 
 [input]
 

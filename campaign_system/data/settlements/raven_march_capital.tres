@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://mfhexj12wbh1"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_po6i3"]
+
+[resource]
+script = ExtResource("1_po6i3")
+settlement_id = "raven_march_capital"
+settlement_name = "Raven March Hold"
+settlement_type = 4
+region_id = "raven_march"
+is_regional_capital = true
+map_position = Vector2(2623.6719, 180)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

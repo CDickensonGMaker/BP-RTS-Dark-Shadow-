@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://d1up1v2osetnm"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_hjdw2"]
+
+[resource]
+script = ExtResource("1_hjdw2")
+settlement_id = "high_carrow_capital"
+settlement_name = "High Carrow Fortress"
+settlement_type = 4
+region_id = "high_carrow"
+is_regional_capital = true
+map_position = Vector2(1478.7969, 540)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

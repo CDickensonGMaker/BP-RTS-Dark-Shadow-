@@ -106,7 +106,6 @@ func _handle_key_input(event: InputEventKey):
 			regiment.give_order(OrderType.Type.HOLD_POSITION)
 func _single_select(screen_pos: Vector2):
 	var regiment: Regiment = _raycast_regiment(screen_pos)
-	print("SelectionManager._single_select: at ", screen_pos, " found=", regiment)
 	var current_time: float = Time.get_unix_time_from_system()
 
 	# Check for double-click on same unit
@@ -164,9 +163,11 @@ func _recall_group(id: int):
 				_add_to_selection(r)
 		BattleSignals.group_recalled.emit(id)
 func _raycast_regiment(screen_pos: Vector2) -> Regiment:
-	var camera = get_viewport().get_camera_3d()
+	var viewport := get_viewport()
+	if not viewport:
+		return null
+	var camera := viewport.get_camera_3d()
 	if camera == null:
-		print("  _raycast_regiment: No camera!")
 		return null
 	var ray_origin = camera.project_ray_origin(screen_pos)
 	var ray_dir = camera.project_ray_normal(screen_pos)
@@ -180,11 +181,8 @@ func _raycast_regiment(screen_pos: Vector2) -> Regiment:
 	query.collision_mask = 2  # Only check layer 2 (units)
 	var result = space.intersect_ray(query)
 
-	print("  _raycast_regiment: ray_origin=", ray_origin, " dir=", ray_dir)
-
 	if result:
 		var collider = result.collider
-		print("  _raycast_regiment: Hit ", collider.name, " at ", result.position)
 		# Check if collider's owner/parent is a Regiment (e.g., MeleeArea)
 		var parent = collider.get_parent()
 		while parent:
@@ -201,26 +199,16 @@ func _raycast_regiment(screen_pos: Vector2) -> Regiment:
 		if regiment is Regiment:
 			var regiment_screen_pos = camera.unproject_position(regiment.global_position)
 			var dist = screen_pos.distance_to(regiment_screen_pos)
-			print("  _raycast_regiment: Checking ", regiment.name, " screen_pos=", regiment_screen_pos, " dist=", dist)
 			if dist < closest_dist:
 				closest_dist = dist
 				closest_regiment = regiment
 
-	if closest_regiment:
-		print("  _raycast_regiment: Fallback hit ", closest_regiment.name, " at dist=", closest_dist)
-		return closest_regiment
-
-	# Debug: also try hitting terrain to see where mouse is pointing
-	var terrain_query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
-	terrain_query.collision_mask = 1  # Terrain
-	var terrain_result = space.intersect_ray(terrain_query)
-	if terrain_result:
-		print("  _raycast_regiment: No unit hit, terrain at ", terrain_result.position)
-	else:
-		print("  _raycast_regiment: No unit or terrain hit!")
-	return null
+	return closest_regiment
 func _regiment_in_screen_rect(regiment: Regiment, rect: Rect2) -> bool:
-	var camera = get_viewport().get_camera_3d()
+	var viewport := get_viewport()
+	if not viewport:
+		return false
+	var camera := viewport.get_camera_3d()
 	if camera == null:
 		return false
 	var screen_pos = camera.unproject_position(regiment.global_position)
@@ -254,7 +242,10 @@ func _issue_move_order(screen_pos: Vector2):
 
 func _raycast_ground(screen_pos: Vector2) -> Vector3:
 	"""Raycast to find ground position under mouse"""
-	var camera: Camera3D = get_viewport().get_camera_3d()
+	var viewport := get_viewport()
+	if not viewport:
+		return Vector3.INF
+	var camera: Camera3D = viewport.get_camera_3d()
 	if camera == null:
 		return Vector3.INF
 
@@ -384,5 +375,8 @@ func _use_ability_hotkey(slot: int):
 
 func _is_campaign_map_active() -> bool:
 	"""Check if we're on the campaign map - skip battle selection processing"""
-	var current_scene = get_tree().current_scene
+	var tree := get_tree()
+	if not tree:
+		return false
+	var current_scene := tree.current_scene
 	return current_scene and current_scene.name == "CampaignMap"

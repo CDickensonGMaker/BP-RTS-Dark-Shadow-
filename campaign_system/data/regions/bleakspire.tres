@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://bwtr6ge2fkjpp"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "bleakspire"
+region_name = "Bleakspire"
+owner_faction = "enemy"
+map_polygon = PackedVector2Array(1812.7188, 120, 1908.125, 120, 2003.5313, 120, 2098.9375, 120, 2098.9375, 240, 2098.9375, 360, 2098.9375, 480, 2003.5313, 480, 1908.125, 480, 1812.7188, 480, 1812.7188, 360, 1812.7188, 240)
+map_center = Vector2(1955.8281, 300)
+terrain_type = 3
+movement_cost_modifier = 2.5
+capital_settlement_id = "bleakspire_capital"
+minor_settlement_ids = Array[String](["bleakspire_minor_1", "bleakspire_minor_2"])
+has_attrition_risk = true
+attrition_type = "cold"
+attrition_damage = 0.04
+region_color = Color(0.3, 0.2, 0.3, 0.25)

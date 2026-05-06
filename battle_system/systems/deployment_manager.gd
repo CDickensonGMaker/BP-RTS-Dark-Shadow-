@@ -3,6 +3,8 @@
 # Supports free repositioning and rotation during deployment phase
 extends Node
 
+# Preload to avoid parse-order issues with class_name
+const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.gd")
 
 enum Phase { DEPLOYMENT, COMBAT }
 
@@ -22,31 +24,14 @@ func _ready():
 
 
 func _init_deployment():
-	# Try to get map bounds from terrain
-	var terrain = _find_terrain()
+	# Try to get map bounds from terrain (Phase 6.4: use helper)
+	var terrain := TerrainHelperScript.get_terrain(get_tree())
 	if terrain:
 		var size = terrain.terrain_size
 		map_bounds = Rect2(-size.x / 2, -size.y / 2, size.x, size.y)
 		deployment_zone_z = 0.0  # Center line
 
 	BattleSignals.deployment_started.emit()
-
-
-func _find_terrain() -> Node:
-	var terrains = get_tree().get_nodes_in_group("terrain")
-	if terrains.size() > 0:
-		return terrains[0]
-	# Fallback: look for BattleTerrain by class
-	for node in get_tree().get_nodes_in_group("all_regiments"):
-		var parent = node.get_parent()
-		while parent:
-			if parent.has_method("get_height_at"):
-				return parent
-			for child in parent.get_children():
-				if child is Node3D and child.name == "BattleTerrain":
-					return child
-			parent = parent.get_parent()
-	return null
 
 
 func _input(event):
@@ -138,7 +123,10 @@ func is_combat_phase() -> bool:
 
 
 func _raycast_regiment(screen_pos: Vector2) -> Regiment:
-	var camera = get_viewport().get_camera_3d()
+	var viewport := get_viewport()
+	if not viewport:
+		return null
+	var camera := viewport.get_camera_3d()
 	if camera == null:
 		return null
 	var ray_origin = camera.project_ray_origin(screen_pos)
@@ -160,7 +148,10 @@ func _raycast_regiment(screen_pos: Vector2) -> Regiment:
 
 
 func _raycast_ground(screen_pos: Vector2) -> Vector3:
-	var camera = get_viewport().get_camera_3d()
+	var viewport := get_viewport()
+	if not viewport:
+		return Vector3.INF
+	var camera := viewport.get_camera_3d()
 	if camera == null:
 		return Vector3.INF
 

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://byj2p2inuu3nh"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_n8hng"]
+
+[resource]
+script = ExtResource("1_n8hng")
+settlement_id = "east_wold_minor_1"
+settlement_name = "East Wold Crossing"
+settlement_type = 1
+region_id = "east_wold"
+map_position = Vector2(2169.75, 580)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

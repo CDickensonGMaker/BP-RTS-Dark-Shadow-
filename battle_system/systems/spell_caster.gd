@@ -161,7 +161,12 @@ func _cast_projectile(spell: SpellData, caster: Regiment, target_pos: Vector3) -
 	projectile.hit_target.connect(_on_projectile_hit.bind(spell, caster))
 
 	# Add to scene
-	caster.get_tree().current_scene.add_child(projectile)
+	var tree := caster.get_tree()
+	if tree and tree.current_scene:
+		tree.current_scene.add_child(projectile)
+	else:
+		projectile.queue_free()
+		return
 	_active_projectiles.append(projectile)
 
 	spell_projectile_spawned.emit(projectile)
@@ -265,7 +270,12 @@ func _cast_beam(spell: SpellData, caster: Regiment, target_pos: Vector3) -> void
 	beam.beam_ended.connect(_on_beam_ended.bind(caster))
 
 	# Add to scene
-	caster.get_tree().current_scene.add_child(beam)
+	var tree := caster.get_tree()
+	if tree and tree.current_scene:
+		tree.current_scene.add_child(beam)
+	else:
+		beam.queue_free()
+		return
 
 	# Track active beam
 	_active_beams[caster] = {
@@ -365,7 +375,7 @@ func _apply_buff_effect(spell: SpellData, target: Regiment) -> void:
 
 	# Apply inspire-like effect if attack modifier > 1
 	if spell.attack_modifier > 1.0:
-		target.inspire_active = true
+		CombatState.set_inspired(target, true, "spell_buff")
 
 	# Apply morale boost
 	if spell.morale_per_second > 0.0 and target.unit_morale:
@@ -387,6 +397,8 @@ func _apply_buff_effect(spell: SpellData, target: Regiment) -> void:
 func _get_enemy_regiments_in_radius(center: Vector3, radius: float, caster: Regiment) -> Array[Regiment]:
 	## Get enemy regiments within radius.
 	var result: Array[Regiment] = []
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return result
 	var my_faction: int = 0 if caster.is_player_controlled else 1
 	var enemy_faction: int = 1 if my_faction == 0 else 0
 
@@ -410,6 +422,8 @@ func _get_enemy_regiments_in_radius(center: Vector3, radius: float, caster: Regi
 func _get_friendly_regiments_in_radius(center: Vector3, radius: float, caster: Regiment) -> Array[Regiment]:
 	## Get friendly regiments within radius.
 	var result: Array[Regiment] = []
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return result
 	var my_faction: int = 0 if caster.is_player_controlled else 1
 
 	var regiments: Array[Node] = AIAutoload.spatial_hash.query_regiments_in_radius(
@@ -432,6 +446,8 @@ func _get_friendly_regiments_in_radius(center: Vector3, radius: float, caster: R
 func _get_units_in_cone(origin: Vector3, direction: Vector3, length: float, angle_deg: float, caster: Regiment) -> Array[Regiment]:
 	## Get enemy units within cone area.
 	var result: Array[Regiment] = []
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return result
 	var my_faction: int = 0 if caster.is_player_controlled else 1
 	var enemy_faction: int = 1 if my_faction == 0 else 0
 
@@ -510,7 +526,11 @@ func _spawn_hazard_zone(spell: SpellData, caster: Regiment, position: Vector3) -
 	var hazard := HazardZoneClass.new()
 	hazard.setup(spell, position, caster)
 
-	caster.get_tree().current_scene.add_child(hazard)
+	var tree := caster.get_tree()
+	if tree and tree.current_scene:
+		tree.current_scene.add_child(hazard)
+	else:
+		hazard.queue_free()
 
 
 # === AUDIO ===

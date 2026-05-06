@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://g8g0w7qy1af0"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_5o5aa"]
+
+[resource]
+script = ExtResource("1_5o5aa")
+settlement_id = "sable_coast_capital"
+settlement_name = "Sable Coast Hold"
+settlement_type = 4
+region_id = "sable_coast"
+is_regional_capital = true
+map_position = Vector2(2432.8594, 1020)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

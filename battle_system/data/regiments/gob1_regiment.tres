@@ -5,21 +5,25 @@
 
 [resource]
 script = ExtResource("1")
-regiment_name = "Gob1"
+regiment_name = "Goblin Mob"
 unit_type = 0
-attack = 10
-defense = 10
-weapon_skill = 10
+attack = 6
+defense = 6
+weapon_skill = 6
 ballistic_skill = 0
-strength = 3
-max_soldiers = 40
-current_soldiers = 40
-base_morale = 60.0
-morale_save = 5
-speed = 3.5
-charge_bonus = 6
+strength = 2
+armor = 1
+max_soldiers = 50
+current_soldiers = 50
+base_morale = 40.0
+morale_save = 3
+walk_speed = 1.8
+run_speed = 2.2
+charge_speed = 3.5
+charge_speed_distance = 15.0
+charge_bonus = 2
 max_ammo = 0
 current_ammo = 0
 range_distance = 0.0
-faction_color = Color(0.2, 0.6, 0.2, 1)
+faction_color = Color(0.3, 0.6, 0.2, 1)
 sprite_atlas = ExtResource("2")

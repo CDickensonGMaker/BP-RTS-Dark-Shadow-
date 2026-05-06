@@ -26,11 +26,14 @@ var is_campaign_active: bool = false
 
 
 func _ready() -> void:
-	# Connect to relevant signals
+	# Connect to relevant signals (only if not already connected)
 	if CampaignSignals:
-		CampaignSignals.battalion_selected.connect(_on_battalion_selected)
-		CampaignSignals.turn_ended.connect(_on_turn_ended)
-		CampaignSignals.battle_returning.connect(_on_battle_returning)
+		if not CampaignSignals.battalion_selected.is_connected(_on_battalion_selected):
+			CampaignSignals.battalion_selected.connect(_on_battalion_selected)
+		if not CampaignSignals.turn_ended.is_connected(_on_turn_ended):
+			CampaignSignals.turn_ended.connect(_on_turn_ended)
+		if not CampaignSignals.battle_returning.is_connected(_on_battle_returning):
+			CampaignSignals.battle_returning.connect(_on_battle_returning)
 
 
 func start_new_campaign() -> void:
@@ -53,7 +56,7 @@ func _create_starting_battalion():
 	var battalion = BattalionDataScript.new()
 	battalion.battalion_id = "battalion_1"
 	battalion.battalion_name = "Iron Wolves"
-	battalion.map_position = Vector2(400, 300)
+	battalion.map_position = Vector2(360, 520)  # Westervale - player starting region
 	battalion.movement_points = 100.0
 	battalion.max_movement_points = 100.0
 
@@ -186,5 +189,104 @@ func load_save_data(data: Dictionary) -> void:
 	current_gold = data.get("gold", 2000)
 	turn_number = data.get("turn", 1)
 	completed_contracts = data.get("completed_contracts", [])
-	# Battalion loading would need full implementation
+
+	# Load battalions
+	battalions.clear()
+	var battalion_saves: Array = data.get("battalions", [])
+	for bat_data in battalion_saves:
+		var battalion = BattalionDataScript.new()
+		battalion.battalion_id = bat_data.get("id", "battalion_1")
+		battalion.battalion_name = bat_data.get("name", "Unknown Battalion")
+		var pos_data: Dictionary = bat_data.get("position", {"x": 500, "y": 500})
+		battalion.map_position = Vector2(pos_data.get("x", 500), pos_data.get("y", 500))
+		battalion.movement_points = bat_data.get("movement", 100.0)
+		battalion.max_movement_points = 100.0
+
+		# Load regiment data if available
+		var regiment_saves: Array = bat_data.get("regiments", [])
+		for reg_data in regiment_saves:
+			var regiment := RegimentData.new()
+			regiment.regiment_name = reg_data.get("name", "Unknown")
+			regiment.unit_type = reg_data.get("unit_type", UnitType.Type.INFANTRY)
+			regiment.max_soldiers = reg_data.get("max_soldiers", 30)
+			regiment.current_soldiers = reg_data.get("current_soldiers", 30)
+			regiment.attack = reg_data.get("attack", 10)
+			regiment.defense = reg_data.get("defense", 10)
+			regiment.morale = reg_data.get("morale", 75)
+			battalion.regiments.append(regiment)
+
+		# If no regiments saved, create defaults
+		if battalion.regiments.is_empty():
+			battalion.regiments = _create_default_regiments()
+
+		battalions.append(battalion)
+
+	# If no battalions loaded, create starting one
+	if battalions.is_empty():
+		battalions.append(_create_starting_battalion())
+
 	is_campaign_active = true
+
+
+func _create_default_regiments() -> Array:
+	var regiments: Array = []
+
+	var swordsmen := RegimentData.new()
+	swordsmen.regiment_name = "Swordsmen"
+	swordsmen.unit_type = UnitType.Type.INFANTRY
+	swordsmen.max_soldiers = 40
+	swordsmen.current_soldiers = 40
+	swordsmen.attack = 12
+	swordsmen.defense = 12
+	regiments.append(swordsmen)
+
+	return regiments
+
+
+func save_campaign(save_name: String = "") -> bool:
+	## Save the current campaign to a file
+	if save_name.is_empty():
+		save_name = "campaign_%d" % Time.get_unix_time_from_system()
+
+	var save_dir := "user://saves/"
+	if not DirAccess.dir_exists_absolute(save_dir):
+		DirAccess.make_dir_recursive_absolute(save_dir)
+
+	var save_path := save_dir + save_name + ".sav"
+	var data := get_save_data()
+
+	# Include full regiment data
+	var battalion_saves: Array = []
+	for battalion in battalions:
+		var reg_saves: Array = []
+		for regiment in battalion.regiments:
+			reg_saves.append({
+				"name": regiment.regiment_name,
+				"unit_type": regiment.unit_type,
+				"max_soldiers": regiment.max_soldiers,
+				"current_soldiers": regiment.current_soldiers,
+				"attack": regiment.attack,
+				"defense": regiment.defense,
+				"morale": regiment.morale,
+			})
+
+		battalion_saves.append({
+			"id": battalion.battalion_id,
+			"name": battalion.battalion_name,
+			"position": {"x": battalion.map_position.x, "y": battalion.map_position.y},
+			"movement": battalion.movement_points,
+			"regiments": reg_saves,
+		})
+
+	data["battalions"] = battalion_saves
+
+	var file := FileAccess.open(save_path, FileAccess.WRITE)
+	if not file:
+		push_error("Failed to create save file: %s" % save_path)
+		return false
+
+	var json_text := JSON.stringify(data, "\t")
+	file.store_string(json_text)
+	file.close()
+	print("Campaign saved to: %s" % save_path)
+	return true

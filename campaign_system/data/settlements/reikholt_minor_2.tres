@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://clgt1udvdyv6"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_criap"]
+
+[resource]
+script = ExtResource("1_criap")
+settlement_id = "reikholt_minor_2"
+settlement_name = "Reikholt Hamlet"
+settlement_type = 1
+region_id = "reikholt"
+map_position = Vector2(1797.67, 930.58826)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

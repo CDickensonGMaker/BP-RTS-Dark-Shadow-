@@ -117,13 +117,22 @@ func should_retreat(position: Vector3, my_faction: int, my_firepower: float, hp_
 
 func get_safest_retreat_position(position: Vector3, my_faction: int, search_radius: float = 60.0) -> Vector3:
 	## Find safest nearby position to retreat to.
+	## Clamps result to map bounds to prevent units leaving the battlefield.
+	var retreat_pos: Vector3
+
 	var gradient := get_threat_gradient(position, my_faction)
 	if gradient.length() > 0.1:
-		return position + gradient * search_radius
+		retreat_pos = position + gradient * search_radius
 	else:
 		# No threat gradient - retreat backward (toward faction's side)
 		var retreat_dir := Vector3.FORWARD if my_faction == ENEMY_FACTION else Vector3.BACK
-		return position + retreat_dir * search_radius
+		retreat_pos = position + retreat_dir * search_radius
+
+	# Clamp to map bounds (configurable via AIAutoload)
+	if AIAutoload:
+		retreat_pos = AIAutoload.clamp_to_map(retreat_pos)
+
+	return retreat_pos
 
 
 func decay_threats(delta: float) -> void:
@@ -161,6 +170,9 @@ func update_from_regiments(regiments: Array) -> void:
 
 func _calculate_firepower(regiment: Regiment) -> float:
 	## Calculate effective firepower of a regiment.
+	if not regiment.data:
+		return 0.0
+
 	var base_power: float = 0.0
 
 	# Melee strength
@@ -170,9 +182,11 @@ func _calculate_firepower(regiment: Regiment) -> float:
 	if regiment.current_ammo > 0 and regiment.data.ballistic_skill > 0:
 		base_power += regiment.data.ballistic_skill * regiment.data.strength * 1.5
 
-	# Scale by soldier count
-	var soldier_ratio := float(regiment.current_soldiers) / float(regiment.data.max_soldiers)
-	base_power *= soldier_ratio
+	# Scale by soldier count (prevent division by zero)
+	var max_soldiers: int = regiment.data.max_soldiers
+	if max_soldiers > 0:
+		var soldier_ratio := float(regiment.current_soldiers) / float(max_soldiers)
+		base_power *= soldier_ratio
 
 	return base_power
 

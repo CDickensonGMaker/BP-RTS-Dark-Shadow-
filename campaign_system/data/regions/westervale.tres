@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://dutc7dbrjkysy"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "westervale"
+region_name = "Westervale"
+owner_faction = "player"
+map_polygon = PackedVector2Array(858.65625, 600, 954.0625, 600, 1049.4688, 600, 1049.4688, 720, 1049.4688, 840, 954.0625, 840, 858.65625, 840, 858.65625, 960, 763.25, 960, 763.25, 840, 667.84375, 840, 667.84375, 720, 763.25, 720, 858.65625, 720)
+map_center = Vector2(879.10046, 762.8571)
+terrain_type = 4
+movement_cost_modifier = 1.2
+capital_settlement_id = "westervale_capital"
+minor_settlement_ids = Array[String](["westervale_minor_1", "westervale_minor_2"])
+has_attrition_risk = true
+attrition_type = "heat"
+region_color = Color(0.83, 0.72, 0.59, 1)

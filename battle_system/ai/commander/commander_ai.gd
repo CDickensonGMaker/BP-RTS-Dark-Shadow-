@@ -95,6 +95,12 @@ func _init(p_regiment: Node, p_general_ai = null) -> void:
 	_init_blackboard()
 	_build_behavior_tree()
 
+	# Auto-assign SKIRMISH stance to ranged units for proper firing behavior
+	# Ranged units in AGGRESSIVE stance will try melee first, which is wrong
+	if regiment.data and regiment.data.ballistic_skill > 0 and regiment.current_ammo > 0:
+		current_stance = Stance.SKIRMISH
+		blackboard["stance"] = Stance.SKIRMISH
+
 	# Register with AIAutoload
 	if AIAutoload:
 		AIAutoload.register_commander_ai(self)
@@ -195,11 +201,7 @@ func _create_has_target_condition() -> BTNode:
 func _create_has_ammo_condition() -> BTNode:
 	var cond: BTCondition = BTCondition.new("HasAmmo")
 	cond.condition_func = func():
-		var has_ammo = regiment and regiment.current_ammo > 0 and regiment.data.ballistic_skill > 0
-		if regiment and regiment.data.ballistic_skill > 0:
-			print("[AI DEBUG] %s HasAmmo check: ammo=%d, bs=%d, result=%s" % [
-				regiment.name, regiment.current_ammo, regiment.data.ballistic_skill, has_ammo])
-		return has_ammo
+		return regiment and regiment.current_ammo > 0 and regiment.data.ballistic_skill > 0
 	cond.blackboard = blackboard
 	return cond
 
@@ -259,8 +261,14 @@ func tick() -> void:
 	# Check pursuit aggression for routing enemies
 	_check_pursuit_behavior()
 
+	# Check if impetuous unit wants to charge without orders
+	_check_impetuous_charge()
+
 	# Update blackboard state
 	_update_blackboard()
+
+	# Ensure target is set in blackboard BEFORE running tree (fixes ranged not firing)
+	blackboard["target"] = current_target
 
 	# If already engaged in melee, don't run behavior tree - let combat resolve naturally
 	# This prevents the AI from issuing conflicting move orders during melee
@@ -334,12 +342,18 @@ func _check_unit_preservation() -> void:
 func _check_pursuit_behavior() -> void:
 	## Check pursuit aggression for routing enemies.
 	## When enemy is routing, chase if pursuit_aggression > 0.5, otherwise hold.
+	## Disciplined units never pursue regardless of aggression setting.
 	if not current_target or not is_instance_valid(current_target):
 		return
 
 	# Check if current target is routing
 	if current_target.state == Regiment.State.ROUTING:
-		if personality.pursuit_aggression > 0.5:
+		# Disciplined units never pursue (from RegimentData personality)
+		var can_pursue: bool = true
+		if regiment.data and not regiment.data.can_pursue():
+			can_pursue = false
+
+		if can_pursue and personality.pursuit_aggression > 0.5:
 			# Chase the routing enemy
 			if current_stance != Stance.AGGRESSIVE:
 				set_stance(Stance.AGGRESSIVE)
@@ -349,6 +363,41 @@ func _check_pursuit_behavior() -> void:
 			# Hold position, don't pursue
 			clear_target()
 			issue_hold_order()
+
+
+func _check_impetuous_charge() -> void:
+	## Check if impetuous unit charges without orders.
+	## Impetuous units may charge when enemies are nearby, ignoring orders.
+	if not regiment or not regiment.data:
+		return
+
+	# Only impetuous units can charge without orders
+	if not regiment.data.may_charge_impulsively():
+		return
+
+	# Don't interrupt if already engaged or marching to target
+	if regiment.state == Regiment.State.ENGAGING or regiment.state == Regiment.State.MARCHING:
+		return
+
+	# Don't charge while routing
+	if blackboard.get("is_routing", false):
+		return
+
+	# Check for nearby enemies within charge range (40 units)
+	const IMPETUOUS_CHARGE_RANGE: float = 40.0
+	var nearest_enemy: Node = AIAutoload.query_nearest_enemy(
+		regiment.global_position, IMPETUOUS_CHARGE_RANGE, _faction
+	)
+
+	if not nearest_enemy or not is_instance_valid(nearest_enemy):
+		return
+
+	# Random chance to charge (30% per tick when enemy is in range)
+	# This creates the "may charge without orders" behavior
+	if randf() < 0.30:
+		# CHARGE!
+		set_target(nearest_enemy)
+		issue_charge_order(nearest_enemy)
 
 # =============================================================================
 # TARGET MANAGEMENT
@@ -439,7 +488,9 @@ func issue_attack_order(target: Node) -> void:
 	## Issue an attack command.
 	set_target(target)
 	current_order = { "type": OrderType.Type.ATTACK_MOVE, "target": target }
-	regiment.give_order(OrderType.Type.ATTACK_MOVE, target.global_position)
+	# Use approach position to avoid pathing through enemy
+	var approach_pos: Vector3 = Regiment.get_attack_approach_position(regiment.global_position, target.global_position)
+	regiment.give_order(OrderType.Type.ATTACK_MOVE, approach_pos)
 	order_issued.emit(OrderType.Type.ATTACK_MOVE, target)
 
 
@@ -447,7 +498,9 @@ func issue_charge_order(target: Node) -> void:
 	## Issue a charge command.
 	set_target(target)
 	current_order = { "type": OrderType.Type.CHARGE, "target": target }
-	regiment.give_order(OrderType.Type.CHARGE, target.global_position)
+	# Use approach position to avoid pathing through enemy
+	var approach_pos: Vector3 = Regiment.get_attack_approach_position(regiment.global_position, target.global_position)
+	regiment.give_order(OrderType.Type.CHARGE, approach_pos)
 	order_issued.emit(OrderType.Type.CHARGE, target)
 
 
@@ -480,27 +533,36 @@ func _on_unit_rallied() -> void:
 func _find_flee_position() -> Vector3:
 	## Find a position to flee towards using threat heatmap (spring1944-style).
 	## Falls back to simple flee-from-enemy if heatmap unavailable.
+	## Clamps result to map bounds to prevent units leaving the battlefield.
+
+	var flee_pos: Vector3
 
 	# Use threat heatmap for intelligent safe position
 	if AIAutoload and AIAutoload.threat_heatmap:
-		return AIAutoload.get_safest_retreat_position(regiment.global_position, _faction)
-
-	# Fallback: simple flee-from-enemy logic
-	var flee_direction: Vector3 = Vector3.ZERO
-
-	# Get direction away from nearest enemy
-	var nearest_enemy: Node = AIAutoload.query_nearest_enemy(
-		regiment.global_position, 50.0, _faction
-	)
-
-	if nearest_enemy:
-		flee_direction = (regiment.global_position - nearest_enemy.global_position).normalized()
+		flee_pos = AIAutoload.get_safest_retreat_position(regiment.global_position, _faction)
 	else:
-		# Flee towards own edge of map
-		flee_direction = Vector3(0, 0, 1) if _faction == 0 else Vector3(0, 0, -1)
+		# Fallback: simple flee-from-enemy logic
+		var flee_direction: Vector3 = Vector3.ZERO
 
-	flee_direction.y = 0
-	return regiment.global_position + flee_direction * 30.0
+		# Get direction away from nearest enemy
+		var nearest_enemy: Node = AIAutoload.query_nearest_enemy(
+			regiment.global_position, 50.0, _faction
+		)
+
+		if nearest_enemy:
+			flee_direction = (regiment.global_position - nearest_enemy.global_position).normalized()
+		else:
+			# Flee towards own edge of map
+			flee_direction = Vector3(0, 0, 1) if _faction == 0 else Vector3(0, 0, -1)
+
+		flee_direction.y = 0
+		flee_pos = regiment.global_position + flee_direction * 30.0
+
+	# Clamp to map bounds (configurable via AIAutoload)
+	if AIAutoload:
+		flee_pos = AIAutoload.clamp_to_map(flee_pos)
+
+	return flee_pos
 
 # =============================================================================
 # GENERAL AI INTEGRATION
@@ -538,12 +600,23 @@ func destroy() -> void:
 	## Clean up the commander AI.
 	_is_active = false
 
+	# Disconnect morale signals to prevent memory leaks
+	if regiment and regiment.get("unit_morale"):
+		var unit_morale = regiment.unit_morale
+		if unit_morale:
+			if unit_morale.unit_routed.is_connected(_on_unit_routed):
+				unit_morale.unit_routed.disconnect(_on_unit_routed)
+			if unit_morale.unit_rallied.is_connected(_on_unit_rallied):
+				unit_morale.unit_rallied.disconnect(_on_unit_rallied)
+
 	if AIAutoload:
 		AIAutoload.unregister_commander_ai(self)
 
 	regiment = null
 	general_ai = null
 	behavior_tree = null
+	_cached_personality = null
+	_pending_threat = null
 
 # =============================================================================
 # DEBUG

@@ -69,6 +69,9 @@ func update(delta: float) -> void:
 			cooldowns[ability] = maxf(0.0, cooldowns[ability] - delta)
 			if cooldowns[ability] == 0.0:
 				ability_ready.emit(ability)
+				# Also emit global signal for UI listeners
+				if BattleSignals:
+					BattleSignals.ability_ready.emit(regiment, ability)
 
 	# Update active abilities (duration-based)
 	var ended_abilities: Array[AbilityType.Type] = []
@@ -211,7 +214,9 @@ func _do_charge(target: Variant) -> void:
 	if target is Vector3:
 		regiment.give_order(OrderType.Type.CHARGE, target)
 	elif target is Node:
-		regiment.give_order(OrderType.Type.CHARGE, target.global_position)
+		# Use approach position to avoid pathing through enemy
+		var approach_pos: Vector3 = Regiment.get_attack_approach_position(regiment.global_position, target.global_position)
+		regiment.give_order(OrderType.Type.CHARGE, approach_pos)
 
 	# Spawn charge visual effect
 	var _fx = _get_ability_effects()
@@ -225,8 +230,8 @@ func _do_wedge_charge(target: Variant) -> void:
 
 
 func _do_brace() -> void:
-	# Set braced state - handled by combat system
-	regiment.is_braced = true
+	# Set braced state via CombatState system
+	CombatState.set_braced(regiment, true, "ability_brace")
 	regiment.give_order(OrderType.Type.HOLD_POSITION)
 
 	# Spawn brace visual effect
@@ -236,7 +241,7 @@ func _do_brace() -> void:
 
 
 func _end_brace() -> void:
-	regiment.is_braced = false
+	CombatState.set_braced(regiment, false, "ability_brace_end")
 
 	# Stop brace visual effect
 	var _fx = _get_ability_effects()
@@ -316,8 +321,8 @@ func _do_rally() -> void:
 
 
 func _do_inspire() -> void:
-	# Temporary combat boost handled via modifier
-	regiment.inspire_active = true
+	# Temporary combat boost via CombatState system
+	CombatState.set_inspired(regiment, true, "ability_inspire")
 
 	# Spawn inspire visual effect
 	var _fx = _get_ability_effects()
@@ -326,7 +331,7 @@ func _do_inspire() -> void:
 
 
 func _end_inspire() -> void:
-	regiment.inspire_active = false
+	CombatState.set_inspired(regiment, false, "ability_inspire_end")
 
 	# Stop inspire visual effect
 	var _fx = _get_ability_effects()

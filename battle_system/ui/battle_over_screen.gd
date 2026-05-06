@@ -40,7 +40,9 @@ func _ready() -> void:
 
 func _connect_signals() -> void:
 	if BattleSignals:
-		BattleSignals.battle_ended.connect(_on_battle_ended)
+		# Only connect if not already connected (prevents duplicates across scene reloads)
+		if not BattleSignals.battle_ended.is_connected(_on_battle_ended):
+			BattleSignals.battle_ended.connect(_on_battle_ended)
 
 
 func _on_battle_ended(result: Dictionary) -> void:
@@ -382,6 +384,8 @@ func _populate_forces_panel(panel: PanelContainer, unit_stats: Dictionary, remai
 		# Color losses red if high
 		if losses > 0:
 			var starting_count: int = stats.get("starting", 1)
+			if starting_count <= 0:
+				starting_count = 1  # Prevent division by zero
 			var loss_ratio: float = float(losses) / float(starting_count)
 			if loss_ratio >= 0.5:
 				var losses_label: Label = row.get_child(2)
@@ -401,3 +405,17 @@ func _populate_forces_panel(panel: PanelContainer, unit_stats: Dictionary, remai
 
 func _on_continue_pressed() -> void:
 	_hide()
+
+	# Ensure game is unpaused before scene transition
+	get_tree().paused = false
+
+	# Return to campaign if this was a campaign battle
+	var battle_transition = get_node_or_null("/root/BattleTransition")
+	if battle_transition and battle_transition.is_campaign_battle():
+		battle_transition.return_to_campaign(battle_result)
+	elif battle_transition and battle_transition.battle_data.get("is_quick_battle", false):
+		# Quick battle - return to main menu
+		get_tree().change_scene_to_file("res://ui/main_menu/main_menu.tscn")
+	else:
+		# Standalone battle - return to main menu
+		get_tree().change_scene_to_file("res://ui/main_menu/main_menu.tscn")

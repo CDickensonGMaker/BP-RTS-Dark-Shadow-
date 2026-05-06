@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+building_id = "supply_post_t1"
+building_name = "Supply Post"
+description = "Local supply depot. Increases replenishment in this region."
+category = 7
+tier = 1
+prerequisite_building = ""
+required_settlement_type = 0
+required_tech = ""
+gold_cost = 300
+turns_to_build = 1
+upkeep = 15
+income_bonus = 0
+supply_bonus = 10
+replenishment_bonus = 0.03
+global_replenishment = false
+recruitment_bonus = {}
+unlocks_units = []
+armor_upgrade = 0
+attack_upgrade = 0
+tech_points_per_turn = 0

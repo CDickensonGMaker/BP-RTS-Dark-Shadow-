@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://cyeopjstj7dq4"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "mourning_vale"
+region_name = "Mourning Vale"
+map_polygon = PackedVector2Array(1144.875, 600, 1240.2813, 600, 1335.6875, 600, 1335.6875, 720, 1431.0938, 720, 1431.0938, 840, 1431.0938, 960, 1335.6875, 960, 1240.2813, 960, 1144.875, 960, 1144.875, 840, 1144.875, 720)
+map_center = Vector2(1276.0586, 795)
+terrain_type = 1
+movement_cost_modifier = 1.3
+capital_settlement_id = "mourning_vale_capital"
+minor_settlement_ids = Array[String](["mourning_vale_minor_3", "mourning_vale_minor_2"])
+attrition_damage = 0.0
+region_color = Color(0.3, 0.35, 0.3, 0.2)

@@ -1,0 +1,17 @@
+[gd_scene format=3]
+
+[node name="DustyMud" type="Node3D"]
+
+# Battle Map: Dusty Mud
+# Size: 34x34 tiles
+# Time: dawn, Weather: fog
+
+[node name="Terrain" type="Node3D" parent="."]
+
+[node name="PlayerDeployment" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.000000, 0, 20.000000)
+
+[node name="EnemyDeployment" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 220.000000, 0, 240.000000)
+
+[node name="Objects" type="Node3D" parent="."]

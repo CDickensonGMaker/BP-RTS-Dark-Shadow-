@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://b4f8wmsbbp2s5"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "frosthollow"
+region_name = "Frosthollow"
+map_polygon = PackedVector2Array(1049.4688, 0, 1144.875, 0, 1240.2813, 0, 1240.2813, 120, 1335.6875, 120, 1431.0938, 120, 1431.0938, 240, 1335.6875, 240, 1335.6875, 360, 1240.2813, 360, 1144.875, 360, 1049.4688, 360, 954.0625, 360, 858.65625, 360, 858.65625, 240, 763.25, 240, 763.25, 120, 858.65625, 120, 954.0625, 120, 1049.4688, 120)
+map_center = Vector2(1103.9866, 205.71428)
+terrain_type = 3
+movement_cost_modifier = 2.5
+has_attrition_risk = true
+attrition_type = "cold"
+attrition_damage = 0.04
+capital_settlement_id = "frosthollow_capital"
+minor_settlement_ids = Array[String](["frosthollow_minor_1", "frosthollow_minor_2"])
+region_color = Color(0.7, 0.8, 0.9, 0.2)

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://bfxhm8py8s4nb"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_r7265"]
+
+[resource]
+script = ExtResource("1_r7265")
+settlement_id = "reikholt_minor_3"
+settlement_name = "Reikholt Watch"
+settlement_type = 1
+region_id = "reikholt"
+map_position = Vector2(1647.67, 970.58826)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

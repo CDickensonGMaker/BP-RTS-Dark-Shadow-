@@ -5,18 +5,22 @@
 
 [resource]
 script = ExtResource("1")
-regiment_name = "Greenskin Brutes"
+regiment_name = "Orc Boyz"
 unit_type = 0
-attack = 16
-defense = 10
-weapon_skill = 12
+attack = 12
+defense = 8
+weapon_skill = 10
 ballistic_skill = 0
-strength = 5
-max_soldiers = 32
-current_soldiers = 32
-base_morale = 60.0
+strength = 4
+armor = 3
+max_soldiers = 40
+current_soldiers = 40
+base_morale = 70.0
 morale_save = 5
-speed = 3.2
+walk_speed = 1.7
+run_speed = 2.1
+charge_speed = 3.4
+charge_speed_distance = 15.0
 charge_bonus = 6
 max_ammo = 0
 current_ammo = 0

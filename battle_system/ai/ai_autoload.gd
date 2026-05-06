@@ -23,6 +23,10 @@ const COMMANDER_TICK_RATE: float = 0.5
 const FAST_TICK_RATE: float = 0.1
 const SPATIAL_CELL_SIZE: float = 20.0
 
+# Map bounds for clamping positions (default 200x200 map, 10 unit margin from edge)
+# Set by BattleTerrain on load, or use default
+var map_bounds: float = 90.0  # Configurable, default for 200x200 map
+
 # =============================================================================
 # PROPERTIES
 # =============================================================================
@@ -168,52 +172,69 @@ func _tick_commanders_staggered() -> void:
 
 func register_entity(entity: Node, position: Vector3, entity_type: SpatialHash.EntityType, faction: int) -> void:
 	## Register an entity in the spatial hash.
-	spatial_hash.register(entity, position, entity_type, faction)
+	if spatial_hash:
+		spatial_hash.register(entity, position, entity_type, faction)
 
 
 func unregister_entity(entity: Node) -> void:
 	## Remove an entity from the spatial hash.
-	spatial_hash.unregister(entity)
+	if spatial_hash:
+		spatial_hash.unregister(entity)
 
 
 func update_entity_position(entity: Node, position: Vector3) -> void:
 	## Update an entity's position in the hash.
-	spatial_hash.update_position(entity, position)
+	if spatial_hash:
+		spatial_hash.update_position(entity, position)
 
 
 func query_radius(center: Vector3, radius: float, faction_filter: int = -1) -> Array[Node]:
 	## Find entities within radius.
-	return spatial_hash.query_radius(center, radius, faction_filter)
+	if spatial_hash:
+		return spatial_hash.query_radius(center, radius, faction_filter)
+	return []
 
 
 func query_enemies(center: Vector3, radius: float, my_faction: int) -> Array[Node]:
 	## Find enemies within radius.
-	return spatial_hash.query_radius_enemies(center, radius, my_faction)
+	if spatial_hash:
+		return spatial_hash.query_radius_enemies(center, radius, my_faction)
+	return []
 
 
 func query_allies(center: Vector3, radius: float, my_faction: int) -> Array[Node]:
 	## Find allies within radius.
-	return spatial_hash.query_radius_allies(center, radius, my_faction)
+	if spatial_hash:
+		return spatial_hash.query_radius_allies(center, radius, my_faction)
+	return []
 
 
 func query_nearest_enemy(center: Vector3, radius: float, my_faction: int) -> Node:
 	## Find nearest enemy.
-	return spatial_hash.query_nearest_enemy(center, radius, my_faction)
+	if spatial_hash:
+		return spatial_hash.query_nearest_enemy(center, radius, my_faction)
+	return null
 
 
 func query_regiments(center: Vector3, radius: float, faction_filter: int = -1) -> Array[Node]:
 	## Find regiments within radius.
-	return spatial_hash.query_regiments_in_radius(center, radius, faction_filter)
+	if spatial_hash:
+		return spatial_hash.query_regiments_in_radius(center, radius, faction_filter)
+	return []
 
 
 func count_enemies(center: Vector3, radius: float, my_faction: int) -> int:
 	## Count enemies in radius.
-	return spatial_hash.count_enemies_in_radius(center, radius, my_faction)
+	if spatial_hash:
+		return spatial_hash.count_enemies_in_radius(center, radius, my_faction)
+	return 0
 
 
 func count_allies(center: Vector3, radius: float, my_faction: int) -> int:
 	## Count allies in radius.
-	return spatial_hash.count_allies_in_radius(center, radius, my_faction)
+	if spatial_hash:
+		return spatial_hash.count_allies_in_radius(center, radius, my_faction)
+	return 0
 
 # =============================================================================
 # REGIMENT TRACKING
@@ -221,13 +242,16 @@ func count_allies(center: Vector3, radius: float, my_faction: int) -> int:
 
 func register_regiment(regiment: Node) -> void:
 	## Register a regiment for AI tracking.
+	if not spatial_hash:
+		return
 	var faction: int = 0 if regiment.is_player_controlled else 1
 	spatial_hash.register(regiment, regiment.global_position, SpatialHash.EntityType.REGIMENT, faction)
 
 
 func _on_regiment_dead(regiment: Node) -> void:
 	## Clean up when a regiment dies.
-	spatial_hash.unregister(regiment)
+	if spatial_hash:
+		spatial_hash.unregister(regiment)
 
 # =============================================================================
 # AI CONTROL
@@ -314,3 +338,25 @@ func get_flanking_direction(position: Vector3, target_position: Vector3, my_fact
 	if threat_heatmap:
 		return threat_heatmap.get_flanking_direction(position, target_position, my_faction)
 	return Vector3.RIGHT  # Fallback
+
+
+# =============================================================================
+# MAP BOUNDS
+# =============================================================================
+
+func set_map_bounds(terrain_size: Vector2, margin: float = 10.0) -> void:
+	## Set map bounds based on terrain size.
+	## Called by BattleTerrain on load.
+	map_bounds = minf(terrain_size.x, terrain_size.y) / 2.0 - margin
+
+
+func get_map_bounds() -> float:
+	## Get current map bounds for position clamping.
+	return map_bounds
+
+
+func clamp_to_map(position: Vector3) -> Vector3:
+	## Clamp a position to stay within map bounds.
+	position.x = clampf(position.x, -map_bounds, map_bounds)
+	position.z = clampf(position.z, -map_bounds, map_bounds)
+	return position

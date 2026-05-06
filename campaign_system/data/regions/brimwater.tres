@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://c3g6165p4v41t"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "brimwater"
+region_name = "Brimwater"
+owner_faction = "undead"
+map_polygon = PackedVector2Array(2003.5313, 1560, 2098.9375, 1560, 2194.3438, 1560, 2194.3438, 1680, 2289.75, 1680, 2289.75, 1800, 2385.1563, 1800, 2480.5625, 1800, 2480.5625, 1920, 2480.5625, 2040, 2385.1563, 2040, 2289.75, 2040, 2194.3438, 2040, 2194.3438, 1920, 2098.9375, 1920, 2003.5313, 1920, 1908.125, 1920, 1812.7188, 1920, 1812.7188, 1800, 1812.7188, 1680, 1908.125, 1680, 2003.5313, 1680)
+map_center = Vector2(2146.6406, 1817.6471)
+terrain_type = 6
+capital_settlement_id = "brimwater_capital"
+minor_settlement_ids = Array[String](["brimwater_minor_1", "brimwater_minor_3"])
+attrition_damage = 0.0
+region_color = Color(0.4, 0.5, 0.55, 0.2)

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://dmlxigix3xmp4"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_0vj50"]
+
+[resource]
+script = ExtResource("1_0vj50")
+settlement_id = "crows_ford_minor_1"
+settlement_name = "Crows Ford Hamlet"
+settlement_type = 1
+region_id = "crows_ford"
+map_position = Vector2(814.98126, 1264)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

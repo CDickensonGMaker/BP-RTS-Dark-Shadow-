@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://befdt7huudicp"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_cqieb"]
+
+[resource]
+script = ExtResource("1_cqieb")
+settlement_id = "grey_hollow_capital"
+settlement_name = "Grey Hollow Fortress"
+settlement_type = 4
+region_id = "grey_hollow"
+is_regional_capital = true
+map_position = Vector2(1574.2031, 1860)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

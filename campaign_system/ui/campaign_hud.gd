@@ -15,12 +15,20 @@ extends CanvasLayer
 const COLOR_GOLD := Color(0.85, 0.7, 0.4, 1.0)
 const COLOR_TEXT := Color(0.95, 0.92, 0.85, 1.0)
 const COLOR_WARNING := Color(0.9, 0.3, 0.2, 1.0)
+const COLOR_INCOME := Color(0.5, 0.85, 0.5, 1.0)
 
 # Currently displayed battalion (for refreshing on turn end)
 var _current_battalion_data = null
 
+# Contract UI elements
+var contracts_button: Button = null
+var contract_list_panel: Control = null
+var income_label: Label = null
+
 
 func _ready() -> void:
+	_create_contracts_button()
+	_create_contract_panel()
 	# Connect signals
 	CampaignSignals.gold_changed.connect(_on_gold_changed)
 	CampaignSignals.turn_started.connect(_on_turn_started)
@@ -112,3 +120,87 @@ func _on_battalion_deselected() -> void:
 func _on_end_turn_pressed() -> void:
 	CampaignManager.end_turn()
 	_update_display()
+
+
+# =============================================================================
+# CONTRACT UI
+# =============================================================================
+
+func _create_contracts_button() -> void:
+	## Create the Contracts button in the top bar
+	if not $TopBar:
+		return
+
+	# Find the spacer to insert before it
+	var spacer: Control = null
+	for child in $TopBar.get_children():
+		if child.name == "Spacer":
+			spacer = child
+			break
+
+	if not spacer:
+		return
+
+	# Create income label (shows settlement income)
+	income_label = Label.new()
+	income_label.text = ""
+	income_label.add_theme_color_override("font_color", COLOR_INCOME)
+	income_label.add_theme_font_size_override("font_size", 18)
+	$TopBar.add_child(income_label)
+	$TopBar.move_child(income_label, spacer.get_index())
+
+	# Create contracts button
+	contracts_button = Button.new()
+	contracts_button.text = "Contracts"
+	contracts_button.add_theme_font_size_override("font_size", 18)
+	contracts_button.pressed.connect(_on_contracts_button_pressed)
+	$TopBar.add_child(contracts_button)
+	$TopBar.move_child(contracts_button, spacer.get_index())
+
+
+func _create_contract_panel() -> void:
+	## Create the contract list panel
+	var panel_script := load("res://campaign_system/ui/contract_list_panel.gd")
+	if panel_script:
+		contract_list_panel = PanelContainer.new()
+		contract_list_panel.set_script(panel_script)
+		contract_list_panel.visible = false
+
+		# Position on right side of screen
+		contract_list_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		contract_list_panel.offset_left = -340
+		contract_list_panel.offset_top = 60
+		contract_list_panel.offset_right = -20
+		contract_list_panel.offset_bottom = 500
+
+		add_child(contract_list_panel)
+
+
+func _update_income_display() -> void:
+	## Update the settlement income display
+	if not income_label or not ContractManager:
+		return
+
+	var total_income: int = ContractManager.get_total_ongoing_income()
+	if total_income > 0:
+		income_label.text = "Income: +%d/turn" % total_income
+	else:
+		income_label.text = ""
+
+
+func _on_contracts_button_pressed() -> void:
+	if contract_list_panel:
+		contract_list_panel.toggle_visibility()
+
+
+func update_contract_button_state() -> void:
+	## Update contracts button to show active contract indicator
+	if not contracts_button or not ContractManager:
+		return
+
+	if ContractManager.has_active_contract():
+		contracts_button.text = "Contracts [!]"
+		contracts_button.add_theme_color_override("font_color", COLOR_GOLD)
+	else:
+		contracts_button.text = "Contracts"
+		contracts_button.remove_theme_color_override("font_color")

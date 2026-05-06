@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+settlement_id = "raven_march_minor_1"
+settlement_name = "Crowfeather Village"
+settlement_type = 1
+region_id = "raven_march"
+is_regional_capital = false
+map_position = Vector2(2380, 400)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

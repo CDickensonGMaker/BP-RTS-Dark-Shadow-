@@ -118,6 +118,9 @@ func _connect_signals():
 	# Abilities
 	BattleSignals.ability_used.connect(_on_ability_used)
 
+	# Stance changes
+	BattleSignals.stance_changed.connect(_on_stance_changed)
+
 	# Battle state
 	BattleSignals.battle_started.connect(_on_battle_started)
 	BattleSignals.battle_ended.connect(_on_battle_ended)
@@ -221,6 +224,13 @@ func _on_ability_used(regiment: Regiment, ability: int):
 	var name: String = _get_regiment_name(regiment)
 	var ability_name: String = AbilityType.get_name(ability as AbilityType.Type)
 	_add_log_entry("[color=#%s]%s used %s![/color]" % [COLOR_ABILITY, name, ability_name])
+
+
+func _on_stance_changed(regiment: Node, _old_stance: int, new_stance: int) -> void:
+	var name: String = _get_regiment_name(regiment as Regiment)
+	var stance_names := ["Aggressive", "Defensive", "Hold Ground", "Skirmish"]
+	var stance_name := stance_names[new_stance] if new_stance < stance_names.size() else "Unknown"
+	_add_log_entry("[color=#%s]%s changed stance to %s[/color]" % [COLOR_ABILITY, name, stance_name])
 
 
 func _on_regiment_dead(regiment: Regiment):

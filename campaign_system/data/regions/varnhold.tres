@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://bui0lhysa1cek"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "varnhold"
+region_name = "Varnhold"
+map_polygon = PackedVector2Array(1717.3125, 1080, 1812.7188, 1080, 1908.125, 1080, 2003.5313, 1080, 2098.9375, 1080, 2194.3438, 1080, 2194.3438, 1200, 2194.3438, 1320, 2194.3438, 1440, 2194.3438, 1560, 2098.9375, 1560, 2003.5313, 1560, 2003.5313, 1440, 1908.125, 1440, 1908.125, 1320, 1812.7188, 1320, 1717.3125, 1320, 1717.3125, 1200)
+map_center = Vector2(1993.9906, 1276)
+terrain_type = 3
+movement_cost_modifier = 2.5
+capital_settlement_id = "varnhold_capital"
+minor_settlement_ids = Array[String](["varnhold_minor_1", "varnhold_minor_2", "varnhold_minor_3"])
+has_attrition_risk = true
+attrition_type = "cold"
+attrition_damage = 0.04
+region_color = Color(0.4, 0.4, 0.45, 1)

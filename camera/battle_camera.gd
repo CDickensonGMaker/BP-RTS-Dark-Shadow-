@@ -22,6 +22,7 @@ var current_tilt: float = -45.0  # Shallower angle to see behind units
 var is_rotating: bool = false
 var last_mouse_pos: Vector2
 var _centering_on_target: bool = false
+var camera_locked: bool = false  # When true, disables edge scrolling and WASD
 
 
 func _ready():
@@ -55,40 +56,42 @@ func _input(event):
 
 
 func _process(delta):
-	# WASD movement
 	var input_dir = Vector3.ZERO
 
-	if Input.is_action_pressed("ui_left") or Input.is_key_pressed(KEY_A):
-		input_dir.x -= 1
-	if Input.is_action_pressed("ui_right") or Input.is_key_pressed(KEY_D):
-		input_dir.x += 1
-	if Input.is_action_pressed("ui_up") or Input.is_key_pressed(KEY_W):
-		input_dir.z -= 1
-	if Input.is_action_pressed("ui_down") or Input.is_key_pressed(KEY_S):
-		input_dir.z += 1
+	# Only process movement input if camera is not locked
+	if not camera_locked:
+		# WASD movement
+		if Input.is_action_pressed("ui_left") or Input.is_key_pressed(KEY_A):
+			input_dir.x -= 1
+		if Input.is_action_pressed("ui_right") or Input.is_key_pressed(KEY_D):
+			input_dir.x += 1
+		if Input.is_action_pressed("ui_up") or Input.is_key_pressed(KEY_W):
+			input_dir.z -= 1
+		if Input.is_action_pressed("ui_down") or Input.is_key_pressed(KEY_S):
+			input_dir.z += 1
 
-	# Edge scrolling
-	var viewport = get_viewport()
-	var mouse_pos = viewport.get_mouse_position()
-	var screen_size = viewport.get_visible_rect().size
-	var edge_margin = 20
+		# Edge scrolling
+		var viewport = get_viewport()
+		var mouse_pos = viewport.get_mouse_position()
+		var screen_size = viewport.get_visible_rect().size
+		var edge_margin = 20
 
-	if mouse_pos.x < edge_margin:
-		input_dir.x -= 1
-	elif mouse_pos.x > screen_size.x - edge_margin:
-		input_dir.x += 1
-	if mouse_pos.y < edge_margin:
-		input_dir.z -= 1
-	elif mouse_pos.y > screen_size.y - edge_margin:
-		input_dir.z += 1
+		if mouse_pos.x < edge_margin:
+			input_dir.x -= 1
+		elif mouse_pos.x > screen_size.x - edge_margin:
+			input_dir.x += 1
+		if mouse_pos.y < edge_margin:
+			input_dir.z -= 1
+		elif mouse_pos.y > screen_size.y - edge_margin:
+			input_dir.z += 1
 
-	# Apply movement relative to camera rotation
-	if input_dir != Vector3.ZERO:
-		var move_dir = (global_transform.basis * input_dir).normalized()
-		move_dir.y = 0
-		target_position += move_dir * pan_speed * delta
+		# Apply movement relative to camera rotation
+		if input_dir != Vector3.ZERO:
+			var move_dir = (global_transform.basis * input_dir).normalized()
+			move_dir.y = 0
+			target_position += move_dir * pan_speed * delta
 
-	# Apply zoom
+	# Apply zoom (always works even when locked)
 	target_position.y = current_zoom
 
 	# Clamp camera position to map bounds

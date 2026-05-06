@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://bdeweg2uho3ig"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "red_barrow"
+region_name = "Red Barrow"
+map_polygon = PackedVector2Array(477.03125, 840, 572.4375, 840, 667.84375, 840, 763.25, 840, 763.25, 960, 858.65625, 960, 858.65625, 1080, 954.0625, 1080, 954.0625, 1200, 858.65625, 1200, 763.25, 1200, 763.25, 1320, 667.84375, 1320, 667.84375, 1440, 572.4375, 1440, 477.03125, 1440, 477.03125, 1320, 477.03125, 1200, 477.03125, 1080, 477.03125, 960)
+map_center = Vector2(653.8134, 1118.8235)
+capital_settlement_id = "red_barrow_capital"
+minor_settlement_ids = Array[String](["red_barrow_minor_1", "red_barrow_minor_2"])
+attrition_damage = 0.0
+region_color = Color(0.5, 0.35, 0.3, 0.2)

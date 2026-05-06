@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="ContractData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/contract_data.gd" id="1"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/biguns_regiment.tres" id="2"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/gob1_regiment.tres" id="3"]
+
+[resource]
+script = ExtResource("1")
+contract_id = "orc_raiders_001"
+contract_name = "Drive Off the Orc Raiders"
+description = "Greenskin raiders have descended from the mountains and are pillaging the borderlands. The warboss leads a force of Big 'Uns supported by goblin skirmishers. The local lords offer gold for any mercenary company willing to meet them in battle."
+region_name = "Bleakspire"
+objective_type = 0
+target_settlement_id = ""
+target_region_id = ""
+threat_level = 3
+gold_reward = 1000
+bonus_gold = 200
+ongoing_income = 0
+enemy_regiments = [ExtResource("2"), ExtResource("3"), ExtResource("3")]
+enemy_faction_name = "Greenskin Warband"
+terrain_type = "hills"
+time_of_day = "day"
+is_story_contract = false
+turns_available = -1
+map_position = Vector2(1340, 220)
+always_visible = false

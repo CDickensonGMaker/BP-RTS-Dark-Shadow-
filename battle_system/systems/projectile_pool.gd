@@ -85,7 +85,12 @@ func spawn(
 
 	# Add to scene tree if not already
 	if not projectile.is_inside_tree():
-		get_tree().current_scene.add_child(projectile)
+		var tree := get_tree()
+		if tree and tree.current_scene:
+			tree.current_scene.add_child(projectile)
+		else:
+			# Fallback - add as sibling
+			add_child(projectile)
 
 	# Configure projectile
 	projectile.global_position = pos

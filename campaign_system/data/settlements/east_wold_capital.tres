@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://ckru4vx8symqv"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_23kdc"]
+
+[resource]
+script = ExtResource("1_23kdc")
+settlement_id = "east_wold_capital"
+settlement_name = "East Wold Hold"
+settlement_type = 4
+region_id = "east_wold"
+is_regional_capital = true
+map_position = Vector2(2242.0469, 660)
+base_income = 500
+current_income = 500
+base_supply = 40
+current_supply = 40
+base_replenishment = 0.15
+has_walls = true

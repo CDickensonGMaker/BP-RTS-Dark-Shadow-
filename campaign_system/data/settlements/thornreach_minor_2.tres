@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+settlement_id = "thornreach_minor_2"
+settlement_name = "Rockhold Watch"
+settlement_type = 3
+region_id = "thornreach"
+is_regional_capital = false
+map_position = Vector2(2200, 1000)
+base_income = 100
+current_income = 100
+base_supply = 30
+current_supply = 30
+base_replenishment = 0.08
+has_walls = true

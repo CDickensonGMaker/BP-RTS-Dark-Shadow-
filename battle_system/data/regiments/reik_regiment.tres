@@ -5,19 +5,23 @@
 
 [resource]
 script = ExtResource("1")
-regiment_name = "Reik"
-unit_type = 0
-attack = 10
-defense = 10
-weapon_skill = 10
+regiment_name = "Reiksguard Knights"
+unit_type = 1
+attack = 14
+defense = 14
+weapon_skill = 14
 ballistic_skill = 0
-strength = 3
-max_soldiers = 40
-current_soldiers = 40
-base_morale = 60.0
-morale_save = 5
-speed = 3.5
-charge_bonus = 6
+strength = 4
+armor = 8
+max_soldiers = 16
+current_soldiers = 16
+base_morale = 90.0
+morale_save = 3
+walk_speed = 2.5
+run_speed = 4.0
+charge_speed = 6.0
+charge_speed_distance = 20.0
+charge_bonus = 16
 max_ammo = 0
 current_ammo = 0
 range_distance = 0.0

@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+building_id = "farm_t2"
+building_name = "Large Farm"
+description = "Expanded agricultural production with better yields."
+category = 0
+tier = 2
+prerequisite_building = "farm_t1"
+required_settlement_type = 1
+required_tech = ""
+gold_cost = 400
+turns_to_build = 2
+upkeep = 20
+income_bonus = 50
+supply_bonus = 10
+replenishment_bonus = 0.0
+global_replenishment = false
+recruitment_bonus = {}
+unlocks_units = []
+armor_upgrade = 0
+attack_upgrade = 0
+tech_points_per_turn = 0

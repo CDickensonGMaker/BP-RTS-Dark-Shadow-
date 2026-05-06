@@ -5,19 +5,23 @@
 
 [resource]
 script = ExtResource("1")
-regiment_name = "Halb"
+regiment_name = "Halberdiers"
 unit_type = 0
-attack = 10
+attack = 8
 defense = 10
-weapon_skill = 10
+weapon_skill = 8
 ballistic_skill = 0
 strength = 3
+armor = 4
 max_soldiers = 40
 current_soldiers = 40
-base_morale = 60.0
+base_morale = 65.0
 morale_save = 5
-speed = 3.5
-charge_bonus = 6
+walk_speed = 1.6
+run_speed = 2.0
+charge_speed = 3.2
+charge_speed_distance = 15.0
+charge_bonus = 8
 max_ammo = 0
 current_ammo = 0
 range_distance = 0.0

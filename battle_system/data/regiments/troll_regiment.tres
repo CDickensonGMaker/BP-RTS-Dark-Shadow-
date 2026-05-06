@@ -5,19 +5,24 @@
 
 [resource]
 script = ExtResource("1")
-regiment_name = "Troll"
-unit_type = 0
-attack = 18
-defense = 16
-weapon_skill = 10
+regiment_name = "River Trolls"
+unit_type = 4
+attack = 20
+defense = 14
+weapon_skill = 8
 ballistic_skill = 0
-strength = 7
-max_soldiers = 8
-current_soldiers = 8
-base_morale = 60.0
+strength = 8
+armor = 6
+max_soldiers = 6
+current_soldiers = 6
+base_morale = 70.0
 morale_save = 5
-speed = 3.5
-charge_bonus = 6
+walk_speed = 1.8
+run_speed = 2.4
+charge_speed = 3.5
+charge_speed_distance = 12.0
+charge_bonus = 12
+mass = 4.0
 max_ammo = 0
 current_ammo = 0
 range_distance = 0.0

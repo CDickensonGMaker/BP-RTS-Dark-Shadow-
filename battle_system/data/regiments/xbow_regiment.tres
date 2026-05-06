@@ -5,21 +5,25 @@
 
 [resource]
 script = ExtResource("1")
-regiment_name = "Xbow"
+regiment_name = "Crossbowmen"
 unit_type = 2
 attack = 6
 defense = 6
 weapon_skill = 6
-ballistic_skill = 12
+ballistic_skill = 14
 strength = 3
-max_soldiers = 30
-current_soldiers = 30
-base_morale = 50.0
-morale_save = 4
-speed = 3.0
-charge_bonus = 2
+armor = 3
+max_soldiers = 24
+current_soldiers = 24
+base_morale = 60.0
+morale_save = 5
+walk_speed = 1.5
+run_speed = 1.8
+charge_speed = 3.0
+charge_speed_distance = 15.0
+charge_bonus = 0
 max_ammo = 24
 current_ammo = 24
-range_distance = 40.0
-faction_color = Color(0.5, 0.5, 0.5, 1)
+range_distance = 45.0
+faction_color = Color(0.2, 0.4, 0.8, 1)
 sprite_atlas = ExtResource("2")

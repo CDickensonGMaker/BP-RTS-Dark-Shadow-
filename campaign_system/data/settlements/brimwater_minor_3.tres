@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3 uid="uid://bhaytc1yiluq5"]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1_jw6cu"]
+
+[resource]
+script = ExtResource("1_jw6cu")
+settlement_id = "brimwater_minor_3"
+settlement_name = "Brimwater Hamlet"
+settlement_type = 1
+region_id = "brimwater"
+map_position = Vector2(2096.6406, 1937.6471)
+base_income = 150
+current_income = 150
+base_supply = 15
+current_supply = 15
+base_replenishment = 0.07

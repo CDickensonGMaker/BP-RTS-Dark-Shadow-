@@ -74,12 +74,17 @@ const PATH_VOICE_MORALE: String = "res://assets/audio/voice/morale/"
 
 # === AUDIO PLAYERS ===
 var music_player: AudioStreamPlayer = null
+var music_player_b: AudioStreamPlayer = null  # Second player for crossfade
 var ambient_player: AudioStreamPlayer = null
 var voice_players: Array[AudioStreamPlayer] = []
 var sfx_players: Array[AudioStreamPlayer] = []
 
 const MAX_VOICE_PLAYERS: int = 4
 const MAX_SFX_PLAYERS: int = 16
+
+# Crossfade state
+var _music_tween: Tween = null
+var _active_music_player: AudioStreamPlayer = null  # Which player is currently active
 
 # === AUDIO CACHES ===
 var _music_cache: Dictionary = {}      # String -> AudioStream
@@ -103,11 +108,19 @@ func _ready():
 
 
 func _setup_audio_players():
-	# Music player
+	# Music player A (primary)
 	music_player = AudioStreamPlayer.new()
 	music_player.bus = BUS_MUSIC
 	music_player.volume_db = -5.0
 	add_child(music_player)
+
+	# Music player B (for crossfade)
+	music_player_b = AudioStreamPlayer.new()
+	music_player_b.bus = BUS_MUSIC
+	music_player_b.volume_db = -80.0  # Start silent
+	add_child(music_player_b)
+
+	_active_music_player = music_player
 
 	# Ambient player
 	ambient_player = AudioStreamPlayer.new()
@@ -175,6 +188,7 @@ func _connect_signals():
 		BattleSignals.regiment_attacked.connect(_on_regiment_attacked)
 		BattleSignals.regiment_dead.connect(_on_regiment_dead)
 		BattleSignals.ability_used.connect(_on_ability_used)
+		BattleSignals.formation_type_changed.connect(_on_formation_changed)
 
 
 # === PUBLIC API ===
@@ -185,16 +199,55 @@ func play_music(track_key: String, fade_time: float = 1.0):
 		push_warning("AudioManager: Music track not found: " + track_key)
 		return
 
-	# TODO: Implement crossfade
-	music_player.stream = _music_cache[track_key]
-	music_player.play()
+	# Cancel any existing fade
+	if _music_tween and _music_tween.is_valid():
+		_music_tween.kill()
+
+	# Determine which player to fade in (swap between A and B)
+	var fade_in_player: AudioStreamPlayer
+	var fade_out_player: AudioStreamPlayer
+
+	if _active_music_player == music_player:
+		fade_in_player = music_player_b
+		fade_out_player = music_player
+	else:
+		fade_in_player = music_player
+		fade_out_player = music_player_b
+
+	# Setup new track on fade-in player
+	fade_in_player.stream = _music_cache[track_key]
+	fade_in_player.volume_db = -80.0  # Start silent
+	fade_in_player.play()
+
+	# Crossfade using tween
+	_music_tween = create_tween()
+	_music_tween.set_parallel(true)
+
+	# Fade out old player
+	if fade_out_player.playing:
+		_music_tween.tween_property(fade_out_player, "volume_db", -80.0, fade_time)
+		_music_tween.tween_callback(fade_out_player.stop).set_delay(fade_time)
+
+	# Fade in new player
+	_music_tween.tween_property(fade_in_player, "volume_db", -5.0, fade_time)
+
+	_active_music_player = fade_in_player
 	music_changed.emit(track_key)
 
 
 func stop_music(fade_time: float = 1.0):
-	"""Stop the current music track"""
-	# TODO: Implement fade out
-	music_player.stop()
+	"""Stop the current music track with fade out"""
+	# Cancel any existing fade
+	if _music_tween and _music_tween.is_valid():
+		_music_tween.kill()
+
+	if not _active_music_player or not _active_music_player.playing:
+		return
+
+	# Fade out active player
+	_music_tween = create_tween()
+	_music_tween.tween_property(_active_music_player, "volume_db", -80.0, fade_time)
+	_music_tween.tween_callback(_active_music_player.stop)
 
 
 func play_ambient(ambient_key: String):
@@ -359,3 +412,8 @@ func _on_ability_used(regiment: Regiment, ability: int):
 			play_sfx("war_cry_01", regiment.global_position)
 		AbilityType.Type.VOLLEY_FIRE:
 			play_sfx("volley_fire_01", regiment.global_position)
+
+
+func _on_formation_changed(_regiment: Node, _old_formation: int, _new_formation: int) -> void:
+	# Play formation change sound
+	play_order_acknowledgment("formation")

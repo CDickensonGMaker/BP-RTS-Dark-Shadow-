@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
+[ext_resource type="Resource" path="res://assets/sprites/units/graveguard_atlas.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+regiment_name = "Grave Guard"
+unit_type = 0
+personality = 3
+attack = 12
+defense = 12
+weapon_skill = 12
+ballistic_skill = 0
+strength = 4
+armor = 6
+max_soldiers = 24
+current_soldiers = 24
+base_morale = 100.0
+morale_save = 10
+walk_speed = 1.6
+run_speed = 2.0
+charge_speed = 3.2
+charge_speed_distance = 15.0
+charge_bonus = 4
+mass = 1.0
+turn_rate = 3.0
+max_ammo = 0
+current_ammo = 0
+range_distance = 0.0
+faction_color = Color(0.3, 0.1, 0.4, 1)
+sprite_atlas = ExtResource("2")

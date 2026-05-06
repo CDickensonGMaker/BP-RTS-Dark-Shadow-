@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://c0ptin0qeyhw6"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "blackmere"
+region_name = "Blackmere"
+map_polygon = PackedVector2Array(477.03125, 480, 572.4375, 480, 667.84375, 480, 763.25, 480, 858.65625, 480, 858.65625, 600, 858.65625, 720, 763.25, 720, 667.84375, 720, 667.84375, 840, 572.4375, 840, 477.03125, 840, 381.625, 840, 381.625, 720, 286.21875, 720, 190.8125, 720, 190.8125, 600, 286.21875, 600, 381.625, 600, 477.03125, 600)
+map_center = Vector2(565.62274, 651.4286)
+terrain_type = 5
+movement_cost_modifier = 1.8
+capital_settlement_id = "blackmere_capital"
+minor_settlement_ids = Array[String](["blackmere_minor_1", "blackmere_minor_2", "blackmere_minor_3"])
+has_attrition_risk = true
+attrition_type = "swamp"
+attrition_damage = 0.03
+region_color = Color(0.2, 0.3, 0.25, 0.2)

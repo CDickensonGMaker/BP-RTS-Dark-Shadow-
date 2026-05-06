@@ -1,6 +1,9 @@
 class_name SpriteFormation
 extends Node3D
 
+# Preload to avoid parse-order issues with class_name
+const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.gd")
+
 ## MultiMesh-based formation manager for efficient sprite soldier rendering.
 ## Replaces SoldierFormation when use_sprite_soldiers is enabled.
 ## Uses 1 draw call for all soldiers instead of 1 per soldier.
@@ -14,10 +17,13 @@ signal soldiers_updated(count: int)
 ## Maximum number of soldiers in formation
 @export var max_soldiers: int = 100
 
-## Grid layout
+## Grid layout (defaults, overridden by formation type)
 @export var rows: int = 10
 @export var spacing: float = 1.2
 @export var row_offset: float = 0.3  # Stagger rows for natural look
+
+## Parent regiment reference for formation changes
+var _parent_regiment: Node = null
 
 ## Sprite display size in world units
 @export var sprite_scale: Vector2 = Vector2(2.5, 3.0)
@@ -41,9 +47,13 @@ var _soldier_dead: PackedFloat32Array  # 0.0 = alive, 1.0 = dead (corpse on grou
 var _soldier_directions: PackedFloat32Array  # Direction index 0-7
 var _soldier_time_offsets: PackedFloat32Array  # Animation stagger
 
-var _terrain: Node3D = null
+# Phase 6.4: Terrain access via TerrainHelper (removed _terrain variable)
 var _terrain_update_timer: float = 0.0
 const TERRAIN_UPDATE_INTERVAL: float = 0.1  # Update terrain positions 10x/sec
+
+# Corpse system - dead soldiers stay at world position where they died
+var _corpse_world_positions: PackedVector3Array  # World position where soldier died
+var _is_corpse: PackedFloat32Array  # 1.0 if this slot is now a static corpse
 
 # Camera-relative direction tracking
 var _world_facing_angle: float = 0.0  # Store world-space facing for camera updates
@@ -58,18 +68,104 @@ var _current_direction_index: int = -1  # -1 forces initial calculation
 # Animation state
 var _current_animation: String = "idle"
 
+# Formation transition state
+var _target_positions: PackedVector3Array  # Target positions for smooth transition
+var _start_positions: PackedVector3Array  # Starting positions for lerp
+var _is_transitioning: bool = false
+var _transition_time: float = 0.0
+var _transition_duration: float = 1.5  # Current transition duration (can be set per-transition)
+const DEFAULT_TRANSITION_DURATION: float = 1.5  # Default duration if none specified
+const MIN_TRANSITION_SPEED: float = 2.0  # Minimum movement speed so soldiers don't crawl
+
+# Staggered movement state (Phase 8.3 - aliveness)
+var _soldier_start_delays: PackedFloat32Array  # Per-soldier delay before starting movement
+var _soldier_speed_jitter: PackedFloat32Array  # Per-soldier speed multiplier (±15%)
+
 
 func _ready():
 	_setup_shader()
 	_setup_multimesh()
 	spawn_formation(max_soldiers)
-	call_deferred("_find_terrain")
+	call_deferred("_find_parent_regiment")
+
+	# Connect to formation change signal
+	if BattleSignals:
+		BattleSignals.formation_type_changed.connect(_on_formation_type_changed)
 
 
-func _find_terrain():
-	var terrains: Array[Node] = get_tree().get_nodes_in_group("terrain")
-	if terrains.size() > 0:
-		_terrain = terrains[0]
+func _find_parent_regiment():
+	# Find parent Regiment node - use type check like SoldierFormation
+	var parent = get_parent()
+	while parent:
+		if parent is Regiment:
+			_parent_regiment = parent
+			# Apply current formation layout now that we know our parent
+			if _parent_regiment.current_formation != FormationType.Type.LINE:
+				_apply_formation_layout(_parent_regiment.current_formation)
+			break
+		parent = parent.get_parent()
+
+
+func set_formation_type(formation_type: int, animate: bool = true, duration: float = -1.0):
+	"""Directly set formation type (fallback for when signals don't work)
+	Duration: -1 uses default FORMATION_TRANSITION_DURATION, otherwise uses the specified value."""
+	if animate:
+		_apply_formation_layout(formation_type, duration)
+	else:
+		# Immediate snap (no animation)
+		var layout := _get_formation_layout(formation_type, alive_count)
+		var new_rows: int = layout.rows
+		var new_spacing: float = layout.spacing
+		var cols := ceili(float(alive_count) / float(new_rows))
+
+		var alive_idx := 0
+		for i in max_soldiers:
+			if _soldier_alive[i] < 0.5 or _soldier_dead[i] > 0.5:
+				continue
+			var row := alive_idx / cols
+			var col := alive_idx % cols
+			var x := (float(col) - cols / 2.0) * new_spacing
+			var z := (float(row) - new_rows / 2.0) * new_spacing
+			_soldier_positions[i].x = x
+			_soldier_positions[i].z = z
+			_target_positions[i] = _soldier_positions[i]
+			var xform := Transform3D()
+			xform.origin = _soldier_positions[i]
+			_multimesh.set_instance_transform(i, xform)
+			alive_idx += 1
+
+
+func set_formation_width(file_count: int, animate: bool = true) -> void:
+	"""Set the formation width (number of soldier files across the front rank).
+	Triggers a smooth transition to the new layout. Used by formation drag."""
+	if alive_count < 2:
+		return
+
+	# Clamp to physical limits — min 2 wide, min 2 deep
+	var max_width: int = maxi(2, alive_count / 2)
+	file_count = clampi(file_count, 2, max_width)
+
+	# Update rows based on desired width
+	rows = ceili(float(alive_count) / float(file_count))
+
+	# Get current formation type from parent if available
+	var formation_type: int = FormationType.Type.LINE
+	if _parent_regiment:
+		formation_type = _parent_regiment.current_formation
+
+	if animate:
+		_apply_formation_layout(formation_type, _transition_duration)
+	else:
+		set_formation_type(formation_type, false, -1.0)
+
+
+func _on_formation_type_changed(regiment: Node, _old_formation: int, new_formation: int):
+	# Only respond to our parent regiment's formation changes
+	if regiment != _parent_regiment:
+		return
+
+	# Rearrange soldiers based on new formation
+	_apply_formation_layout(new_formation)
 
 
 func _process(delta: float):
@@ -83,6 +179,10 @@ func _process(delta: float):
 	if _direction_update_timer >= DIRECTION_UPDATE_INTERVAL:
 		_direction_update_timer = 0.0
 		_update_camera_relative_directions()
+
+	# Handle formation transition animation
+	if _is_transitioning:
+		_update_formation_transition(delta)
 
 
 func _setup_shader():
@@ -149,10 +249,13 @@ func spawn_formation(count: int):
 
 	# Initialize arrays
 	_soldier_positions.resize(max_soldiers)
+	_target_positions.resize(max_soldiers)
 	_soldier_alive.resize(max_soldiers)
 	_soldier_dead.resize(max_soldiers)
 	_soldier_directions.resize(max_soldiers)
 	_soldier_time_offsets.resize(max_soldiers)
+	_corpse_world_positions.resize(max_soldiers)
+	_is_corpse.resize(max_soldiers)
 
 	var cols := ceili(float(count) / float(rows))
 
@@ -180,6 +283,9 @@ func spawn_formation(count: int):
 		_soldier_dead[i] = 0.0  # Not dead yet
 		_soldier_directions[i] = 0.0  # Default facing south
 		_soldier_time_offsets[i] = randf()  # Random stagger for animation variety
+		_corpse_world_positions[i] = Vector3.ZERO
+		_is_corpse[i] = 0.0
+		_target_positions[i] = _soldier_positions[i]  # Target = current initially
 
 		# Set MultiMesh instance transform and custom data
 		_update_instance(i)
@@ -196,6 +302,183 @@ func clear_formation():
 		_update_instance_custom_data(i)
 
 
+func _apply_formation_layout(formation_type: int, duration: float = -1.0):
+	"""Rearrange soldiers based on formation type with staggered transition.
+	Duration: -1 uses default, otherwise uses specified value (synced with gameplay reform_timer)."""
+	# Set transition duration
+	_transition_duration = duration if duration > 0.0 else DEFAULT_TRANSITION_DURATION
+
+	# Initialize stagger arrays
+	_start_positions.resize(max_soldiers)
+	_soldier_start_delays.resize(max_soldiers)
+	_soldier_speed_jitter.resize(max_soldiers)
+
+	var max_delay: float = _transition_duration * 0.35  # Outer soldiers start up to 35% later
+
+	# Get formation-specific layout parameters
+	var layout := _get_formation_layout(formation_type, alive_count)
+	var new_rows: int = layout.rows
+	var new_spacing: float = layout.spacing
+	var cols := ceili(float(alive_count) / float(new_rows))
+
+	# Calculate TARGET positions and stagger data for all alive soldiers
+	var alive_idx := 0
+	for i in max_soldiers:
+		# Store start position for lerping
+		_start_positions[i] = _soldier_positions[i]
+
+		if _soldier_alive[i] < 0.5 or _soldier_dead[i] > 0.5:
+			_target_positions[i] = _soldier_positions[i]  # Keep current for dead
+			_soldier_start_delays[i] = 0.0
+			_soldier_speed_jitter[i] = 1.0
+			continue
+
+		var row := alive_idx / cols
+		var col := alive_idx % cols
+
+		# Calculate new position
+		var x := (float(col) - cols / 2.0) * new_spacing
+		var z := (float(row) - new_rows / 2.0) * new_spacing
+
+		# Apply formation-specific offsets
+		match formation_type:
+			FormationType.Type.WEDGE:
+				# Triangle/wedge shape - narrow at front, wide at back
+				var wedge_offset := float(row) * 0.3
+				x = x * (1.0 + wedge_offset * 0.2)
+			FormationType.Type.COLUMN:
+				# Deep column - tighter lateral spacing
+				x *= 0.7
+			FormationType.Type.LOOSE:
+				# Extra spacing between soldiers
+				x *= 1.3
+				z *= 1.3
+			FormationType.Type.SQUARE:
+				# Equal spacing, slight stagger
+				if row % 2 == 1:
+					x += row_offset * 0.5
+			FormationType.Type.SHIELD_WALL:
+				# Very tight line
+				x *= 0.6
+				z *= 0.8
+			FormationType.Type.SCHILTRON:
+				# Circular formation (approximated)
+				var angle := float(alive_idx) / float(alive_count) * TAU
+				var radius := new_spacing * sqrt(float(alive_count)) * 0.3
+				x = cos(angle) * radius
+				z = sin(angle) * radius
+
+		# Set TARGET position (keep current Y)
+		var current_y := _soldier_positions[i].y
+		_target_positions[i] = Vector3(x, current_y, z)
+
+		# Calculate per-soldier stagger delay based on distance from center
+		var distance_from_center: float = _soldier_positions[i].length()
+		var distance_factor: float = clampf(distance_from_center / 8.0, 0.0, 1.0)
+		_soldier_start_delays[i] = distance_factor * max_delay + randf_range(0.0, 0.15)
+
+		# Per-soldier speed jitter: ±15%
+		_soldier_speed_jitter[i] = randf_range(0.85, 1.15)
+
+		alive_idx += 1
+
+	# Start the transition
+	_is_transitioning = true
+	_transition_time = 0.0
+
+
+func _update_formation_transition(delta: float):
+	"""Smoothly lerp soldiers with staggered timing and natural movement."""
+	_transition_time += delta
+	var all_done: bool = true
+
+	for i in max_soldiers:
+		if _soldier_alive[i] < 0.5 or _soldier_dead[i] > 0.5:
+			continue
+
+		# Per-soldier timing with stagger delay
+		var personal_elapsed: float = _transition_time - _soldier_start_delays[i]
+		if personal_elapsed <= 0.0:
+			# This soldier hasn't started yet
+			all_done = false
+			continue
+
+		# Adjust duration by speed jitter
+		var personal_duration: float = _transition_duration * (1.0 / _soldier_speed_jitter[i])
+		var t: float = clampf(personal_elapsed / personal_duration, 0.0, 1.0)
+		if t < 1.0:
+			all_done = false
+
+		# Smooth ease-in-out for natural acceleration/deceleration
+		var eased_t: float = _ease_in_out_cubic(t)
+
+		# Calculate base interpolated position
+		var start_pos := _start_positions[i]
+		var target := _target_positions[i]
+		var base_pos: Vector3 = start_pos.lerp(target, eased_t)
+
+		# Add perpendicular sway for natural weaving motion
+		var travel: Vector3 = target - start_pos
+		travel.y = 0.0
+		var sway: Vector3 = Vector3.ZERO
+		if travel.length_squared() > 0.5:
+			var perp: Vector3 = Vector3(-travel.z, 0, travel.x).normalized()
+			sway = perp * sin(t * PI) * 0.15  # Subtle sine-wave weave
+
+		# Keep original Y (terrain handling)
+		base_pos.y = _soldier_positions[i].y
+		_soldier_positions[i] = base_pos + sway
+
+		# Update MultiMesh transform
+		var xform := Transform3D()
+		xform.origin = _soldier_positions[i]
+		_multimesh.set_instance_transform(i, xform)
+
+	# Grace period: don't end until all soldiers have had time to arrive
+	if all_done and _transition_time >= _transition_duration + 0.5:
+		_is_transitioning = false
+		# Snap to final positions
+		for i in max_soldiers:
+			if _soldier_alive[i] > 0.5 and _soldier_dead[i] < 0.5:
+				_soldier_positions[i].x = _target_positions[i].x
+				_soldier_positions[i].z = _target_positions[i].z
+				var xform := Transform3D()
+				xform.origin = _soldier_positions[i]
+				_multimesh.set_instance_transform(i, xform)
+		# Return to idle animation
+		play_animation_all("idle")
+
+
+func _ease_in_out_cubic(t: float) -> float:
+	"""Smooth ease-in-out for natural acceleration and deceleration."""
+	if t < 0.5:
+		return 4.0 * t * t * t
+	var f: float = -2.0 * t + 2.0
+	return 1.0 - f * f * f / 2.0
+
+
+func _get_formation_layout(formation_type: int, soldier_count: int) -> Dictionary:
+	"""Get rows and spacing for a formation type."""
+	match formation_type:
+		FormationType.Type.LINE:
+			return {"rows": maxi(2, soldier_count / 8), "spacing": spacing}
+		FormationType.Type.COLUMN:
+			return {"rows": maxi(8, soldier_count / 3), "spacing": spacing * 0.9}
+		FormationType.Type.WEDGE:
+			return {"rows": maxi(4, soldier_count / 5), "spacing": spacing}
+		FormationType.Type.SQUARE:
+			var side := ceili(sqrt(float(soldier_count)))
+			return {"rows": side, "spacing": spacing}
+		FormationType.Type.LOOSE:
+			return {"rows": maxi(3, soldier_count / 6), "spacing": spacing * 1.5}
+		FormationType.Type.SHIELD_WALL:
+			return {"rows": 2, "spacing": spacing * 0.7}
+		FormationType.Type.SCHILTRON:
+			return {"rows": soldier_count, "spacing": spacing}  # Circular, rows not used directly
+		_:
+			return {"rows": rows, "spacing": spacing}
+
+
 func set_soldier_count(count: int):
 	"""Update visible soldiers to match casualties."""
 	count = clampi(count, 0, max_soldiers)
@@ -210,7 +493,11 @@ func set_soldier_count(count: int):
 
 
 func kill_soldiers(amount: int):
-	"""Kill soldiers from back of formation - they stay visible as corpses."""
+	"""Kill soldiers from back of formation - they stay visible as corpses at death position."""
+	# Safety check - arrays must be initialized
+	if _soldier_alive.is_empty() or _soldier_dead.is_empty():
+		return
+
 	var killed := 0
 	for i in range(max_soldiers - 1, -1, -1):
 		if killed >= amount:
@@ -218,14 +505,27 @@ func kill_soldiers(amount: int):
 		# Only kill soldiers that are alive and not already dead
 		if _soldier_alive[i] > 0.5 and _soldier_dead[i] < 0.5:
 			_soldier_dead[i] = 1.0  # Mark as dead corpse (stays visible)
+
+			# Store world position where soldier died - corpse stays here
+			var world_pos: Vector3 = global_position + _soldier_positions[i]
+			# Drop corpse to ground level (Phase 6.4: use helper)
+			var terrain := TerrainHelperScript.get_terrain(get_tree())
+			if terrain:
+				world_pos.y = terrain.get_height_at(world_pos) + 0.1  # Slight offset above ground
+			else:
+				world_pos.y = global_position.y - height_offset + 0.1
+			_corpse_world_positions[i] = world_pos
+			_is_corpse[i] = 1.0
+
+			# Update position to corpse world position (converted to local space)
+			_soldier_positions[i] = world_pos - global_position
+			_soldier_positions[i].y = 0.1  # Ground level in local space
+
 			# Don't set _soldier_alive to 0 - we want them to stay rendered
-			_update_instance_custom_data(i)
+			_update_instance(i)
 			killed += 1
 			alive_count -= 1
-			print("SpriteFormation: Killed soldier ", i, " dead_flag=", _soldier_dead[i])
 
-	if killed > 0:
-		print("SpriteFormation: Killed ", killed, " soldiers, ", alive_count, " remaining")
 	soldiers_updated.emit(alive_count)
 
 
@@ -261,7 +561,10 @@ func set_facing_angle(angle_rad: float):
 
 func _apply_camera_relative_direction():
 	"""Apply camera-relative direction to all soldiers based on stored world angle."""
-	var camera := get_viewport().get_camera_3d()
+	var viewport := get_viewport()
+	if not viewport:
+		return
+	var camera := viewport.get_camera_3d()
 	var camera_y_angle := 0.0
 	if camera:
 		camera_y_angle = camera.global_rotation.y
@@ -291,7 +594,10 @@ func _apply_camera_relative_direction():
 
 func _update_camera_relative_directions():
 	"""Update sprite directions if camera has rotated."""
-	var camera := get_viewport().get_camera_3d()
+	var viewport := get_viewport()
+	if not viewport:
+		return
+	var camera := viewport.get_camera_3d()
 	if not camera:
 		return
 
@@ -363,21 +669,33 @@ func _update_instance_custom_data(index: int):
 
 
 func _update_soldier_terrain_positions():
-	"""Update soldier Y positions based on terrain height."""
-	if not _terrain or not _terrain.has_method("get_height_at"):
+	"""Update soldier Y positions based on terrain height. (Phase 6.4: use helper)"""
+	var terrain := TerrainHelperScript.get_terrain(get_tree())
+	if not terrain:
 		return
 
 	for i in max_soldiers:
 		if _soldier_alive[i] > 0.5:
-			var world_pos: Vector3 = global_position + _soldier_positions[i]
-			var terrain_height: float = _terrain.get_height_at(world_pos)
-			var local_y := terrain_height - global_position.y + sprite_scale.y * 0.5
+			# Corpses stay at their death world position - convert back to local space
+			if _is_corpse[i] > 0.5:
+				var local_corpse_pos: Vector3 = _corpse_world_positions[i] - global_position
+				local_corpse_pos.y = 0.1  # Keep at ground level
+				if _soldier_positions[i].distance_to(local_corpse_pos) > 0.01:
+					_soldier_positions[i] = local_corpse_pos
+					var xform := Transform3D()
+					xform.origin = _soldier_positions[i]
+					_multimesh.set_instance_transform(i, xform)
+			else:
+				# Living soldiers follow terrain
+				var world_pos: Vector3 = global_position + _soldier_positions[i]
+				var terrain_height: float = terrain.get_height_at(world_pos)
+				var local_y := terrain_height - global_position.y + sprite_scale.y * 0.5
 
-			if absf(_soldier_positions[i].y - local_y) > 0.01:
-				_soldier_positions[i].y = local_y
-				var xform := Transform3D()
-				xform.origin = _soldier_positions[i]
-				_multimesh.set_instance_transform(i, xform)
+				if absf(_soldier_positions[i].y - local_y) > 0.01:
+					_soldier_positions[i].y = local_y
+					var xform := Transform3D()
+					xform.origin = _soldier_positions[i]
+					_multimesh.set_instance_transform(i, xform)
 
 
 # --- COMPATIBILITY METHODS ---

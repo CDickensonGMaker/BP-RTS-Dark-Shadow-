@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="RegionData" format=3 uid="uid://cs4jcsgdvny25"]
+
+[ext_resource type="Script" uid="uid://c6e04y4g5sbuc" path="res://campaign_system/data/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+region_id = "wolfenmark"
+region_name = "Wolfenmark"
+map_polygon = PackedVector2Array(1240.2813, 960, 1335.6875, 960, 1431.0938, 960, 1526.5, 960, 1526.5, 1080, 1621.9063, 1080, 1621.9063, 1200, 1526.5, 1200, 1526.5, 1320, 1431.0938, 1320, 1335.6875, 1320, 1240.2813, 1320, 1240.2813, 1200, 1144.875, 1200, 1144.875, 1080, 1240.2813, 1080)
+map_center = Vector2(1383.3906, 1140)
+terrain_type = 5
+movement_cost_modifier = 1.8
+capital_settlement_id = "wolfenmark_capital"
+minor_settlement_ids = Array[String](["wolfenmark_minor_1", "wolfenmark_minor_2"])
+has_attrition_risk = true
+attrition_type = "swamp"
+attrition_damage = 0.03
+region_color = Color(0.18, 0.29, 0.16, 1)

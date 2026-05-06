@@ -85,12 +85,9 @@ func get_commander(regiment: Node) -> CommanderAI:
 
 func tick() -> void:
 	## Called by AIAutoload at 3s intervals.
-	print("[FREEZE_DEBUG] GeneralAI.tick() START faction=%d" % faction)
 
 	# Update battlefield analysis
-	print("[FREEZE_DEBUG]   analysis.update() START")
 	analysis.update()
-	print("[FREEZE_DEBUG]   analysis.update() END")
 
 	# Update cooldown
 	if _play_switch_cooldown > 0:
@@ -98,23 +95,16 @@ func tick() -> void:
 
 	# Evaluate current play
 	if current_play:
-		print("[FREEZE_DEBUG]   current_play.tick() START: %s" % current_play.play_name)
 		var status: StrategicPlay.Status = current_play.tick()
-		print("[FREEZE_DEBUG]   current_play.tick() END")
 		if status != StrategicPlay.Status.RUNNING:
 			_on_play_completed(status == StrategicPlay.Status.SUCCESS)
 
 	# Consider switching plays
 	if _play_switch_cooldown <= 0:
-		print("[FREEZE_DEBUG]   _evaluate_plays() START")
 		_evaluate_plays()
-		print("[FREEZE_DEBUG]   _evaluate_plays() END")
 
 	# Issue orders to unassigned regiments
-	print("[FREEZE_DEBUG]   _manage_unassigned_regiments() START")
 	_manage_unassigned_regiments()
-	print("[FREEZE_DEBUG]   _manage_unassigned_regiments() END")
-	print("[FREEZE_DEBUG] GeneralAI.tick() END")
 
 
 func _evaluate_plays() -> void:
@@ -144,19 +134,48 @@ func _evaluate_plays() -> void:
 
 func _apply_personality_modifiers(play: StrategicPlay, base_score: float) -> float:
 	## Apply AI personality modifiers to play scores.
+	## Also applies strength ratio checks (Stainless Steel pattern).
 	var score: float = base_score
+
+	# === STRENGTH RATIO MODIFIERS (Stainless Steel) ===
+	# AI should avoid attacking when significantly outnumbered
+	# and prefer defensive plays when at a disadvantage.
+	var strength_ratio: float = analysis.strength_ratio
 
 	if play is PlayAllOutAssault:
 		score += personality.aggression * 20.0
+		# Heavily penalize attacking when outnumbered
+		# At 0.8 ratio (SS "strength comparison"): no penalty
+		# Below 0.8: increasingly penalized
+		# Below 0.5: almost never attack
+		if strength_ratio < 0.8:
+			score -= (0.8 - strength_ratio) * 100.0  # Strong penalty when weak
+		elif strength_ratio > 1.5:
+			score += 15.0  # Bonus for attacking when strong
+
 	elif play is PlayDefensiveLine:
 		score += (1.0 - personality.aggression) * 15.0
+		# Boost defensive play when outnumbered
+		if strength_ratio < 1.0:
+			score += (1.0 - strength_ratio) * 30.0
+
 	elif play is PlayPinAndFlank:
 		score += personality.tactical_flexibility * 10.0
+		# Flanking requires some strength - penalize when weak
+		if strength_ratio < 0.7:
+			score -= 20.0
+		elif strength_ratio > 1.2:
+			score += 10.0  # Good flanking opportunity
+
 	elif play is PlayTacticalRetreat:
 		# Cautious AIs retreat earlier, aggressive AIs fight longer
 		score += (1.0 - personality.aggression) * 15.0
 		score += personality.unit_preservation * 20.0
 		score -= personality.risk_tolerance * 10.0
+		# Boost retreat when severely outnumbered (below 0.6 ratio)
+		if strength_ratio < 0.6:
+			score += (0.6 - strength_ratio) * 50.0
+
 	elif play is PlayRallyPoint:
 		# Leaders who care about troops rally more
 		score += personality.unit_preservation * 15.0
@@ -255,17 +274,25 @@ func _manage_unassigned_regiments() -> void:
 
 
 func _assign_default_behavior(regiment: Node) -> void:
-	## Assign default aggressive behavior to unassigned regiment.
+	## Assign default behavior to unassigned regiment.
+	## Uses strength ratio to decide between aggressive and defensive (Stainless Steel).
 	var commander: CommanderAI = _commander_ais.get(regiment)
 	if not commander:
 		return
 
-	# Set aggressive stance
-	commander.set_stance(CommanderAI.Stance.AGGRESSIVE)
+	# Check strength ratio before deciding stance
+	var strength_ratio: float = analysis.strength_ratio
 
-	# Find nearest enemy if no target
-	if not commander.current_target:
-		commander.acquire_target()
+	if strength_ratio >= 0.8:
+		# We're strong enough - be aggressive
+		commander.set_stance(CommanderAI.Stance.AGGRESSIVE)
+		# Find nearest enemy if no target
+		if not commander.current_target:
+			commander.acquire_target()
+	else:
+		# We're outnumbered - be defensive
+		commander.set_stance(CommanderAI.Stance.DEFENSIVE)
+		# Don't actively seek targets when weak - let enemies come to us
 
 # =============================================================================
 # RETREAT MANAGEMENT
@@ -302,15 +329,17 @@ func _find_retreat_position(regiment: Node) -> Vector3:
 		var enemy_faction: int = 1 if faction == 0 else 0
 		var enemies: Array = AIAutoload.get_all_regiments(enemy_faction)
 		if enemies.size() > 0:
-			# Find centroid of enemies
+			# Find centroid of enemies (count valid enemies)
 			var enemy_center: Vector3 = Vector3.ZERO
+			var valid_count: int = 0
 			for enemy in enemies:
 				if is_instance_valid(enemy):
 					enemy_center += enemy.global_position
-			enemy_center /= float(enemies.size())
-
-			# Move away from enemy center
-			retreat_dir = (regiment.global_position - enemy_center).normalized()
+					valid_count += 1
+			if valid_count > 0:
+				enemy_center /= float(valid_count)
+				# Move away from enemy center
+				retreat_dir = (regiment.global_position - enemy_center).normalized()
 		else:
 			# No enemies, retreat towards own edge
 			retreat_dir = Vector3(0, 0, 1) if faction == 0 else Vector3(0, 0, -1)
@@ -352,3 +381,24 @@ func get_debug_info() -> Dictionary:
 		"regiment_roles": regiment_roles.size(),
 		"analysis": analysis.get_debug_info(),
 	}
+
+# =============================================================================
+# CLEANUP
+# =============================================================================
+
+func destroy() -> void:
+	## Clean up the general AI.
+	if current_play:
+		current_play.abort()
+		current_play = null
+
+	# Unregister from AIAutoload
+	if AIAutoload:
+		AIAutoload.unregister_general_ai(faction)
+
+	# Clear references
+	_commander_ais.clear()
+	regiment_roles.clear()
+	available_plays.clear()
+	analysis = null
+	personality = null

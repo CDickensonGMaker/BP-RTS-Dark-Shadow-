@@ -126,7 +126,9 @@ func start_battle():
 	_connect_stat_signals()
 
 	BattleSignals.battle_started.emit()
-	BattleSignals.regiment_dead.connect(_on_regiment_dead)
+	# Only connect if not already connected (prevents duplicate connections across battles)
+	if not BattleSignals.regiment_dead.is_connected(_on_regiment_dead):
+		BattleSignals.regiment_dead.connect(_on_regiment_dead)
 
 
 func _on_regiment_dead(_regiment: Regiment):
@@ -164,6 +166,9 @@ func _disconnect_stat_signals() -> void:
 		BattleSignals.regiment_routing.disconnect(_on_regiment_routing)
 	if BattleSignals.morale_changed.is_connected(_on_morale_changed):
 		BattleSignals.morale_changed.disconnect(_on_morale_changed)
+	# Also disconnect regiment_dead to prevent duplicate connections
+	if BattleSignals.regiment_dead.is_connected(_on_regiment_dead):
+		BattleSignals.regiment_dead.disconnect(_on_regiment_dead)
 
 
 ## Handle damage_dealt signal from CombatManager
@@ -254,11 +259,8 @@ func _end_battle(winner: String):
 	}
 	BattleSignals.battle_ended.emit(result)
 
-	# Return to campaign if this was a campaign battle
-	if BattleTransition and BattleTransition.is_campaign_battle():
-		# Small delay so player can see the result
-		await get_tree().create_timer(2.0).timeout
-		BattleTransition.return_to_campaign(result)
+	# Note: Return to campaign is now handled by BattleOverScreen's Continue button
+	# This allows the player to view battle results before transitioning
 
 
 func _gather_casualty_report() -> Dictionary:

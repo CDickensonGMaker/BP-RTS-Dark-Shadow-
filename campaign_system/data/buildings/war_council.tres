@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+building_id = "war_council"
+building_name = "War Council"
+description = "Strategic command center. Increases maximum army count by 1."
+category = 1
+tier = 2
+prerequisite_building = "library"
+required_settlement_type = 4
+required_tech = ""
+gold_cost = 1000
+turns_to_build = 4
+upkeep = 75
+income_bonus = 0
+supply_bonus = 0
+replenishment_bonus = 0.0
+global_replenishment = false
+recruitment_bonus = {}
+unlocks_units = []
+armor_upgrade = 0
+attack_upgrade = 0
+tech_points_per_turn = 10

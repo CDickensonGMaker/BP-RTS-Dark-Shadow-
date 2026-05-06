@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SettlementData" format=3]
+
+[ext_resource type="Script" uid="uid://b0pufrybwtxhe" path="res://campaign_system/data/settlement_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+settlement_id = "westervale_minor_2"
+settlement_name = "Sunstone Quarry"
+settlement_type = 1
+region_id = "westervale"
+is_regional_capital = false
+owner_faction = "player"
+map_position = Vector2(990, 680)
+base_income = 200
+current_income = 200
+base_supply = 10
+current_supply = 10
+base_replenishment = 0.05

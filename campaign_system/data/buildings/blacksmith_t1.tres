@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+building_id = "blacksmith_t1"
+building_name = "Blacksmith"
+description = "Weapon forging facility. Units recruited here gain +1 Attack."
+category = 4
+tier = 1
+prerequisite_building = "barracks"
+required_settlement_type = 1
+required_tech = ""
+gold_cost = 500
+turns_to_build = 2
+upkeep = 30
+income_bonus = 0
+supply_bonus = 0
+replenishment_bonus = 0.0
+global_replenishment = false
+recruitment_bonus = {}
+unlocks_units = []
+armor_upgrade = 0
+attack_upgrade = 1
+tech_points_per_turn = 0

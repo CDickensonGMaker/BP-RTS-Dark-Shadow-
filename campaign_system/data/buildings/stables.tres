@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+building_id = "stables"
+building_name = "Stables"
+description = "Horse breeding facility for cavalry recruitment."
+category = 2
+tier = 1
+prerequisite_building = ""
+required_settlement_type = 1
+required_tech = ""
+gold_cost = 600
+turns_to_build = 2
+upkeep = 35
+income_bonus = 0
+supply_bonus = 0
+replenishment_bonus = 0.01
+global_replenishment = false
+recruitment_bonus = {"cavalry": 3}
+unlocks_units = ["light_cavalry", "heavy_cavalry"]
+armor_upgrade = 0
+attack_upgrade = 0
+tech_points_per_turn = 0

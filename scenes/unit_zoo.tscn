@@ -1,0 +1,277 @@
+[gd_scene load_steps=10 format=3 uid="uid://cjmzunitzoo"]
+
+[ext_resource type="Script" path="res://scenes/unit_zoo_controller.gd" id="1_controller"]
+[ext_resource type="Script" path="res://camera/battle_camera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://battle_system/ui/battle_hud.gd" id="3_hud"]
+[ext_resource type="Script" path="res://battle_system/ui/selection_box_overlay.gd" id="4_selection"]
+[ext_resource type="Script" path="res://battle_system/debug/combat_debug_overlay.gd" id="5_debug"]
+[ext_resource type="Script" path="res://battle_system/terrain/battle_terrain.gd" id="6_terrain"]
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 1
+background_color = Color(0.45, 0.6, 0.75, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.9, 0.9, 0.95, 1)
+ambient_light_energy = 0.7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.08, 0.06, 0.05, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.6, 0.5, 0.3, 1.0)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
+
+[node name="UnitZoo" type="Node"]
+script = ExtResource("1_controller")
+
+[node name="ZooDebugUI" type="CanvasLayer" parent="."]
+layer = 50
+
+[node name="MainLayout" type="HSplitContainer" parent="ZooDebugUI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+split_offset = 420
+
+[node name="LeftSide" type="VBoxContainer" parent="ZooDebugUI/MainLayout"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ControlsPanel" type="Panel" parent="ZooDebugUI/MainLayout/LeftSide"]
+layout_mode = 2
+size_flags_vertical = 0
+custom_minimum_size = Vector2(0, 400)
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="VBox" type="VBoxContainer" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+theme_override_constants/separation = 8
+
+[node name="SideBySide" type="HBoxContainer" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="PlayerColumn" type="VBoxContainer" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="PlayerHeader" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/PlayerColumn"]
+layout_mode = 2
+text = "== PLAYER =="
+horizontal_alignment = 1
+
+[node name="UnitLabel" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/PlayerColumn"]
+layout_mode = 2
+text = "Unit:"
+
+[node name="PlayerUnitSelector" type="OptionButton" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/PlayerColumn"]
+layout_mode = 2
+
+[node name="FormationLabel" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/PlayerColumn"]
+layout_mode = 2
+text = "Formation:"
+
+[node name="FormationSelector" type="OptionButton" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/PlayerColumn"]
+layout_mode = 2
+
+[node name="StanceLabel" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/PlayerColumn"]
+layout_mode = 2
+text = "Stance:"
+
+[node name="StanceSelector" type="OptionButton" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/PlayerColumn"]
+layout_mode = 2
+
+[node name="EnemyColumn" type="VBoxContainer" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="EnemyHeader" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/EnemyColumn"]
+layout_mode = 2
+text = "== ENEMY =="
+horizontal_alignment = 1
+
+[node name="UnitLabel" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/EnemyColumn"]
+layout_mode = 2
+text = "Unit:"
+
+[node name="EnemyUnitSelector" type="OptionButton" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/EnemyColumn"]
+layout_mode = 2
+
+[node name="FormationLabel" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/EnemyColumn"]
+layout_mode = 2
+text = "Formation:"
+
+[node name="EnemyFormationSelector" type="OptionButton" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/EnemyColumn"]
+layout_mode = 2
+
+[node name="StanceLabel" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/EnemyColumn"]
+layout_mode = 2
+text = "Stance:"
+
+[node name="EnemyStanceSelector" type="OptionButton" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/SideBySide/EnemyColumn"]
+layout_mode = 2
+
+[node name="Sep2" type="HSeparator" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox"]
+layout_mode = 2
+
+[node name="CameraLockToggle" type="CheckButton" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox"]
+layout_mode = 2
+text = "Lock Camera (L)"
+
+[node name="ActionsHeader" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox"]
+layout_mode = 2
+text = "== ACTIONS =="
+horizontal_alignment = 1
+
+[node name="ActionButtons" type="HBoxContainer" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="MoveButton" type="Button" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/ActionButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Move to Center"
+
+[node name="AttackButton" type="Button" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/ActionButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Attack Enemy"
+
+[node name="ChargeButton" type="Button" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/ActionButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Charge!"
+
+[node name="DisengageButton" type="Button" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox/ActionButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Disengage"
+
+[node name="ResetButton" type="Button" parent="ZooDebugUI/MainLayout/LeftSide/ControlsPanel/VBox"]
+layout_mode = 2
+text = "Reset All"
+
+[node name="InfoPanel" type="Panel" parent="ZooDebugUI/MainLayout/LeftSide"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="InfoContainer" type="HBoxContainer" parent="ZooDebugUI/MainLayout/LeftSide/InfoPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+theme_override_constants/separation = 20
+
+[node name="PlayerInfo" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/InfoPanel/InfoContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "=== PLAYER ===
+Name:
+State:
+Soldiers:
+Morale:
+Stamina:
+Ammo:
+Formation:"
+
+[node name="EnemyInfo" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/InfoPanel/InfoContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "=== ENEMY ===
+Name:
+State:
+Soldiers:
+Morale:
+Stamina:
+Ammo:
+Formation:"
+
+[node name="HelpPanel" type="Panel" parent="ZooDebugUI/MainLayout/LeftSide"]
+layout_mode = 2
+size_flags_vertical = 0
+custom_minimum_size = Vector2(0, 90)
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="HelpLabel" type="Label" parent="ZooDebugUI/MainLayout/LeftSide/HelpPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+text = "Controls: WASD - Pan | Scroll - Zoom | MMB - Rotate/Tilt | F3 - Debug"
+
+[node name="ViewportContainer" type="SubViewportContainer" parent="ZooDebugUI/MainLayout"]
+layout_mode = 2
+size_flags_horizontal = 3
+stretch = true
+
+[node name="BattleViewport" type="SubViewport" parent="ZooDebugUI/MainLayout/ViewportContainer"]
+handle_input_locally = true
+size = Vector2i(800, 600)
+render_target_update_mode = 4
+
+[node name="BattleWorld" type="Node3D" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport/BattleWorld"]
+environment = SubResource("Environment_1")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport/BattleWorld"]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 20, 0)
+shadow_enabled = true
+light_energy = 1.2
+
+[node name="BattleCamera" type="Camera3D" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport/BattleWorld"]
+transform = Transform3D(1, 0, 0, 0, 0.707, 0.707, 0, -0.707, 0.707, 0, 30, 25)
+current = true
+fov = 60.0
+script = ExtResource("2_camera")
+map_bounds_min = Vector3(-60, 0, -60)
+map_bounds_max = Vector3(60, 100, 60)
+
+[node name="BattleTerrain" type="Node3D" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport/BattleWorld"]
+script = ExtResource("6_terrain")
+terrain_size = Vector2(100, 100)
+terrain_resolution = 32
+height_scale = 2.0
+tree_count = 0
+building_count = 0
+prop_count = 0
+rock_count = 0
+bush_count = 0
+
+[node name="Units" type="Node3D" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport/BattleWorld"]
+
+[node name="BattleHUD" type="CanvasLayer" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport"]
+script = ExtResource("3_hud")
+
+[node name="SelectionBoxOverlay" type="CanvasLayer" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport"]
+layer = 10
+script = ExtResource("4_selection")
+
+[node name="CombatDebugOverlay" type="CanvasLayer" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport"]
+layer = 100
+script = ExtResource("5_debug")
