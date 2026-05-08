@@ -11,8 +11,8 @@ An omnipotent daemon that runs overnight to:
 6. Repeat until morning or issues resolved
 
 Usage:
-    # Set your API key first
-    set ANTHROPIC_API_KEY=sk-ant-...
+    # Set your API key first (get from https://console.anthropic.com/)
+    set ANTHROPIC_API_KEY=your-api-key-here
 
     # Run the daemon
     python battle_daemon.py --hours 8 --max-fixes 10
@@ -43,7 +43,7 @@ from typing import Optional, Dict, Any, List, Tuple
 # =============================================================================
 
 PROJECT_PATH = Path(r"C:\Users\caleb\BP_RTS_Dark_Shadows")
-GODOT_EXECUTABLE = "godot"  # Or full path
+GODOT_EXECUTABLE = r"C:\Users\caleb\Downloads\Godot_v4.6.2-stable_win64.exe\Godot_v4.6.2-stable_win64_console.exe"
 CLAUDE_MODEL = "claude-sonnet-4-20250514"  # Fast and capable
 
 # Safety limits
@@ -102,7 +102,7 @@ class BattleDaemon:
         self.log_entries.append(entry)
 
         if self.verbose:
-            prefix = {"info": "📋", "success": "✅", "warning": "⚠️", "error": "❌", "fix": "🔧"}.get(level, "•")
+            prefix = {"info": "[INFO]", "success": "[OK]", "warning": "[WARN]", "error": "[ERR]", "fix": "[FIX]"}.get(level, "[*]")
             print(f"[{timestamp[11:19]}] {prefix} {message}")
 
     def _save_log(self) -> None:
@@ -417,7 +417,7 @@ Only propose fixes you're confident about (>0.7).
         """Run the daemon loop."""
         end_time = self.session_start + timedelta(hours=max_hours)
 
-        self._log(f"🚀 BattleDaemon starting")
+        self._log(f"BattleDaemon starting")
         self._log(f"   Project: {self.project_path}")
         self._log(f"   Max runtime: {max_hours} hours (until {end_time.strftime('%H:%M')})")
         self._log(f"   Dry run: {self.dry_run}")
@@ -450,7 +450,7 @@ Only propose fixes you're confident about (>0.7).
                 self.findings.extend(issues)
 
                 if not issues:
-                    self._log("No issues found - system healthy! 🎉", "success")
+                    self._log("No issues found - system healthy!", "success")
                     # Wait before next cycle
                     wait_time = 300  # 5 minutes
                     self._log(f"Waiting {wait_time}s before next cycle...")
@@ -484,7 +484,7 @@ Only propose fixes you're confident about (>0.7).
                 time.sleep(30)
 
         except KeyboardInterrupt:
-            self._log("\n⛔ Daemon interrupted by user")
+            self._log("\nDaemon interrupted by user")
         except Exception as e:
             self._log(f"Daemon error: {e}", "error")
         finally:
@@ -496,7 +496,7 @@ Only propose fixes you're confident about (>0.7).
         duration = datetime.now() - self.session_start
 
         print("\n" + "="*60)
-        print("🏁 BATTLEDAEMON SESSION COMPLETE")
+        print("BATTLEDAEMON SESSION COMPLETE")
         print("="*60)
         print(f"Duration: {duration}")
         print(f"Cycles run: {self.cycles_run}")
