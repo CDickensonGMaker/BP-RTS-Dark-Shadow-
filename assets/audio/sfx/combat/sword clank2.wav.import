@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://cvpbh4ou5i7io"
+path="res://.godot/imported/sword clank2.wav-c812ca3fd6b22b5c291fd82ed59c0dd8.sample"
+
+[deps]
+
+source_file="res://assets/audio/sfx/combat/sword clank2.wav"
+dest_files=["res://.godot/imported/sword clank2.wav-c812ca3fd6b22b5c291fd82ed59c0dd8.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

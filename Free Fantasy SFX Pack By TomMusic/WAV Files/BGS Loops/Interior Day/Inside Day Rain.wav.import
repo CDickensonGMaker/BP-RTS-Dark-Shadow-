@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://b0ppj3kya5a28"
+path="res://.godot/imported/Inside Day Rain.wav-dbfd23b997bb463fc8207402ea666e71.sample"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/WAV Files/BGS Loops/Interior Day/Inside Day Rain.wav"
+dest_files=["res://.godot/imported/Inside Day Rain.wav-dbfd23b997bb463fc8207402ea666e71.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

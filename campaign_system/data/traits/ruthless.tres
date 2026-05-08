@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "ruthless"
+trait_name = "Ruthless"
+description = "A merciless commander who will sacrifice anything for victory. Units hit harder but morale suffers."
+category = 4
+conflicts_with = Array[String](["honorable", "inspiring_presence"])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Cruel Taskmaster", "Terror"])
+subchoice_descriptions = Array[String](["+15% movement speed", "-10 enemy morale when engaged"])
+melee_attack_mod = 0.10
+morale_aura_bonus = -10.0
+subchoice_modifiers = [{"army_speed_mod": 0.15}, {"morale_aura_bonus": -10.0}]

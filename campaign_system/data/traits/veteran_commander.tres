@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "veteran_commander"
+trait_name = "Veteran Commander"
+description = "Years of campaign experience have taught this general how to preserve troop stamina and maintain fighting effectiveness."
+category = 0
+conflicts_with = Array[String]([])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Campaign Veteran", "Battle Hardened"])
+subchoice_descriptions = Array[String](["+5% march speed on campaign map", "+5% melee attack bonus"])
+army_stamina_mod = 0.15
+subchoice_modifiers = [{"army_speed_mod": 0.05}, {"melee_attack_mod": 0.05}]

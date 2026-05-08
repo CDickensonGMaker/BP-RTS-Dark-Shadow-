@@ -1,0 +1,503 @@
+[gd_scene load_steps=2 format=3 uid="uid://bkdmq7yvyj3xj"]
+
+[ext_resource type="Script" path="res://tools/unit_viewer/unit_viewer.gd" id="1_script"]
+
+[node name="UnitViewer" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="HSplitContainer" type="HSplitContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+split_offset = 400
+
+[node name="LeftPanel" type="VBoxContainer" parent="HSplitContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="TitleLabel" type="Label" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+text = "Unit Viewer"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="UnitSelector" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/UnitSelector"]
+layout_mode = 2
+text = "Unit:"
+
+[node name="UnitDropdown" type="OptionButton" parent="HSplitContainer/LeftPanel/UnitSelector"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SpritePanel" type="PanelContainer" parent="HSplitContainer/LeftPanel"]
+custom_minimum_size = Vector2(0, 256)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="SpritePreview" type="TextureRect" parent="HSplitContainer/LeftPanel/SpritePanel"]
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="DirectionPanel" type="VBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="DirLabel" type="Label" parent="HSplitContainer/LeftPanel/DirectionPanel"]
+layout_mode = 2
+text = "Direction:"
+
+[node name="DirectionGrid" type="GridContainer" parent="HSplitContainer/LeftPanel/DirectionPanel"]
+layout_mode = 2
+columns = 3
+
+[node name="Dir7" type="Button" parent="HSplitContainer/LeftPanel/DirectionPanel/DirectionGrid"]
+custom_minimum_size = Vector2(50, 40)
+layout_mode = 2
+text = "NW"
+
+[node name="Dir0" type="Button" parent="HSplitContainer/LeftPanel/DirectionPanel/DirectionGrid"]
+custom_minimum_size = Vector2(50, 40)
+layout_mode = 2
+text = "N"
+
+[node name="Dir1" type="Button" parent="HSplitContainer/LeftPanel/DirectionPanel/DirectionGrid"]
+custom_minimum_size = Vector2(50, 40)
+layout_mode = 2
+text = "NE"
+
+[node name="Dir6" type="Button" parent="HSplitContainer/LeftPanel/DirectionPanel/DirectionGrid"]
+custom_minimum_size = Vector2(50, 40)
+layout_mode = 2
+text = "W"
+
+[node name="DirectionLabel" type="Label" parent="HSplitContainer/LeftPanel/DirectionPanel/DirectionGrid"]
+custom_minimum_size = Vector2(50, 40)
+layout_mode = 2
+text = "N"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Dir2" type="Button" parent="HSplitContainer/LeftPanel/DirectionPanel/DirectionGrid"]
+custom_minimum_size = Vector2(50, 40)
+layout_mode = 2
+text = "E"
+
+[node name="Dir5" type="Button" parent="HSplitContainer/LeftPanel/DirectionPanel/DirectionGrid"]
+custom_minimum_size = Vector2(50, 40)
+layout_mode = 2
+text = "SW"
+
+[node name="Dir4" type="Button" parent="HSplitContainer/LeftPanel/DirectionPanel/DirectionGrid"]
+custom_minimum_size = Vector2(50, 40)
+layout_mode = 2
+text = "S"
+
+[node name="Dir3" type="Button" parent="HSplitContainer/LeftPanel/DirectionPanel/DirectionGrid"]
+custom_minimum_size = Vector2(50, 40)
+layout_mode = 2
+text = "SE"
+
+[node name="AnimPanel" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="AnimLabel" type="Label" parent="HSplitContainer/LeftPanel/AnimPanel"]
+layout_mode = 2
+text = "Animation:"
+
+[node name="AnimDropdown" type="OptionButton" parent="HSplitContainer/LeftPanel/AnimPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PlayButton" type="Button" parent="HSplitContainer/LeftPanel/AnimPanel"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "Play"
+
+[node name="FrameLabel" type="Label" parent="HSplitContainer/LeftPanel/AnimPanel"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Frame 1/4"
+horizontal_alignment = 2
+
+[node name="ColorPanel" type="VBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="ColorLabel" type="Label" parent="HSplitContainer/LeftPanel/ColorPanel"]
+layout_mode = 2
+text = "Sprite Color:"
+
+[node name="ColorRow" type="HBoxContainer" parent="HSplitContainer/LeftPanel/ColorPanel"]
+layout_mode = 2
+
+[node name="ModulateLabel" type="Label" parent="HSplitContainer/LeftPanel/ColorPanel/ColorRow"]
+layout_mode = 2
+text = "Modulate:"
+
+[node name="ColorPicker" type="ColorPickerButton" parent="HSplitContainer/LeftPanel/ColorPanel"]
+custom_minimum_size = Vector2(100, 30)
+layout_mode = 2
+color = Color(1, 1, 1, 1)
+
+[node name="ResetColorBtn" type="Button" parent="HSplitContainer/LeftPanel/ColorPanel"]
+layout_mode = 2
+text = "Reset Color"
+
+[node name="FactionColorRow" type="HBoxContainer" parent="HSplitContainer/LeftPanel/ColorPanel"]
+layout_mode = 2
+
+[node name="FactionLabel" type="Label" parent="HSplitContainer/LeftPanel/ColorPanel/FactionColorRow"]
+layout_mode = 2
+text = "Faction Color:"
+
+[node name="FactionColorPicker" type="ColorPickerButton" parent="HSplitContainer/LeftPanel/ColorPanel"]
+custom_minimum_size = Vector2(100, 30)
+layout_mode = 2
+color = Color(0, 0, 1, 1)
+
+[node name="KeysLabel" type="Label" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+text = "Keys: Arrow L/R = Direction, U/D = Anim, Space = Play"
+
+[node name="RightPanel" type="VBoxContainer" parent="HSplitContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="PropertiesLabel" type="Label" parent="HSplitContainer/RightPanel"]
+layout_mode = 2
+text = "Unit Properties"
+horizontal_alignment = 1
+
+[node name="ScrollContainer" type="ScrollContainer" parent="HSplitContainer/RightPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PropertiesVBox" type="VBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="NameRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/NameRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Name:"
+
+[node name="NameEdit" type="LineEdit" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/NameRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="FactionRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/FactionRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Faction:"
+
+[node name="FactionEdit" type="LineEdit" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/FactionRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="UnitTypeRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/UnitTypeRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Unit Type:"
+
+[node name="UnitTypeDropdown" type="OptionButton" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/UnitTypeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PersonalityRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/PersonalityRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Personality:"
+
+[node name="PersonalityDropdown" type="OptionButton" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/PersonalityRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Separator1" type="HSeparator" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="CombatLabel" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+text = "-- Combat Stats --"
+horizontal_alignment = 1
+
+[node name="AttackRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/AttackRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Attack:"
+
+[node name="AttackSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/AttackRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 100.0
+
+[node name="DefenseRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/DefenseRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Defense:"
+
+[node name="DefenseSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/DefenseRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 100.0
+
+[node name="WeaponSkillRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/WeaponSkillRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Weapon Skill:"
+
+[node name="WeaponSkillSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/WeaponSkillRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 100.0
+
+[node name="BallisticSkillRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/BallisticSkillRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Ballistic Skill:"
+
+[node name="BallisticSkillSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/BallisticSkillRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 100.0
+
+[node name="StrengthRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/StrengthRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Strength:"
+
+[node name="StrengthSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/StrengthRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 20.0
+
+[node name="ArmorRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/ArmorRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Armor:"
+
+[node name="ArmorSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/ArmorRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 20.0
+
+[node name="Separator2" type="HSeparator" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="UnitLabel" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+text = "-- Unit Composition --"
+horizontal_alignment = 1
+
+[node name="MaxSoldiersRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/MaxSoldiersRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Max Soldiers:"
+
+[node name="MaxSoldiersSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/MaxSoldiersRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 200.0
+
+[node name="BaseMoraleRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/BaseMoraleRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Base Morale:"
+
+[node name="BaseMoraleSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/BaseMoraleRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 100.0
+
+[node name="IsEliteRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/IsEliteRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Is Elite:"
+
+[node name="IsEliteCheck" type="CheckBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/IsEliteRow"]
+layout_mode = 2
+
+[node name="Separator3" type="HSeparator" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="RangedLabel" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+text = "-- Ranged --"
+horizontal_alignment = 1
+
+[node name="WeaponClassRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/WeaponClassRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Weapon Class:"
+
+[node name="WeaponClassDropdown" type="OptionButton" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/WeaponClassRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MaxAmmoRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/MaxAmmoRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Max Ammo:"
+
+[node name="MaxAmmoSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/MaxAmmoRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 100.0
+
+[node name="RangeRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/RangeRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Range:"
+
+[node name="RangeSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/RangeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 200.0
+step = 0.5
+
+[node name="Separator4" type="HSeparator" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="MovementLabel" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+text = "-- Movement --"
+horizontal_alignment = 1
+
+[node name="WalkSpeedRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/WalkSpeedRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Walk Speed:"
+
+[node name="WalkSpeedSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/WalkSpeedRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 20.0
+step = 0.1
+
+[node name="RunSpeedRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/RunSpeedRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Run Speed:"
+
+[node name="RunSpeedSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/RunSpeedRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 20.0
+step = 0.1
+
+[node name="ChargeSpeedRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/ChargeSpeedRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Charge Speed:"
+
+[node name="ChargeSpeedSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/ChargeSpeedRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 20.0
+step = 0.1
+
+[node name="ChargeBonusRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/ChargeBonusRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Charge Bonus:"
+
+[node name="ChargeBonusSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/ChargeBonusRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 50.0
+
+[node name="MassRow" type="HBoxContainer" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/MassRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+text = "Mass:"
+
+[node name="MassSpin" type="SpinBox" parent="HSplitContainer/RightPanel/ScrollContainer/PropertiesVBox/MassRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 10.0
+step = 0.1
+
+[node name="SaveButton" type="Button" parent="HSplitContainer/RightPanel"]
+layout_mode = 2
+text = "Save Changes"
+
+[node name="StatusLabel" type="Label" parent="HSplitContainer/RightPanel"]
+layout_mode = 2
+text = "Ready"
+horizontal_alignment = 1

@@ -8,10 +8,11 @@ const SPRITES_OUTPUT_DIR := "res://assets/sprites/"
 const DIRECTIONS := 8
 
 ## Direction name to row index mapping
-## Our system: 0=S, 1=SW, 2=W, 3=NW, 4=N, 5=NE, 6=E, 7=SE
+## Clockwise from North: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW
+## Matches SotHR extractor output
 const DIR_NAME_TO_ROW := {
-	"S": 0, "SW": 1, "W": 2, "NW": 3,
-	"N": 4, "NE": 5, "E": 6, "SE": 7
+	"N": 0, "NE": 1, "E": 2, "SE": 3,
+	"S": 4, "SW": 5, "W": 6, "NW": 7
 }
 
 ## Animation folder order (determines column layout)

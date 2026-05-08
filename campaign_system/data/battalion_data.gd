@@ -62,10 +62,16 @@ func refresh_movement() -> void:
 
 
 func apply_battle_casualties(casualty_report: Dictionary) -> void:
+	# Casualty report has player_unit_stats nested dict with regiment names as keys
+	var player_stats: Dictionary = casualty_report.get("player_unit_stats", {})
+
 	for regiment in regiments:
-		if casualty_report.has(regiment.regiment_name):
-			var report = casualty_report[regiment.regiment_name]
-			regiment.current_soldiers = report.survived
+		if not player_stats.has(regiment.regiment_name):
+			continue
+
+		var stat: Dictionary = player_stats[regiment.regiment_name]
+		# Use survived count directly - authoritative from battle
+		regiment.current_soldiers = stat.get("survived", regiment.current_soldiers)
 
 
 # Path queue methods for multi-turn movement

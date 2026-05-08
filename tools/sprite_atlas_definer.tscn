@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://dgkeq3k1imy2x"]
+
+[ext_resource type="Script" uid="uid://drbc4y15rgne4" path="res://tools/sprite_atlas_definer.gd" id="1"]
+
+[node name="SpriteAtlasDefiner" type="Control" unique_id=258752124]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")

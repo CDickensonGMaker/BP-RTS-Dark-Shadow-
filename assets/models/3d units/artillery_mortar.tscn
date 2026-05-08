@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://c8xm3pr5w2qnf"]
+
+[ext_resource type="PackedScene" path="res://assets/models/3d units/medieval_mortar.glb" id="1_model"]
+
+[node name="ArtilleryMortar" type="Node3D"]
+
+[node name="Model" parent="." instance=ExtResource("1_model")]

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "elf_bane"
+trait_name = "Elf Bane"
+description = "This general harbors a deep grudge against the Elven races. Units fight with renewed vigor against the fair folk."
+category = 2
+conflicts_with = Array[String]([])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Ancient Enemy", "Forest Clearer"])
+subchoice_descriptions = Array[String](["+20% attack bonus vs Elves", "Ignore forest terrain penalties"])
+hatred_targets = Array[String](["Elf", "High Elf", "Wood Elf", "Dark Elf"])
+hatred_attack_bonus = 0.15
+hatred_morale_bonus = 5.0
+subchoice_modifiers = [{"hatred_attack_bonus": 0.05}, {"army_speed_mod": 0.10}]

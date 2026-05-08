@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "cavalry_commander"
+trait_name = "Cavalry Commander"
+description = "An expert in mounted warfare. Cavalry units under this general's command charge with devastating effect."
+category = 1
+conflicts_with = Array[String](["infantry_captain"])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Shock Tactics", "Pursuit Master"])
+subchoice_descriptions = Array[String](["+20% cavalry charge impact damage", "+10% damage against routing enemies"])
+charge_bonus_mod = 0.15
+subchoice_modifiers = [{"charge_bonus_mod": 0.20}, {"melee_attack_mod": 0.10}]

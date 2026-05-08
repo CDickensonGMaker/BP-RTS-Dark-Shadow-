@@ -1,0 +1,56 @@
+[gd_scene load_steps=5 format=3 uid="uid://weather_standalone_test"]
+
+[ext_resource type="Script" path="res://addons/sky_3d/src/Sky3D.gd" id="1_sky3d"]
+[ext_resource type="Script" path="res://addons/dynamic_weather/weather_controller.gd" id="2_weather"]
+[ext_resource type="Script" path="res://addons/dynamic_weather/effects/weather_demo.gd" id="3_demo"]
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 2
+ambient_light_source = 2
+ambient_light_sky_contribution = 0.7
+tonemap_mode = 2
+volumetric_fog_enabled = false
+volumetric_fog_density = 0.02
+
+[node name="WeatherStandaloneTest" type="Node3D"]
+
+[node name="Sky3D" type="WorldEnvironment" parent="." groups=["sky3d"]]
+script = ExtResource("1_sky3d")
+environment = SubResource("Environment_1")
+current_time = 10.0
+minutes_per_day = 15.0
+
+[node name="WeatherController" type="Node" parent="."]
+script = ExtResource("2_weather")
+auto_weather_enabled = true
+auto_weather_min_interval = 30.0
+auto_weather_max_interval = 60.0
+
+[node name="WeatherDemo" type="Node" parent="."]
+script = ExtResource("3_demo")
+
+[node name="Ground" type="CSGBox3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
+size = Vector3(500, 2, 500)
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866, 0.5, 0, -0.5, 0.866, 0, 80, 150)
+fov = 60.0
+far = 2000.0
+
+[node name="Trees" type="Node3D" parent="."]
+
+[node name="Tree1" type="CSGCylinder3D" parent="Trees"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 5, 30)
+radius = 1.0
+height = 10.0
+
+[node name="Tree2" type="CSGCylinder3D" parent="Trees"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 5, 50)
+radius = 1.0
+height = 10.0
+
+[node name="Tree3" type="CSGCylinder3D" parent="Trees"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 5, -20)
+radius = 1.0
+height = 10.0

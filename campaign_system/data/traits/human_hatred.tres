@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "human_hatred"
+trait_name = "Human Hatred"
+description = "This general despises humanity and their empires. Units fight with savage intensity against human foes."
+category = 2
+conflicts_with = Array[String]([])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Empire Crusher", "Fear Spreader"])
+subchoice_descriptions = Array[String](["+20% attack bonus vs Humans", "-5 enemy morale when engaged"])
+hatred_targets = Array[String](["Human", "Empire", "Peasant", "Knight"])
+hatred_attack_bonus = 0.15
+hatred_morale_bonus = 5.0
+subchoice_modifiers = [{"hatred_attack_bonus": 0.05}, {"morale_aura_bonus": -5.0}]

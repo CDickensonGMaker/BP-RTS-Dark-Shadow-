@@ -7,6 +7,8 @@ const EXPORT_DIR := "res://battle_system/data/battle_maps/"
 
 var map_state: BattleSceneEditorData.BattleMapState
 var editor_state: BattleSceneEditorData.EditorState
+var scene_file_dialog: FileDialog
+var loaded_scene_path: String = ""  # Track the currently loaded scene file
 
 # UI References
 var canvas: BattleSceneEditorCanvas
@@ -412,6 +414,12 @@ func _create_footer() -> Control:
 	load_btn.pressed.connect(_on_load_pressed)
 	row.add_child(load_btn)
 
+	var open_scene_btn := Button.new()
+	open_scene_btn.text = "Open Scene"
+	open_scene_btn.tooltip_text = "Open an existing .tscn battle map for editing"
+	open_scene_btn.pressed.connect(_on_open_scene_pressed)
+	row.add_child(open_scene_btn)
+
 	var export_btn := Button.new()
 	export_btn.text = "Export Scene"
 	export_btn.tooltip_text = "Generate .tscn battle scene file"
@@ -424,7 +432,22 @@ func _create_footer() -> Control:
 	status_label.text = "Ready"
 	vbox.add_child(status_label)
 
+	# Create file dialog for opening scenes
+	_create_scene_file_dialog()
+
 	return vbox
+
+
+func _create_scene_file_dialog() -> void:
+	scene_file_dialog = FileDialog.new()
+	scene_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	scene_file_dialog.access = FileDialog.ACCESS_RESOURCES
+	scene_file_dialog.filters = PackedStringArray(["*.tscn ; Godot Scene Files"])
+	scene_file_dialog.current_dir = EXPORT_DIR
+	scene_file_dialog.title = "Open Battle Map Scene"
+	scene_file_dialog.size = Vector2i(700, 500)
+	scene_file_dialog.file_selected.connect(_on_scene_file_selected)
+	add_child(scene_file_dialog)
 
 
 func _connect_signals() -> void:
@@ -525,6 +548,7 @@ func _on_new_pressed() -> void:
 	map_id_edit.text = ""
 	grid_width_spin.value = 32
 	grid_height_spin.value = 32
+	loaded_scene_path = ""  # Clear any loaded scene reference
 	canvas.queue_redraw()
 	_set_status("New map created")
 
@@ -589,19 +613,24 @@ func _on_export_scene_pressed() -> void:
 		_set_status("Set a map ID first!")
 		return
 
-	# Generate a .tscn file for the battle map
-	var scene_path := EXPORT_DIR + map_state.map_id + ".tscn"
+	# Use original path if editing existing scene, otherwise create new path
+	var scene_path: String
+	if not loaded_scene_path.is_empty() and map_state.map_id == loaded_scene_path.get_file().get_basename():
+		scene_path = loaded_scene_path
+	else:
+		scene_path = EXPORT_DIR + map_state.map_id + ".tscn"
 
 	# Build scene content
 	var tscn_content := _generate_tscn_content()
 
 	# Ensure directory exists
-	DirAccess.make_dir_recursive_absolute(EXPORT_DIR.get_base_dir())
+	DirAccess.make_dir_recursive_absolute(scene_path.get_base_dir())
 
 	var file := FileAccess.open(scene_path, FileAccess.WRITE)
 	if file:
 		file.store_string(tscn_content)
 		file.close()
+		loaded_scene_path = scene_path  # Update tracked path
 		_set_status("Exported scene: %s" % scene_path)
 	else:
 		_set_status("Failed to export scene!")
@@ -655,3 +684,197 @@ func _set_status(text: String) -> void:
 	if status_label:
 		status_label.text = text
 	print("[BattleSceneEditor] %s" % text)
+
+
+# --- Scene Import ---
+
+func _on_open_scene_pressed() -> void:
+	if scene_file_dialog:
+		scene_file_dialog.current_dir = EXPORT_DIR
+		scene_file_dialog.popup_centered()
+
+
+func _on_scene_file_selected(path: String) -> void:
+	_import_scene_file(path)
+
+
+func _import_scene_file(path: String) -> void:
+	if not FileAccess.file_exists(path):
+		_set_status("Scene file not found: %s" % path)
+		return
+
+	var file := FileAccess.open(path, FileAccess.READ)
+	if not file:
+		_set_status("Failed to open scene file!")
+		return
+
+	var content: String = file.get_as_text()
+	file.close()
+
+	# Parse the .tscn file
+	var parsed := _parse_tscn_content(content)
+	if parsed.is_empty():
+		_set_status("Failed to parse scene file!")
+		return
+
+	# Create new map state and populate from parsed data
+	map_state = BattleSceneEditorData.BattleMapState.new()
+
+	# Set basic properties
+	map_state.map_name = parsed.get("map_name", "Unnamed Battle")
+	map_state.map_id = path.get_file().get_basename()
+	map_state.grid_width = parsed.get("grid_width", 32)
+	map_state.grid_height = parsed.get("grid_height", 32)
+	map_state.time_of_day = parsed.get("time_of_day", "day")
+	map_state.weather = parsed.get("weather", "clear")
+
+	# Resize terrain grid to match
+	map_state.resize(map_state.grid_width, map_state.grid_height)
+
+	# Set deployment positions
+	var player_pos: Vector2 = parsed.get("player_deployment_pos", Vector2(2, 2))
+	var enemy_pos: Vector2 = parsed.get("enemy_deployment_pos", Vector2(22, 24))
+	map_state.player_deployment.position = player_pos
+	map_state.enemy_deployment.position = enemy_pos
+
+	# Track the loaded file
+	loaded_scene_path = path
+
+	# Update UI
+	_update_ui_from_map_state()
+
+	canvas.map_state = map_state
+	canvas.queue_redraw()
+
+	_set_status("Opened: %s (%dx%d)" % [path.get_file(), map_state.grid_width, map_state.grid_height])
+
+
+func _parse_tscn_content(content: String) -> Dictionary:
+	var result: Dictionary = {}
+
+	var lines := content.split("\n")
+
+	for line in lines:
+		line = line.strip_edges()
+
+		# Parse root node name: [node name="MapName" type="Node3D"]
+		if line.begins_with("[node name=") and 'type="Node3D"]' in line and 'parent=' not in line:
+			var name_match := _extract_quoted_value(line, "name")
+			if not name_match.is_empty():
+				# Convert PascalCase to readable name
+				result["map_name"] = _pascal_to_title(name_match)
+
+		# Parse comments for size, time, weather
+		# # Size: 34x34 tiles
+		if line.begins_with("# Size:"):
+			var size_part: String = line.substr(7).strip_edges()
+			var size_match: RegEx = RegEx.new()
+			size_match.compile("(\\d+)x(\\d+)")
+			var match_result := size_match.search(size_part)
+			if match_result:
+				result["grid_width"] = int(match_result.get_string(1))
+				result["grid_height"] = int(match_result.get_string(2))
+
+		# # Time: dawn, Weather: fog
+		if line.begins_with("# Time:"):
+			var settings_part: String = line.substr(7).strip_edges()
+			# Parse "dawn, Weather: fog"
+			var parts := settings_part.split(",")
+			if parts.size() >= 1:
+				result["time_of_day"] = parts[0].strip_edges().to_lower()
+			if parts.size() >= 2:
+				var weather_part: String = parts[1].strip_edges()
+				if weather_part.begins_with("Weather:"):
+					result["weather"] = weather_part.substr(8).strip_edges().to_lower()
+
+		# Parse deployment transforms
+		# transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.000000, 0, 20.000000)
+		if line.begins_with("transform = Transform3D"):
+			# Store the transform for the next relevant node we identify
+			pass
+
+	# Second pass - parse deployment nodes with their transforms
+	var current_node: String = ""
+	for i in range(lines.size()):
+		var line: String = lines[i].strip_edges()
+
+		if line.begins_with('[node name="PlayerDeployment"'):
+			current_node = "player"
+		elif line.begins_with('[node name="EnemyDeployment"'):
+			current_node = "enemy"
+		elif line.begins_with("[node"):
+			current_node = ""
+
+		if line.begins_with("transform = Transform3D") and not current_node.is_empty():
+			var pos := _parse_transform3d(line)
+			# Convert world position back to grid position (divide by tile_size, default 10.0)
+			var grid_pos := Vector2(pos.x / 10.0, pos.z / 10.0)
+			if current_node == "player":
+				result["player_deployment_pos"] = grid_pos
+			elif current_node == "enemy":
+				result["enemy_deployment_pos"] = grid_pos
+
+	return result
+
+
+func _extract_quoted_value(line: String, key: String) -> String:
+	# Extract value from: key="value"
+	var pattern := key + '="'
+	var start_idx := line.find(pattern)
+	if start_idx == -1:
+		return ""
+	start_idx += pattern.length()
+	var end_idx := line.find('"', start_idx)
+	if end_idx == -1:
+		return ""
+	return line.substr(start_idx, end_idx - start_idx)
+
+
+func _parse_transform3d(line: String) -> Vector3:
+	# Parse: transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, X, Y, Z)
+	# Position is the last 3 values
+	var start := line.find("(")
+	var end := line.rfind(")")
+	if start == -1 or end == -1:
+		return Vector3.ZERO
+
+	var values_str := line.substr(start + 1, end - start - 1)
+	var parts := values_str.split(",")
+	if parts.size() < 12:
+		return Vector3.ZERO
+
+	# Last 3 values are X, Y, Z position
+	var x := float(parts[9].strip_edges())
+	var y := float(parts[10].strip_edges())
+	var z := float(parts[11].strip_edges())
+	return Vector3(x, y, z)
+
+
+func _pascal_to_title(pascal: String) -> String:
+	# Convert "DustyMud" to "Dusty Mud"
+	var result := ""
+	for i in range(pascal.length()):
+		var c := pascal[i]
+		if i > 0 and c == c.to_upper() and c != c.to_lower():
+			result += " "
+		result += c
+	return result
+
+
+func _update_ui_from_map_state() -> void:
+	map_name_edit.text = map_state.map_name
+	map_id_edit.text = map_state.map_id
+	grid_width_spin.value = map_state.grid_width
+	grid_height_spin.value = map_state.grid_height
+
+	# Update time option
+	var times: Array = ["day", "dawn", "dusk", "night"]
+	var time_idx := times.find(map_state.time_of_day)
+	if time_idx >= 0:
+		time_option.select(time_idx)
+
+	# Update weather option
+	var weathers: Array = ["clear", "rain", "fog", "snow"]
+	var weather_idx := weathers.find(map_state.weather)
+	if weather_idx >= 0:
+		weather_option.select(weather_idx)

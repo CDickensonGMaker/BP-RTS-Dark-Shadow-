@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://b3qrnmptdtrfk"
+path="res://.godot/imported/Dirt Jump.ogg-2a03ada477125ffb96dc73e60edcba6a.oggvorbisstr"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/OGG Files/SFX/Footsteps/Dirt/Dirt Jump.ogg"
+dest_files=["res://.godot/imported/Dirt Jump.ogg-2a03ada477125ffb96dc73e60edcba6a.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

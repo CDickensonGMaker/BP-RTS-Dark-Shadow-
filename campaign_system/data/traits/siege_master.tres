@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "siege_master"
+trait_name = "Siege Master"
+description = "An expert in siege warfare. Units under this general excel at attacking or defending fortifications."
+category = 1
+conflicts_with = Array[String]([])
+unlock_battles = 3
+unlock_kills = 50
+is_unlockable = true
+has_subchoices = true
+subchoice_names = Array[String](["Breacher", "Defender"])
+subchoice_descriptions = Array[String](["Faster assault of walls and gates", "+20% garrison defense bonus"])
+melee_attack_mod = 0.20
+subchoice_modifiers = [{"charge_bonus_mod": 0.15, "army_speed_mod": 0.10}, {"melee_defense_mod": 0.20, "rout_threshold_mod": 0.10}]

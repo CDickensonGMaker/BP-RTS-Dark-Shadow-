@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://gngqc8f1aglj"
+path="res://.godot/imported/Water Jump.ogg-c66792629b37fb234a1c0c6cc3d5e774.oggvorbisstr"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/OGG Files/SFX/Footsteps/Water/Water Jump.ogg"
+dest_files=["res://.godot/imported/Water Jump.ogg-c66792629b37fb234a1c0c6cc3d5e774.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "logistics_expert"
+trait_name = "Logistics Expert"
+description = "A master of army logistics. Supply lines are more efficient and troops suffer less from attrition."
+category = 3
+conflicts_with = Array[String]([])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Quartermaster", "Rapid Resupply"])
+subchoice_descriptions = Array[String](["-10% attrition losses", "+20% replenishment rate after battles"])
+army_stamina_mod = 0.10
+subchoice_modifiers = [{"army_stamina_mod": 0.10}, {"reinforcement_speed_mod": 0.20}]

@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://crr7mnlp7ud5"
+path="res://.godot/imported/Firebuff 2.wav-158c7768303cb5f4e015b8d7ab28e22a.sample"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/WAV Files/SFX/Spells/Firebuff 2.wav"
+dest_files=["res://.godot/imported/Firebuff 2.wav-158c7768303cb5f4e015b8d7ab28e22a.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

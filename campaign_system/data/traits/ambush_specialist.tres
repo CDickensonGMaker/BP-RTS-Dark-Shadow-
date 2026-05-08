@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "ambush_specialist"
+trait_name = "Ambush Specialist"
+description = "A master of surprise attacks. Units under this general deal devastating damage when attacking from concealment."
+category = 1
+conflicts_with = Array[String](["honorable"])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Forest Fighter", "Night Stalker"])
+subchoice_descriptions = Array[String](["+10% combat bonus in forests", "+15% combat bonus in night battles"])
+melee_attack_mod = 0.25
+subchoice_modifiers = [{"melee_defense_mod": 0.10}, {"ranged_attack_mod": 0.10, "melee_attack_mod": 0.05}]

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://be2scw4skxo4q"
+path="res://.godot/imported/Ice Throw 1.ogg-dc6915d990ffe8e095985a843969c741.oggvorbisstr"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/OGG Files/SFX/Spells/Ice Throw 1.ogg"
+dest_files=["res://.godot/imported/Ice Throw 1.ogg-dc6915d990ffe8e095985a843969c741.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

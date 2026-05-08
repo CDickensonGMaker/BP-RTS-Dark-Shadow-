@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="WeatherPreset" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/dynamic_weather/weather_types/weather_preset.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "blizzard"
+display_name = "Blizzard"
+description = "Intense snowstorm with reduced visibility"
+cloud_coverage = 1.0
+fog_density = 0.5
+fog_color = Color(0.9, 0.92, 0.98, 1)
+sky_brightness = 0.4
+has_rain = false
+rain_intensity = 0.0
+has_snow = true
+snow_intensity = 1.0
+wind_speed = 25.0
+wind_direction = -90.0
+has_lightning = false
+lightning_interval = 15.0
+lightning_intensity = 2.0
+ambient_volume_db = -10.0
+transition_duration = 35.0
+weight = 5.0

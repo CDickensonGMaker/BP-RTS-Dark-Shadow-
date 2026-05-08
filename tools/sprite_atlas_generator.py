@@ -20,13 +20,30 @@ from PIL import Image
 # Configuration
 SPRITES_INPUT_DIR = Path(__file__).parent.parent / "sothr_sprites_labeled"
 SPRITES_OUTPUT_DIR = Path(__file__).parent.parent / "assets" / "sprites" / "units"
-FRAME_SIZE = 64  # 64x64 pixels per frame
+FRAME_SIZE = 80  # 80x80 pixels per frame (larger for better visibility)
 ROWS = 8         # 8 directions
 
-# Direction order - must match engine expectation:
-# Row 0 = South, Row 1 = SW, Row 2 = W, Row 3 = NW, Row 4 = N, Row 5 = NE, Row 6 = E, Row 7 = SE
-# This is the clockwise order starting from South
-DIRECTIONS = ["S", "SW", "W", "NW", "N", "NE", "E", "SE"]
+# Direction order - must match engine expectation (clockwise from North):
+# Row 0 = North, Row 1 = NE, Row 2 = E, Row 3 = SE, Row 4 = S, Row 5 = SW, Row 6 = W, Row 7 = NW
+# This matches the SotHR extractor output: N, NE, E, SE, S, SW, W, NW
+DIRECTIONS_8 = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+
+# 16 directions (used by artillery) - clockwise from North
+DIRECTIONS_16 = [
+    "N", "NNE", "NE", "ENE",
+    "E", "ESE", "SE", "SSE",
+    "S", "SSW", "SW", "WSW",
+    "W", "WNW", "NW", "NNW"
+]
+
+# Map 16 directions to 8 directions (take every other direction)
+# N(0)->N, NNE(1)->skip, NE(2)->NE, ENE(3)->skip, etc.
+DIR_16_TO_8 = {
+    "N": "N", "NE": "NE", "E": "E", "SE": "SE",
+    "S": "S", "SW": "SW", "W": "W", "NW": "NW"
+}
+
+DIRECTIONS = DIRECTIONS_8  # Default for atlas output
 
 # Animation order for atlas columns
 ANIMATION_ORDER = ["Idle", "Walk", "Attack", "Dead"]
@@ -51,6 +68,7 @@ def get_unit_folders(input_dir: Path) -> list:
 def load_labeled_sprites(unit_dir: Path) -> dict:
     """
     Load all labeled PNG sprites for a unit.
+    Handles both 8-direction and 16-direction input (downsamples 16 to 8).
     Returns dict: {direction: {animation: [frame_images in order]}}
     """
     sprites = {d: {a: [] for a in ANIMATION_ORDER} for d in DIRECTIONS}
@@ -60,29 +78,42 @@ def load_labeled_sprites(unit_dir: Path) -> dict:
         if not anim_dir.exists():
             continue
 
-        # Collect frames by direction
+        # Collect frames by direction (support both 8 and 16 dir formats)
         frames_by_dir = {d: [] for d in DIRECTIONS}
 
         for png_file in anim_dir.glob("*.png"):
             if ".import" in png_file.name:
                 continue
 
-            # Parse filename: UNITNAME_FRAMENUM_DIR.png
-            stem = png_file.stem  # e.g., "MCSWORD_096_N"
+            # Parse filename: UNITNAME_DIR_FRAMENUM.png (e.g., "MORTAR_NNE_01.png")
+            stem = png_file.stem
             parts = stem.rsplit('_', 2)
 
             if len(parts) >= 3:
-                frame_num = int(parts[-2])
-                direction = parts[-1]
+                direction = parts[-2]
+                try:
+                    frame_num = int(parts[-1])
+                except ValueError:
+                    continue
 
-                if direction in DIRECTIONS:
-                    try:
-                        img = Image.open(png_file)
-                        if img.mode != 'RGBA':
-                            img = img.convert('RGBA')
-                        frames_by_dir[direction].append((frame_num, img))
-                    except Exception as e:
-                        print(f"  Warning: Failed to load {png_file.name}: {e}")
+                # Handle 16-direction input by mapping to 8 directions
+                if direction in DIRECTIONS_8:
+                    target_dir = direction
+                elif direction in DIR_16_TO_8:
+                    target_dir = DIR_16_TO_8[direction]
+                elif direction in DIRECTIONS_16:
+                    # This is an intermediate direction (NNE, ENE, etc.) - skip it
+                    continue
+                else:
+                    continue
+
+                try:
+                    img = Image.open(png_file)
+                    if img.mode != 'RGBA':
+                        img = img.convert('RGBA')
+                    frames_by_dir[target_dir].append((frame_num, img))
+                except Exception as e:
+                    print(f"  Warning: Failed to load {png_file.name}: {e}")
 
         # Sort by frame number and add to sprites dict
         for direction in DIRECTIONS:
@@ -104,6 +135,45 @@ def count_animation_frames(sprites: dict) -> dict:
                     frame_counts[anim] = len(sprites[direction][anim])
 
     return frame_counts
+
+
+def resize_frame_improved(img: Image.Image, target_size: int) -> Image.Image:
+    """
+    Resize frame to target size with improved quality.
+    - Uses LANCZOS resampling for better quality
+    - Maintains aspect ratio
+    - Positions sprite at bottom (feet on ground)
+    - Uses 95% of target size to leave small margin
+    """
+    result = Image.new('RGBA', (target_size, target_size), (0, 0, 0, 0))
+
+    if img.size == (target_size, target_size):
+        return img
+
+    # Get original dimensions
+    orig_w, orig_h = img.size
+
+    # Use 95% of target size to leave margin
+    usable_size = int(target_size * 0.95)
+
+    # Calculate scale to fit while maintaining aspect ratio
+    scale = min(usable_size / orig_w, usable_size / orig_h)
+
+    new_w = int(orig_w * scale)
+    new_h = int(orig_h * scale)
+
+    if new_w > 0 and new_h > 0:
+        # Use LANCZOS for high quality downscaling
+        resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        # Center horizontally, align to bottom (feet on ground)
+        x = (target_size - new_w) // 2
+        y = target_size - new_h - 2  # 2px margin from bottom
+
+        # Paste with alpha mask
+        result.paste(resized, (x, y), resized)
+
+    return result
 
 
 def create_atlas(sprites: dict, frame_counts: dict, frame_size: int) -> tuple:
@@ -141,13 +211,12 @@ def create_atlas(sprites: dict, frame_counts: dict, frame_size: int) -> tuple:
             for frame_idx, img in enumerate(frames):
                 col = current_col + frame_idx
 
-                # Resize if needed
-                if img.size != (frame_size, frame_size):
-                    img = img.resize((frame_size, frame_size), Image.Resampling.NEAREST)
+                # Resize frame to fit, maintaining aspect ratio and positioning at bottom
+                resized_frame = resize_frame_improved(img, frame_size)
 
                 x = col * frame_size
                 y = row_idx * frame_size
-                atlas.paste(img, (x, y))
+                atlas.paste(resized_frame, (x, y), resized_frame)  # Use alpha mask
 
         current_col += frame_count
 

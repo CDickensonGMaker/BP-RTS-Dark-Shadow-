@@ -42,6 +42,12 @@ func _setup_ui() -> void:
 	version_label.add_theme_font_size_override("font_size", 12)
 	version_label.add_theme_color_override("font_color", DarkShadowsTheme.COLOR_TEXT_DIM)
 
+	# Setup buttons with cursor hints and better click targets
+	for button in buttons_container.get_children():
+		if button is Button:
+			button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			button.focus_mode = Control.FOCUS_ALL  # Allow keyboard navigation
+
 
 func _connect_signals() -> void:
 	$MainPanel/ButtonsContainer/NewGameButton.pressed.connect(_on_new_game_pressed)

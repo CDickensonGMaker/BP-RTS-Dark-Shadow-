@@ -28,9 +28,11 @@ extends Resource
 @export var map_seed: int = 0
 @export var map_size: Vector2 = Vector2(200, 200)
 
-# Deployment zones
-@export var player_deployment_zone: Rect2 = Rect2(0, 0, 200, 50)
-@export var enemy_deployment_zone: Rect2 = Rect2(0, 150, 200, 50)
+# Deployment zones (X-axis orientation: player on left/west, enemy on right/east)
+# Rect2 uses 2D coordinates: x maps to 3D X, y maps to 3D Z
+# For a 200x200 map centered at origin: x=0-100 is negative X (player), x=100-200 is positive X (enemy)
+@export var player_deployment_zone: Rect2 = Rect2(0, 0, 100, 200)    # Left half (west)
+@export var enemy_deployment_zone: Rect2 = Rect2(100, 0, 100, 200)   # Right half (east)
 
 # Win conditions
 @export var objective_type: String = "defeat_enemy"  # defeat_enemy, hold_position, capture_point
@@ -70,7 +72,7 @@ static func create_from_pre_battle(
 	# Contract specifics
 	if contract_data:
 		setup.contract = contract_data
-		setup.gold_reward = contract_data.completion_reward
+		setup.gold_reward = contract_data.gold_reward
 		setup.bonus_conditions = contract_data.bonus_conditions
 		setup.objective_type = _contract_type_to_objective(contract_data.contract_type)
 		if contract_data.get("time_limit"):

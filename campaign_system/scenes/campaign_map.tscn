@@ -23,8 +23,10 @@ centered = false
 [node name="RegionsContainer" type="Node2D" parent="."]
 
 [node name="BattalionsContainer" type="Node2D" parent="."]
+z_index = 200
 
 [node name="EnemyArmiesContainer" type="Node2D" parent="."]
+z_index = 200
 
 [node name="PathPreview" type="Line2D" parent="."]
 width = 3.0

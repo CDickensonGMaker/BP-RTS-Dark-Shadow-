@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://biwhf7sr4pog3"
+path="res://.godot/imported/Stone Land.ogg-e68e899c3f74d62f2f4023f1c4959caa.oggvorbisstr"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/OGG Files/SFX/Footsteps/Stone/Stone Land.ogg"
+dest_files=["res://.godot/imported/Stone Land.ogg-e68e899c3f74d62f2f4023f1c4959caa.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

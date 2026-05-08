@@ -105,7 +105,7 @@ Comparing the Game Bible (§1-19) against current codebase.
 | Commander AI (tactical) | ✅ | `commander_ai.gd` |
 | Behavior tree | ✅ | `bt_node.gd`, `bt_selector.gd`, `bt_sequence.gd`, `bt_condition.gd` |
 | Target selector | ✅ | `target_selector.gd` |
-| AI tasks | ✅ | `task_acquire_target.gd`, `task_move_to_position.gd`, `task_engage_melee.gd`, `task_fire_ranged.gd`, `task_flank_maneuver.gd` |
+| AI tasks | ✅ | `task_acquire_target.gd`, `task_move_to_position.gd`, `task_engage_melee.gd`, `task_fire_ranged.gd` |
 | Spatial hash queries | ✅ | `spatial_hash.gd` |
 | AI personalities | ✅ | `ai_personality.gd` |
 | Difficulty scaling | ❌ | Not implemented |

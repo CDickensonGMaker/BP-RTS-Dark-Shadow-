@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://76t46a8x36ld"
+path="res://.godot/imported/Stone Walk 5.wav-714c82f82b35eb3a6b66822c05eb4677.sample"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/WAV Files/SFX/Footsteps/Stone/Stone Walk 5.wav"
+dest_files=["res://.godot/imported/Stone Walk 5.wav-714c82f82b35eb3a6b66822c05eb4677.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

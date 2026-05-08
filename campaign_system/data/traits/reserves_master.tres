@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "reserves_master"
+trait_name = "Reserves Master"
+description = "An expert at managing battlefield reserves. Reinforcements arrive faster and in better condition."
+category = 3
+conflicts_with = Array[String]([])
+unlock_battles = 2
+unlock_kills = 30
+is_unlockable = true
+has_subchoices = true
+subchoice_names = Array[String](["Fresh Troops", "Hidden Reserves"])
+subchoice_descriptions = Array[String](["Reinforcements arrive with +10% health", "Reinforcements can appear from unexpected locations"])
+reinforcement_speed_mod = 0.25
+subchoice_modifiers = [{"army_stamina_mod": 0.15}, {"melee_attack_mod": 0.10}]

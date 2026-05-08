@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "iron_discipline"
+trait_name = "Iron Discipline"
+description = "Troops under this general's command maintain strict discipline even in the face of death. Units are more resistant to routing."
+category = 0
+conflicts_with = Array[String]([])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Unbreakable", "Steady Ranks"])
+subchoice_descriptions = Array[String](["Units never auto-rout below a threshold", "+5% melee defense bonus"])
+rout_threshold_mod = 0.10
+subchoice_modifiers = [{"rout_threshold_mod": 0.10}, {"melee_defense_mod": 0.05}]

@@ -48,17 +48,22 @@ const ENGAGEMENT_DISTANCE: float = 3.0
 var log_engage_deltas: bool = false
 
 ## UI sizing
-const MORALE_BAR_WIDTH: float = 60.0
-const MORALE_BAR_HEIGHT: float = 8.0
-const MORALE_BAR_OFFSET_Y: float = -40.0
+const MORALE_BAR_WIDTH: float = 80.0
+const MORALE_BAR_HEIGHT: float = 10.0
+const MORALE_BAR_OFFSET_Y: float = -45.0
+const MORALE_STATE_OFFSET_Y: float = -58.0
 const SOLDIER_COUNT_OFFSET_Y: float = -28.0
 const ARROW_LENGTH: float = 25.0
 const ARROW_HEAD_SIZE: float = 8.0
-const FLANKED_OFFSET_Y: float = -55.0
-const AI_STATE_OFFSET_Y: float = -70.0
-const UNIT_NAME_OFFSET_Y: float = -85.0
+const FLANKED_OFFSET_Y: float = -72.0
+const AI_STATE_OFFSET_Y: float = -87.0
+const UNIT_NAME_OFFSET_Y: float = -102.0
 const COLOR_UNIT_NAME_ENEMY: Color = Color(1.0, 0.3, 0.3, 1.0)      # Red for enemies
 const COLOR_UNIT_NAME_PLAYER: Color = Color(0.3, 0.7, 1.0, 1.0)     # Blue for player
+const COLOR_MORALE_STATE_STEADY: Color = Color(0.3, 0.9, 0.3, 1.0)  # Green
+const COLOR_MORALE_STATE_WAVERING: Color = Color(0.9, 0.9, 0.3, 1.0) # Yellow
+const COLOR_MORALE_STATE_SHAKEN: Color = Color(0.9, 0.6, 0.2, 1.0)   # Orange
+const COLOR_MORALE_STATE_BROKEN: Color = Color(0.9, 0.2, 0.2, 1.0)   # Red
 
 
 func _ready() -> void:
@@ -78,8 +83,17 @@ func _ready() -> void:
 	if BattleSignals:
 		BattleSignals.unit_flanked.connect(_on_unit_flanked)
 
-	# Start disabled
+	# Start disabled but print reminder
 	draw_control.visible = false
+	# Delayed reminder so it shows after other startup messages
+	get_tree().create_timer(1.5).timeout.connect(func():
+		print("")
+		print("=== COMBAT DEBUG ===")
+		print("Press F3 to toggle combat debug overlay (morale, flanking, AI state)")
+		print("Press F4 to toggle engagement distance logging")
+		print("====================")
+		print("")
+	)
 
 
 func _input(event: InputEvent) -> void:
@@ -208,7 +222,7 @@ func _draw_regiment_debug(regiment: Regiment) -> void:
 
 
 func _draw_morale_bar(regiment: Regiment, screen_pos: Vector2) -> void:
-	## Draw morale bar above the regiment.
+	## Draw morale bar above the regiment with percentage and state.
 	var bar_pos: Vector2 = screen_pos + Vector2(-MORALE_BAR_WIDTH / 2, MORALE_BAR_OFFSET_Y)
 
 	# Background
@@ -234,6 +248,77 @@ func _draw_morale_bar(regiment: Regiment, screen_pos: Vector2) -> void:
 	# Border
 	draw_control.draw_rect(bg_rect, Color.WHITE, false, 1.0)
 
+	# Draw percentage text on the bar
+	var percent_text: String = "%d%%" % int(regiment.current_morale)
+	var font: Font = ThemeDB.fallback_font
+	var font_size: int = 9
+	var text_size: Vector2 = font.get_string_size(percent_text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	var text_pos: Vector2 = bar_pos + Vector2(MORALE_BAR_WIDTH / 2 - text_size.x / 2, MORALE_BAR_HEIGHT - 1)
+	draw_control.draw_string(font, text_pos + Vector2(1, 0), percent_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
+	draw_control.draw_string(font, text_pos, percent_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
+
+	# Draw morale state text below bar
+	_draw_morale_state(regiment, screen_pos)
+
+
+func _draw_morale_state(regiment: Regiment, screen_pos: Vector2) -> void:
+	## Draw morale state text (STEADY/WAVERING/SHAKEN/BROKEN) with broken count.
+	if not regiment.unit_morale:
+		return
+
+	var state_text: String = ""
+	var state_color: Color = COLOR_MORALE_STATE_STEADY
+	var broken_count: int = 0
+	var total_count: int = 0
+
+	# Get state from unit_morale
+	if regiment.unit_morale.has_method("get_morale_state"):
+		var state: int = regiment.unit_morale.get_morale_state()
+		match state:
+			0:  # STEADY
+				state_text = "STEADY"
+				state_color = COLOR_MORALE_STATE_STEADY
+			1:  # WAVERING
+				state_text = "WAVERING"
+				state_color = COLOR_MORALE_STATE_WAVERING
+			2:  # SHAKEN
+				state_text = "SHAKEN"
+				state_color = COLOR_MORALE_STATE_SHAKEN
+			3:  # BROKEN
+				state_text = "BROKEN"
+				state_color = COLOR_MORALE_STATE_BROKEN
+
+	# Get broken count if available
+	if regiment.unit_morale.has_method("get_broken_count"):
+		broken_count = regiment.unit_morale.get_broken_count()
+	if regiment.unit_morale.has_method("get_soldier_count"):
+		total_count = regiment.unit_morale.get_soldier_count()
+
+	# Add broken count to state text if any broken
+	if broken_count > 0:
+		state_text += " (%d/%d broken)" % [broken_count, total_count]
+
+	# Check routing/shattered status
+	if regiment.unit_morale.has_method("is_routing") and regiment.unit_morale.is_routing():
+		state_text = "ROUTING!"
+		state_color = COLOR_MORALE_STATE_BROKEN
+	if regiment.unit_morale.has_method("is_shattered") and regiment.unit_morale.is_shattered():
+		state_text = "SHATTERED!"
+		state_color = Color(0.5, 0.0, 0.0, 1.0)  # Dark red
+
+	var text_pos: Vector2 = screen_pos + Vector2(0, MORALE_STATE_OFFSET_Y)
+
+	var font: Font = ThemeDB.fallback_font
+	var font_size: int = 11
+
+	var text_size: Vector2 = font.get_string_size(state_text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	text_pos.x -= text_size.x / 2
+
+	# Draw shadow
+	draw_control.draw_string(font, text_pos + Vector2(1, 1), state_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
+	# Draw text
+	draw_control.draw_string(font, text_pos, state_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, state_color)
+
 
 func _draw_soldier_count(regiment: Regiment, screen_pos: Vector2) -> void:
 	## Draw soldier count text.
@@ -256,6 +341,7 @@ func _draw_soldier_count(regiment: Regiment, screen_pos: Vector2) -> void:
 
 func _draw_facing_arrow(regiment: Regiment, screen_pos: Vector2) -> void:
 	## Draw an arrow showing the regiment's facing direction.
+	## FLANKING FIX: Arrow flashes red when unit is being flanked.
 	var facing_3d: Vector3 = regiment.get_facing_direction()
 
 	# Convert 3D facing to 2D direction (ignore Y, invert Z for screen coordinates)
@@ -265,8 +351,16 @@ func _draw_facing_arrow(regiment: Regiment, screen_pos: Vector2) -> void:
 	var arrow_start: Vector2 = screen_pos + Vector2(0, 5)
 	var arrow_end: Vector2 = arrow_start + facing_2d * ARROW_LENGTH
 
+	# FLANKING FIX: Color red if recently flanked, yellow otherwise
+	var arrow_color: Color = COLOR_FACING_ARROW
+	if regiment in flanked_regiments:
+		var timer: float = flanked_regiments[regiment].get("timer", 0.0)
+		# Pulse between red and orange for visibility
+		var pulse: float = 0.5 + 0.5 * sin(timer * 12.0)
+		arrow_color = Color(1.0, pulse * 0.3, 0.0, 1.0)
+
 	# Draw arrow line
-	draw_control.draw_line(arrow_start, arrow_end, COLOR_FACING_ARROW, 2.0)
+	draw_control.draw_line(arrow_start, arrow_end, arrow_color, 2.0)
 
 	# Draw arrow head
 	var perpendicular: Vector2 = Vector2(-facing_2d.y, facing_2d.x)
@@ -276,8 +370,16 @@ func _draw_facing_arrow(regiment: Regiment, screen_pos: Vector2) -> void:
 
 	draw_control.draw_polygon(
 		PackedVector2Array([arrow_end, head_left, head_right]),
-		PackedColorArray([COLOR_FACING_ARROW, COLOR_FACING_ARROW, COLOR_FACING_ARROW])
+		PackedColorArray([arrow_color, arrow_color, arrow_color])
 	)
+
+	# FLANKING FIX: Draw 45° front-arc cone in transparent green
+	var arc_length: float = ARROW_LENGTH * 0.8
+	var left_arc: Vector2 = facing_2d.rotated(deg_to_rad(-45)) * arc_length
+	var right_arc: Vector2 = facing_2d.rotated(deg_to_rad(45)) * arc_length
+	var arc_color: Color = Color(0.2, 0.8, 0.2, 0.4)
+	draw_control.draw_line(arrow_start, arrow_start + left_arc, arc_color, 1.0)
+	draw_control.draw_line(arrow_start, arrow_start + right_arc, arc_color, 1.0)
 
 
 func _draw_flanked_indicator(regiment: Regiment, screen_pos: Vector2) -> void:

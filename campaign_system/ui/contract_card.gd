@@ -6,12 +6,15 @@ extends PanelContainer
 signal contract_accepted(contract: ContractData)
 signal contract_selected(contract: ContractData)
 
-# UI Colors
-const COLOR_GOLD := Color(0.85, 0.7, 0.4, 1.0)
-const COLOR_TEXT := Color(0.95, 0.92, 0.85, 1.0)
+# Dark color palette (Catacombs style)
+const COLOR_BG_CARD := Color(0.07, 0.06, 0.05, 0.96)
+const COLOR_BORDER := Color(0.35, 0.28, 0.18, 1.0)
+const COLOR_GOLD := Color(0.9, 0.7, 0.2, 1.0)
+const COLOR_TEXT := Color(0.9, 0.85, 0.75, 1.0)
+const COLOR_TEXT_DIM := Color(0.6, 0.55, 0.5, 1.0)
 const COLOR_STAR_FILLED := Color(1.0, 0.85, 0.2, 1.0)
 const COLOR_STAR_EMPTY := Color(0.4, 0.4, 0.4, 1.0)
-const COLOR_INCOME := Color(0.5, 0.85, 0.5, 1.0)
+const COLOR_INCOME := Color(0.4, 0.7, 0.4, 1.0)
 
 # Objective type icons
 const OBJECTIVE_ICONS := {
@@ -42,24 +45,18 @@ func _ready() -> void:
 
 
 func _build_ui() -> void:
-	# Panel styling
-	custom_minimum_size = Vector2(280, 100)
+	# Panel styling - darker card background
+	custom_minimum_size = Vector2(400, 110)
 
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.15, 0.12, 0.1, 0.95)
-	style.border_color = Color(0.4, 0.35, 0.25, 1.0)
-	style.border_width_left = 2
-	style.border_width_right = 2
-	style.border_width_top = 2
-	style.border_width_bottom = 2
-	style.corner_radius_top_left = 4
-	style.corner_radius_top_right = 4
-	style.corner_radius_bottom_left = 4
-	style.corner_radius_bottom_right = 4
-	style.content_margin_left = 8
-	style.content_margin_right = 8
-	style.content_margin_top = 6
-	style.content_margin_bottom = 6
+	style.bg_color = COLOR_BG_CARD
+	style.border_color = COLOR_BORDER
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(4)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 8
+	style.content_margin_bottom = 8
 	add_theme_stylebox_override("panel", style)
 
 	# Main container
@@ -88,7 +85,7 @@ func _build_ui() -> void:
 
 	# Region
 	_region_label = Label.new()
-	_region_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.6, 1.0))
+	_region_label.add_theme_color_override("font_color", COLOR_TEXT_DIM)
 	vbox.add_child(_region_label)
 
 	# Info row: enemies | reward
@@ -165,7 +162,7 @@ func set_active(is_active: bool) -> void:
 		if is_active:
 			style.border_color = COLOR_GOLD
 		else:
-			style.border_color = Color(0.4, 0.35, 0.25, 1.0)
+			style.border_color = COLOR_BORDER
 
 
 func _on_accept_pressed() -> void:

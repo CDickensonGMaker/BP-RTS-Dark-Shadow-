@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dy56heikt2pl2"
+path="res://.godot/imported/Water Run 3.ogg-414c54e12b2e80c5019cd6a54315931b.oggvorbisstr"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/OGG Files/SFX/Footsteps/Water/Water Run 3.ogg"
+dest_files=["res://.godot/imported/Water Run 3.ogg-414c54e12b2e80c5019cd6a54315931b.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

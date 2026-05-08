@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="WeatherPreset" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/dynamic_weather/weather_types/weather_preset.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "rain"
+display_name = "Rain"
+description = "Steady rainfall with gray skies"
+cloud_coverage = 0.9
+fog_density = 0.2
+fog_color = Color(0.5, 0.55, 0.6, 1)
+sky_brightness = 0.5
+has_rain = true
+rain_intensity = 0.6
+has_snow = false
+snow_intensity = 0.0
+wind_speed = 8.0
+wind_direction = 90.0
+has_lightning = false
+lightning_interval = 15.0
+lightning_intensity = 2.0
+ambient_volume_db = -15.0
+transition_duration = 25.0
+weight = 20.0

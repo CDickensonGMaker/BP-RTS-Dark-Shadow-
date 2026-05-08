@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "honorable"
+trait_name = "Honorable"
+description = "A commander bound by a strict code of honor. Units gain morale but cannot use ambush tactics."
+category = 4
+conflicts_with = Array[String](["ambush_specialist", "supply_denial", "ruthless"])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Chivalrous", "Fair Commander"])
+subchoice_descriptions = Array[String](["+10% damage in even battles", "Increased troop loyalty"])
+morale_aura_bonus = 5.0
+subchoice_modifiers = [{"melee_attack_mod": 0.10}, {"rout_threshold_mod": 0.10}]

@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://b1rb1td8vvcso"
+path="res://.godot/imported/Stone Chain Jump.wav-1662e0fa4bcf9a702e6199b9867da1d1.sample"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/WAV Files/SFX/Footsteps/Stone/Stone Chain Jump.wav"
+dest_files=["res://.godot/imported/Stone Chain Jump.wav-1662e0fa4bcf9a702e6199b9867da1d1.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

@@ -8,6 +8,17 @@ uniform sampler2D sprite_atlas : source_color, filter_nearest;
 uniform int atlas_columns : hint_range(1, 32) = 13;
 uniform int atlas_rows : hint_range(1, 16) = 8;
 
+// Direction-to-row mapping (allows custom row per direction)
+// Default: direction index = row index
+// Values: direction_row_map[direction_index] = actual_row_to_use
+// Note: Default values for array uniforms not supported in Godot - set from GDScript
+uniform int direction_row_map[8];
+
+// Direction-to-frame mapping (allows custom start frame per direction)
+// Used for atlases where different directions have different frame positions
+// Values: direction_frame_map[direction_index] = start_frame_for_that_direction
+uniform int direction_frame_map[8];
+
 // Animation control
 uniform int current_anim_start : hint_range(0, 32) = 0;
 uniform int current_anim_frames : hint_range(1, 16) = 4;
@@ -97,11 +108,13 @@ void fragment() {
 			current_frame = death_anim_start + death_anim_frames - 1;  // Last death frame
 			direction = 0;  // Force south-facing for corpses
 		} else {
+			direction = int(v_direction);
+			// Get per-direction start frame (allows different frame positions per direction)
+			int dir_start_frame = direction_frame_map[clamp(direction, 0, 7)];
 			// Calculate current animation frame for alive soldiers
 			float anim_time = TIME * anim_speed + v_time_offset * float(current_anim_frames);
 			int frame_in_anim = int(mod(anim_time, float(current_anim_frames)));
-			current_frame = current_anim_start + frame_in_anim;
-			direction = int(v_direction);
+			current_frame = dir_start_frame + frame_in_anim;
 		}
 
 		// Calculate UV coordinates for this frame in the atlas
@@ -111,9 +124,13 @@ void fragment() {
 		// Use UV directly
 		vec2 local_uv = UV;
 
+		// Look up actual row from direction using direction_row_map
+		int actual_row = direction_row_map[clamp(direction, 0, 7)];
+		actual_row = clamp(actual_row, 0, atlas_rows - 1);
+
 		// Calculate base position for this frame
 		float frame_x = float(current_frame) * frame_width;
-		float frame_y = float(direction) * frame_height;
+		float frame_y = float(actual_row) * frame_height;
 
 		// Map the quad's UV to the frame's region in the atlas
 		vec2 atlas_uv = vec2(

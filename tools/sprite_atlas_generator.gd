@@ -20,17 +20,17 @@ const SPRITES_OUTPUT_DIR := "res://assets/sprites/"
 const DIRECTIONS := 8
 
 ## Dark Omen direction order: NE, E, SE, S, SW, W, NW, N (indices 0-7)
-## Our system direction order: S, SW, W, NW, N, NE, E, SE (indices 0-7)
+## Our system direction order: N, NE, E, SE, S, SW, W, NW (indices 0-7, clockwise from North)
 ## This map converts Dark Omen direction index to our system's row index
 const DO_TO_SYSTEM_DIR := {
-	0: 5,  # NE -> row 5
-	1: 6,  # E  -> row 6
-	2: 7,  # SE -> row 7
-	3: 0,  # S  -> row 0
-	4: 1,  # SW -> row 1
-	5: 2,  # W  -> row 2
-	6: 3,  # NW -> row 3
-	7: 4,  # N  -> row 4
+	0: 1,  # NE -> row 1
+	1: 2,  # E  -> row 2
+	2: 3,  # SE -> row 3
+	3: 4,  # S  -> row 4
+	4: 5,  # SW -> row 5
+	5: 6,  # W  -> row 6
+	6: 7,  # NW -> row 7
+	7: 0,  # N  -> row 0
 }
 
 ## Animation presets by unit type (charge-walk-fight format from Dark Omen wiki)

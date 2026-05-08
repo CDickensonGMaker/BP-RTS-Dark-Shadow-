@@ -100,7 +100,8 @@ func _create_fog_visual() -> void:
 	fog_sprite.centered = false
 	fog_sprite.position = map_bounds.position
 	fog_sprite.scale = Vector2(cell_size, cell_size)
-	fog_sprite.z_index = 100  # Above most map elements
+	fog_sprite.z_index = 50  # Above map but below armies (z=200)
+	fog_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR  # Smooth edges, hide grid
 	add_child(fog_sprite)
 
 	_update_fog_texture()

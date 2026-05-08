@@ -1,0 +1,17 @@
+[gd_scene format=3]
+
+[node name="LargeBattleZone" type="Node3D"]
+
+# Battle Map: Large Battle Zone
+# Size: 90x90 tiles
+# Time: day, Weather: clear
+
+[node name="Terrain" type="Node3D" parent="."]
+
+[node name="PlayerDeployment" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.000000, 0, 20.000000)
+
+[node name="EnemyDeployment" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 800.000000, 0, 820.000000)
+
+[node name="Objects" type="Node3D" parent="."]

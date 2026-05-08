@@ -2,19 +2,19 @@
 extends Node
 
 
-# Battalion selection
-signal battalion_selected(battalion: Node2D)
+# Battalion selection (Node to support both 2D and 3D battalions)
+signal battalion_selected(battalion: Node)
 signal battalion_deselected()
 
-# Movement
-signal battalion_move_requested(battalion: Node2D, target_position: Vector2)
-signal battalion_moved(battalion: Node2D, new_position: Vector2)
-signal movement_points_changed(battalion: Node2D, remaining: float)
+# Movement (Node to support both 2D and 3D battalions)
+signal battalion_move_requested(battalion: Node, target_position: Vector2)
+signal battalion_moved(battalion: Node, new_position: Vector2)
+signal movement_points_changed(battalion: Node, remaining: float)
 
 # Path queue (multi-turn movement)
-signal path_queued(battalion: Node2D, path: Array)
-signal path_completed(battalion: Node2D)
-signal path_interrupted(battalion: Node2D)
+signal path_queued(battalion: Node, path: Array)
+signal path_completed(battalion: Node)
+signal path_interrupted(battalion: Node)
 
 # Contracts
 signal contract_selected(contract: Resource)

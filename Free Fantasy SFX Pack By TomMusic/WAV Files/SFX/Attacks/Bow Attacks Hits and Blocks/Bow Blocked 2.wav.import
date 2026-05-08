@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://cpb7bhvsxwdwo"
+path="res://.godot/imported/Bow Blocked 2.wav-b66965075332d90e886cf2ffb8b26ae1.sample"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/WAV Files/SFX/Attacks/Bow Attacks Hits and Blocks/Bow Blocked 2.wav"
+dest_files=["res://.godot/imported/Bow Blocked 2.wav-b66965075332d90e886cf2ffb8b26ae1.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

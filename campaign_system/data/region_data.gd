@@ -6,6 +6,17 @@ extends Resource
 
 enum TerrainType { PLAINS, FOREST, HILLS, MOUNTAINS, DESERT, SWAMP, COAST }
 
+## Climate biome - affects what weather is likely in this region.
+## Decoupled from terrain_type (terrain affects movement/attrition; climate affects weather).
+## Default mapping is sensible per terrain but can be overridden per-region.
+enum ClimateBiome {
+	TEMPERATE,   # Default - balanced rainfall, mild winters. Most plains/forests/coast.
+	ARID,        # Hot, dry. Deserts, badlands. Rare rain, never snow.
+	HIGHLAND,    # Cold, frequent fog/snow in winter. Mountains, high hills.
+	SWAMPLAND,   # Humid, frequent fog and rain. Swamps, marshlands.
+	NORTHERN,    # Cold year-round, snowy winters dominate. Far north regions.
+}
+
 
 @export var region_id: String = ""
 @export var region_name: String = "Unnamed Region"
@@ -20,6 +31,9 @@ enum TerrainType { PLAINS, FOREST, HILLS, MOUNTAINS, DESERT, SWAMP, COAST }
 # Terrain
 @export var terrain_type: TerrainType = TerrainType.PLAINS
 @export var is_passable: bool = true
+
+# Climate (affects weather - defaults from terrain but can be overridden)
+@export var climate: ClimateBiome = ClimateBiome.TEMPERATE
 
 # Movement costs (DEI/Napoleon style)
 @export var movement_cost_modifier: float = 1.0  # 1.0 = normal, 2.0 = difficult
@@ -59,6 +73,17 @@ const TERRAIN_ATTRITION: Dictionary = {
 	TerrainType.MOUNTAINS: {"has_risk": true, "type": "cold", "damage": 0.04}
 }
 
+# Default climate biome based on terrain type
+const TERRAIN_CLIMATE_DEFAULTS: Dictionary = {
+	TerrainType.PLAINS: ClimateBiome.TEMPERATE,
+	TerrainType.FOREST: ClimateBiome.TEMPERATE,
+	TerrainType.HILLS: ClimateBiome.TEMPERATE,
+	TerrainType.MOUNTAINS: ClimateBiome.HIGHLAND,
+	TerrainType.DESERT: ClimateBiome.ARID,
+	TerrainType.SWAMP: ClimateBiome.SWAMPLAND,
+	TerrainType.COAST: ClimateBiome.TEMPERATE,
+}
+
 
 func _init() -> void:
 	apply_terrain_defaults()
@@ -66,6 +91,10 @@ func _init() -> void:
 
 func apply_terrain_defaults() -> void:
 	movement_cost_modifier = TERRAIN_MOVEMENT_COST.get(terrain_type, 1.0)
+
+	# Apply default climate if not explicitly set (check if still at default TEMPERATE for non-plains)
+	if climate == ClimateBiome.TEMPERATE and terrain_type != TerrainType.PLAINS:
+		climate = TERRAIN_CLIMATE_DEFAULTS.get(terrain_type, ClimateBiome.TEMPERATE)
 
 	if TERRAIN_ATTRITION.has(terrain_type):
 		var attrition_data: Dictionary = TERRAIN_ATTRITION[terrain_type]

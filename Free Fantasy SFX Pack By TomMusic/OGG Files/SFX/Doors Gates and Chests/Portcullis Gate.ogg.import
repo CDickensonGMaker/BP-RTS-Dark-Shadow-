@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://rgcjoxah3hbl"
+path="res://.godot/imported/Portcullis Gate.ogg-afbf13c5bfa66011f3b1254adc603cac.oggvorbisstr"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/OGG Files/SFX/Doors Gates and Chests/Portcullis Gate.ogg"
+dest_files=["res://.godot/imported/Portcullis Gate.ogg-afbf13c5bfa66011f3b1254adc603cac.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

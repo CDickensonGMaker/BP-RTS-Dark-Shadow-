@@ -292,8 +292,11 @@ func _reward_sack_city(contract: ContractData) -> void:
 		CampaignManager.add_gold(contract.gold_reward, "contract_sack")
 
 	# Mark settlement as sacked/hostile
-	CampaignSignals.settlement_captured.emit(
-		contract.target_settlement_id, "hostile")
+	var settlement = BuildingManager.get_settlement(contract.target_settlement_id) if BuildingManager else null
+	if settlement:
+		CampaignSignals.settlement_captured.emit(settlement, "hostile")
+	else:
+		push_warning("[ContractManager] Could not find settlement: %s" % contract.target_settlement_id)
 
 	print("[ContractManager] SACK_CITY complete - %d gold loot" % contract.gold_reward)
 

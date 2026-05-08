@@ -9,12 +9,14 @@ signal mercenary_selected(regiment: Resource)
 signal hire_requested(regiment: Resource, cost: int)
 
 
-# UI styling
-const BG_COLOR := Color(0.08, 0.06, 0.05, 0.92)
-const BORDER_COLOR := Color(0.6, 0.5, 0.3, 1.0)
-const TEXT_COLOR := Color(0.95, 0.92, 0.85, 1.0)
-const GOLD_COLOR := Color(0.85, 0.7, 0.4, 1.0)
-const DISABLED_COLOR := Color(0.5, 0.5, 0.5, 0.7)
+# Dark color palette (Catacombs style)
+const BG_COLOR := Color(0.05, 0.04, 0.03, 0.98)
+const BG_CARD_COLOR := Color(0.07, 0.06, 0.05, 0.96)
+const BORDER_COLOR := Color(0.35, 0.28, 0.18, 1.0)
+const TEXT_COLOR := Color(0.9, 0.85, 0.75, 1.0)
+const TEXT_DIM_COLOR := Color(0.6, 0.55, 0.5, 1.0)
+const GOLD_COLOR := Color(0.9, 0.7, 0.2, 1.0)
+const DISABLED_COLOR := Color(0.4, 0.4, 0.4, 0.7)
 
 # Available mercenaries
 var available_mercenaries: Array = []

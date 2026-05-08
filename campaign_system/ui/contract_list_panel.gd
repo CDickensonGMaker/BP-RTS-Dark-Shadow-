@@ -5,11 +5,14 @@ extends PanelContainer
 
 const ContractCardScript = preload("res://campaign_system/ui/contract_card.gd")
 
-# UI Colors
-const COLOR_GOLD := Color(0.85, 0.7, 0.4, 1.0)
-const COLOR_TEXT := Color(0.95, 0.92, 0.85, 1.0)
-const COLOR_ACTIVE := Color(0.5, 0.85, 0.5, 1.0)
-const COLOR_HEADER := Color(0.8, 0.75, 0.65, 1.0)
+# Dark color palette (Catacombs style)
+const COLOR_BG := Color(0.05, 0.04, 0.03, 0.98)
+const COLOR_BORDER := Color(0.35, 0.28, 0.18, 1.0)
+const COLOR_GOLD := Color(0.9, 0.7, 0.2, 1.0)
+const COLOR_TEXT := Color(0.9, 0.85, 0.75, 1.0)
+const COLOR_TEXT_DIM := Color(0.6, 0.55, 0.5, 1.0)
+const COLOR_ACTIVE := Color(0.4, 0.7, 0.4, 1.0)
+const COLOR_HEADER := Color(0.9, 0.7, 0.2, 1.0)  # Gold header
 
 # UI nodes
 var _title_label: Label
@@ -42,24 +45,18 @@ func _ready() -> void:
 
 
 func _build_ui() -> void:
-	# Panel styling
-	custom_minimum_size = Vector2(320, 400)
+	# Panel styling - standard large popup size (480x600)
+	custom_minimum_size = Vector2(480, 600)
 
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.1, 0.08, 0.06, 0.98)
-	style.border_color = Color(0.5, 0.4, 0.3, 1.0)
-	style.border_width_left = 2
-	style.border_width_right = 2
-	style.border_width_top = 2
-	style.border_width_bottom = 2
-	style.corner_radius_top_left = 6
-	style.corner_radius_top_right = 6
-	style.corner_radius_bottom_left = 6
-	style.corner_radius_bottom_right = 6
-	style.content_margin_left = 12
-	style.content_margin_right = 12
-	style.content_margin_top = 10
-	style.content_margin_bottom = 10
+	style.bg_color = COLOR_BG
+	style.border_color = COLOR_BORDER
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(4)
+	style.content_margin_left = 16
+	style.content_margin_right = 16
+	style.content_margin_top = 14
+	style.content_margin_bottom = 14
 	add_theme_stylebox_override("panel", style)
 
 	# Main vertical layout
@@ -128,7 +125,7 @@ func _build_ui() -> void:
 	# No contracts placeholder
 	_no_contracts_label = Label.new()
 	_no_contracts_label.text = "No contracts available.\nCheck back next turn."
-	_no_contracts_label.add_theme_color_override("font_color", Color(0.6, 0.55, 0.5, 1.0))
+	_no_contracts_label.add_theme_color_override("font_color", COLOR_TEXT_DIM)
 	_no_contracts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_no_contracts_label.visible = false
 	main_vbox.add_child(_no_contracts_label)

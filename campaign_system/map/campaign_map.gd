@@ -267,7 +267,7 @@ func _update_path_preview(target: Vector2) -> void:
 	_render_path_segments(segments)
 
 
-func _on_battalion_selected(battalion: Node2D) -> void:
+func _on_battalion_selected(battalion: Node) -> void:
 	# Deselect previous
 	if selected_battalion and selected_battalion != battalion:
 		selected_battalion.deselect()

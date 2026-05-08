@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="WeatherPreset" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/dynamic_weather/weather_types/weather_preset.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "fog"
+display_name = "Fog"
+description = "Dense fog limiting visibility - perfect for ambushes"
+cloud_coverage = 0.5
+fog_density = 0.6
+fog_color = Color(0.7, 0.72, 0.75, 1)
+sky_brightness = 0.6
+has_rain = false
+rain_intensity = 0.0
+has_snow = false
+snow_intensity = 0.0
+wind_speed = 1.0
+wind_direction = 0.0
+has_lightning = false
+lightning_interval = 15.0
+lightning_intensity = 2.0
+ambient_volume_db = -35.0
+transition_duration = 40.0
+weight = 15.0

@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://dj6k8m2w4rp1x"]
+
+[ext_resource type="PackedScene" path="res://assets/models/3d units/great_catapult.glb" id="1_model"]
+
+[node name="ArtilleryCatapult" type="Node3D"]
+
+[node name="Model" parent="." instance=ExtResource("1_model")]

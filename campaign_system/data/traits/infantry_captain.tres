@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "infantry_captain"
+trait_name = "Infantry Captain"
+description = "A master of infantry tactics. Foot soldiers under this general hold the line with exceptional resilience."
+category = 1
+conflicts_with = Array[String](["cavalry_commander"])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Shield Wall Expert", "Advance!"])
+subchoice_descriptions = Array[String](["+15% bracing effectiveness against charges", "+10% attack when charging"])
+melee_defense_mod = 0.10
+subchoice_modifiers = [{"melee_defense_mod": 0.15}, {"melee_attack_mod": 0.10, "charge_bonus_mod": 0.05}]

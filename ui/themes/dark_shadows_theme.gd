@@ -60,33 +60,35 @@ static func _setup_button_styles(theme: Theme) -> void:
 	normal.bg_color = COLOR_BG_MEDIUM
 	normal.border_color = COLOR_BORDER
 	normal.set_border_width_all(2)
-	normal.set_corner_radius_all(2)
-	normal.content_margin_left = 16
-	normal.content_margin_right = 16
-	normal.content_margin_top = 8
+	normal.set_corner_radius_all(4)
+	normal.content_margin_left = 18
+	normal.content_margin_right = 18
+	normal.content_margin_top = 12
 	normal.content_margin_bottom = 8
 
-	# Hover
+	# Hover - more obvious visual feedback
 	var hover := normal.duplicate()
 	hover.bg_color = COLOR_HOVER
-	hover.border_color = COLOR_BORDER_HIGHLIGHT
+	hover.border_color = COLOR_ACCENT  # Gold border on hover
+	hover.set_border_width_all(3)  # Thicker border on hover
 
-	# Pressed
+	# Pressed - clear feedback
 	var pressed := normal.duplicate()
 	pressed.bg_color = COLOR_PRESSED
 	pressed.border_color = COLOR_ACCENT
+	pressed.set_border_width_all(3)
 
 	# Disabled
 	var disabled := normal.duplicate()
 	disabled.bg_color = COLOR_BG_DARK
 	disabled.border_color = COLOR_DISABLED
 
-	# Focus
+	# Focus - visible keyboard navigation
 	var focus := StyleBoxFlat.new()
 	focus.bg_color = Color.TRANSPARENT
 	focus.border_color = COLOR_ACCENT
-	focus.set_border_width_all(2)
-	focus.set_corner_radius_all(2)
+	focus.set_border_width_all(3)
+	focus.set_corner_radius_all(4)
 
 	theme.set_stylebox("normal", "Button", normal)
 	theme.set_stylebox("hover", "Button", hover)

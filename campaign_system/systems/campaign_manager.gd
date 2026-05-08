@@ -1,5 +1,5 @@
 # Core campaign state management.
-# Handles turns, battalions, contracts, and save data.
+# Handles turns, battalions, contracts, generals, and save data.
 extends Node
 
 # Preload to ensure class is available
@@ -9,10 +9,15 @@ const BattalionDataScript = preload("res://campaign_system/data/battalion_data.g
 var company_name: String = "The Black Company"
 var current_gold: int = 2000
 var turn_number: int = 1
+var campaign_seed: int = 0  # Used to seed deterministic weather. Set on new campaign.
 
 # Battalions (1-5 player battalions)
 var battalions: Array = []  # Array of BattalionData
 var selected_battalion = null  # BattalionData
+
+# === GENERAL TRAIT SYSTEM (Phase 9) ===
+var player_general_profile = null  # GeneralProfile - typed dynamically to avoid load order issues
+var trait_manager = null  # TraitManager - typed dynamically to avoid load order issues
 
 # Contracts
 var active_contract = null  # ContractData when implemented
@@ -26,6 +31,12 @@ var is_campaign_active: bool = false
 
 
 func _ready() -> void:
+	# Initialize trait manager for general traits system (load at runtime to avoid class_name order issues)
+	var TraitManagerScript = load("res://campaign_system/systems/trait_manager.gd")
+	trait_manager = TraitManagerScript.new()
+	trait_manager.name = "TraitManager"
+	add_child(trait_manager)
+
 	# Connect to relevant signals (only if not already connected)
 	if CampaignSignals:
 		if not CampaignSignals.battalion_selected.is_connected(_on_battalion_selected):
@@ -40,6 +51,7 @@ func start_new_campaign() -> void:
 	company_name = "The Black Company"
 	current_gold = 2000
 	turn_number = 1
+	campaign_seed = randi()  # New seed every new campaign
 	battalions.clear()
 	completed_contracts.clear()
 	active_contract = null
@@ -48,6 +60,13 @@ func start_new_campaign() -> void:
 	# Create starting battalion with test regiments
 	var starting_battalion = _create_starting_battalion()
 	battalions.append(starting_battalion)
+
+	# Create the player's general with random starting traits
+	player_general_profile = create_new_general("Commander")
+	print("[CampaignManager] Created general '%s' with %d traits" % [
+		player_general_profile.general_name,
+		player_general_profile.traits.size()
+	])
 
 	CampaignSignals.turn_started.emit(turn_number)
 
@@ -132,7 +151,7 @@ func add_gold(amount: int, source: String = "reward") -> void:
 	CampaignSignals.gold_changed.emit(current_gold, amount)
 
 
-func _on_battalion_selected(battalion_node: Node2D) -> void:
+func _on_battalion_selected(battalion_node: Node) -> void:
 	# Find matching BattalionData
 	for battalion in battalions:
 		if battalion.battalion_id == battalion_node.battalion_data.battalion_id:
@@ -147,21 +166,46 @@ func _on_turn_ended(_turn: int) -> void:
 func _on_battle_returning(result: Dictionary) -> void:
 	is_campaign_active = true
 
-	# Apply casualties to battalion
-	if selected_battalion and result.has("casualties"):
-		selected_battalion.apply_battle_casualties(result.casualties)
+	# Find the battalion that fought (from result, not global selected_battalion)
+	var battalion = _find_battalion_by_id(result.get("battalion_id", ""))
+	if not battalion:
+		battalion = selected_battalion  # Fallback to selected
 
-	# Award gold for victory
-	if result.get("winner") == "player" and active_contract:
+	# Apply casualties to the correct battalion
+	if battalion and result.has("casualties"):
+		battalion.apply_battle_casualties(result.casualties)
+
+	# Award gold for victory - use contract from result, not global active_contract
+	var contract = result.get("contract", null)
+	if not contract:
+		contract = active_contract  # Fallback
+
+	if result.get("winner") == "player" and contract:
 		var reward: int = 500
-		if active_contract.has_method("get") or "gold_reward" in active_contract:
-			reward = active_contract.gold_reward
+		if "gold_reward" in contract:
+			reward = contract.gold_reward
 		add_gold(reward, "contract")
-		var contract_id = ""
-		if "contract_id" in active_contract:
-			contract_id = active_contract.contract_id
-		completed_contracts.append(contract_id)
-		active_contract = null
+
+		var contract_id := ""
+		if "contract_id" in contract:
+			contract_id = contract.contract_id
+		if contract_id and contract_id not in completed_contracts:
+			completed_contracts.append(contract_id)
+
+		# Clear active contract only if it matches
+		if active_contract and "contract_id" in active_contract:
+			if active_contract.contract_id == contract_id:
+				active_contract = null
+
+
+func _find_battalion_by_id(id: String):
+	"""Find battalion by ID for multi-battalion support."""
+	if id.is_empty():
+		return null
+	for b in battalions:
+		if b.battalion_id == id:
+			return b
+	return null
 
 
 func get_save_data() -> Dictionary:
@@ -175,12 +219,19 @@ func get_save_data() -> Dictionary:
 			# Regiment data would need separate serialization
 		})
 
+	# Save general profile data
+	var general_data: Dictionary = {}
+	if player_general_profile:
+		general_data = player_general_profile.to_save_data()
+
 	return {
 		"company_name": company_name,
 		"gold": current_gold,
 		"turn": turn_number,
+		"campaign_seed": campaign_seed,
 		"battalions": battalion_saves,
 		"completed_contracts": completed_contracts,
+		"general_profile": general_data,
 	}
 
 
@@ -188,7 +239,12 @@ func load_save_data(data: Dictionary) -> void:
 	company_name = data.get("company_name", "The Black Company")
 	current_gold = data.get("gold", 2000)
 	turn_number = data.get("turn", 1)
+	campaign_seed = data.get("campaign_seed", 0)
 	completed_contracts = data.get("completed_contracts", [])
+
+	# Sync calendar with restored turn number
+	if CampaignCalendar:
+		CampaignCalendar.sync_with_turn(turn_number)
 
 	# Load battalions
 	battalions.clear()
@@ -212,7 +268,7 @@ func load_save_data(data: Dictionary) -> void:
 			regiment.current_soldiers = reg_data.get("current_soldiers", 30)
 			regiment.attack = reg_data.get("attack", 10)
 			regiment.defense = reg_data.get("defense", 10)
-			regiment.morale = reg_data.get("morale", 75)
+			regiment.base_morale = reg_data.get("base_morale", 75.0)  # Fix: use base_morale not morale
 			battalion.regiments.append(regiment)
 
 		# If no regiments saved, create defaults
@@ -224,6 +280,23 @@ func load_save_data(data: Dictionary) -> void:
 	# If no battalions loaded, create starting one
 	if battalions.is_empty():
 		battalions.append(_create_starting_battalion())
+
+	# Load general profile
+	var general_data: Dictionary = data.get("general_profile", {})
+	if general_data.size() > 0 and trait_manager:
+		var GeneralProfileScript = load("res://campaign_system/data/general_profile.gd")
+		player_general_profile = GeneralProfileScript.new()
+		player_general_profile.from_save_data(general_data)
+		# Resolve trait IDs to actual trait resources
+		var trait_ids: Array = general_data.get("trait_ids", [])
+		trait_manager.load_profile_traits(player_general_profile, trait_ids)
+		print("[CampaignManager] Loaded general '%s' with %d traits" % [
+			player_general_profile.general_name,
+			player_general_profile.traits.size()
+		])
+	else:
+		# Create new general if none saved
+		player_general_profile = create_new_general("Commander")
 
 	is_campaign_active = true
 
@@ -267,7 +340,7 @@ func save_campaign(save_name: String = "") -> bool:
 				"current_soldiers": regiment.current_soldiers,
 				"attack": regiment.attack,
 				"defense": regiment.defense,
-				"morale": regiment.morale,
+				"base_morale": regiment.base_morale,  # Fix: use base_morale not morale
 			})
 
 		battalion_saves.append({
@@ -290,3 +363,76 @@ func save_campaign(save_name: String = "") -> bool:
 	file.close()
 	print("Campaign saved to: %s" % save_path)
 	return true
+
+
+# =============================================================================
+# GENERAL TRAIT SYSTEM
+# =============================================================================
+
+## Create a new general with random starting traits.
+## @param name: The general's name
+## @return: The created GeneralProfile
+func create_new_general(general_name: String):
+	if not trait_manager:
+		push_error("CampaignManager: TraitManager not initialized")
+		return null
+
+	var profile = trait_manager.create_general(general_name)
+
+	# Log the traits for debugging
+	for t in profile.traits:
+		print("[CampaignManager] General '%s' has trait: %s" % [general_name, t.trait_name])
+
+	return profile
+
+
+## Get the current player general profile.
+func get_player_general():
+	return player_general_profile
+
+
+## Record battle results for the player general.
+## Call this after a battle ends.
+func record_general_battle(won: bool, kills: int) -> void:
+	if not player_general_profile:
+		return
+
+	player_general_profile.record_battle(won, kills)
+
+	# Check for newly unlockable traits
+	if trait_manager:
+		var unlockable = trait_manager.get_unlockable_traits(player_general_profile)
+		if unlockable.size() > 0:
+			print("[CampaignManager] General can unlock %d new traits!" % unlockable.size())
+			for t in unlockable:
+				print("  - %s (requires %d battles, %d kills)" % [
+					t.trait_name, t.unlock_battles, t.unlock_kills
+				])
+
+
+## Add a trait to the player general.
+## Returns false if trait cannot be added (conflicts, max traits, etc.)
+func add_trait_to_general(trait_id: String, subchoice: int = -1) -> bool:
+	if not player_general_profile or not trait_manager:
+		return false
+
+	var general_trait = trait_manager.get_trait(trait_id)
+	if not general_trait:
+		push_warning("CampaignManager: Unknown trait ID: %s" % trait_id)
+		return false
+
+	return player_general_profile.add_trait(general_trait, subchoice)
+
+
+## Remove a trait from the player general.
+func remove_trait_from_general(trait_id: String) -> bool:
+	if not player_general_profile:
+		return false
+	return player_general_profile.remove_trait(trait_id)
+
+
+## Get available traits that the player can choose from (for level-up UI).
+func get_available_traits_for_selection() -> Array:
+	if not player_general_profile or not trait_manager:
+		return []
+	return trait_manager.get_available_traits_for_unlock(player_general_profile)

@@ -133,7 +133,7 @@ const ABILITIES := {
 		"cooldown": 90.0,
 		"duration": 20.0,
 		"target_mode": TargetMode.SELF,
-		"hotkey": KEY_R,
+		"hotkey": KEY_F,
 		"unit_types": [UnitType.Type.GENERAL],
 		"stamina_cost": 0.0,
 		"effect_radius": 20.0,

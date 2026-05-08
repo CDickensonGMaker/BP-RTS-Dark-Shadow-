@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "aggressive"
+trait_name = "Aggressive"
+description = "A bold commander who favors offensive action. Units hit harder but may overextend."
+category = 4
+conflicts_with = Array[String](["cautious"])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Berserker Lord", "Shock Commander"])
+subchoice_descriptions = Array[String](["+20% melee attack bonus", "+15% charge bonus"])
+melee_attack_mod = 0.10
+aggression_mod = 0.10
+subchoice_modifiers = [{"melee_attack_mod": 0.20}, {"charge_bonus_mod": 0.15}]

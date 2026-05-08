@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://bp1d50vefqh2r"
+path="res://.godot/imported/Rock Meteor Throw 2.wav-6d54f17493bbe470a4751464a134ba29.sample"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/WAV Files/SFX/Spells/Rock Meteor Throw 2.wav"
+dest_files=["res://.godot/imported/Rock Meteor Throw 2.wav-6d54f17493bbe470a4751464a134ba29.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

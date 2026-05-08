@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://ctil04g3kjml4"
+path="res://.godot/imported/Beach Storm.ogg-bd2bfb9a73d05c984216c313ad8d9e2f.oggvorbisstr"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/OGG Files/BGS Loops/Beach/Beach Storm.ogg"
+dest_files=["res://.godot/imported/Beach Storm.ogg-bd2bfb9a73d05c984216c313ad8d9e2f.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

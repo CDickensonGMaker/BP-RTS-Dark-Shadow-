@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "cautious"
+trait_name = "Cautious"
+description = "A careful commander who prefers defensive tactics. Units are more defensive but less aggressive."
+category = 4
+conflicts_with = Array[String](["aggressive"])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Defensive Genius", "Patient Hunter"])
+subchoice_descriptions = Array[String](["+15% defense bonus", "+10% ambush effectiveness"])
+melee_defense_mod = 0.10
+aggression_mod = -0.10
+caution_mod = 0.10
+subchoice_modifiers = [{"melee_defense_mod": 0.15}, {"melee_attack_mod": 0.10}]

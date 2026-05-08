@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "supply_denial"
+trait_name = "Supply Denial"
+description = "An expert at disrupting enemy supply lines. Enemy armies suffer from reduced effectiveness."
+category = 3
+conflicts_with = Array[String](["honorable"])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Scorched Earth", "Raider"])
+subchoice_descriptions = Array[String](["Permanent supply reduction to enemy territories", "+loot from raiding and battles"])
+aggression_mod = 0.10
+subchoice_modifiers = [{"morale_aura_bonus": -3.0}, {"army_speed_mod": 0.10}]

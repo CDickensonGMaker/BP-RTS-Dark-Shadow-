@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://dwrp7x1n3hedd"
+path="res://.godot/imported/cannon boom cut short.wav-234d677187fa6730552b9ec49297d706.sample"
+
+[deps]
+
+source_file="res://assets/audio/sfx/combat/cannon boom cut short.wav"
+dest_files=["res://.godot/imported/cannon boom cut short.wav-234d677187fa6730552b9ec49297d706.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "undead_hunter"
+trait_name = "Undead Hunter"
+description = "This general has extensive experience battling the forces of darkness. Units excel against undead foes."
+category = 2
+conflicts_with = Array[String]([])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Holy Warrior", "Corpse Burner"])
+subchoice_descriptions = Array[String](["+10% bonus vs all dark creatures", "Prevents slain undead from rising again"])
+hatred_targets = Array[String](["Undead", "Skeleton", "Zombie", "Vampire", "Ghost"])
+hatred_attack_bonus = 0.15
+hatred_morale_bonus = 5.0
+subchoice_modifiers = [{"melee_attack_mod": 0.10}, {"hatred_attack_bonus": 0.10}]

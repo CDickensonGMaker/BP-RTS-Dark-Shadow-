@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "forced_march"
+trait_name = "Forced March"
+description = "This general knows how to push troops to march faster without breaking them. Army movement is significantly improved."
+category = 3
+conflicts_with = Array[String]([])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Swift Advance", "Strategic Retreat"])
+subchoice_descriptions = Array[String](["+10% charge distance", "+20% withdraw/retreat speed"])
+army_speed_mod = 0.15
+subchoice_modifiers = [{"charge_bonus_mod": 0.10}, {"army_speed_mod": 0.20}]

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cekh1q55qfylm"
+path="res://.godot/imported/Wood Walk 1.ogg-196ae46f8110017bac7ff3a3ddf6fed2.oggvorbisstr"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/OGG Files/SFX/Footsteps/Wood/Wood Walk 1.ogg"
+dest_files=["res://.godot/imported/Wood Walk 1.ogg-196ae46f8110017bac7ff3a3ddf6fed2.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://6t24bf0vlh47"
+path="res://.godot/imported/Stone Walk 4.ogg-673a914e0672d22db431f4d36e6082aa.oggvorbisstr"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/OGG Files/SFX/Footsteps/Stone/Stone Walk 4.ogg"
+dest_files=["res://.godot/imported/Stone Walk 4.ogg-673a914e0672d22db431f4d36e6082aa.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

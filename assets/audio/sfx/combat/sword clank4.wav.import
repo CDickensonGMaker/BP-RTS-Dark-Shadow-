@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://dslclv0rdvgdi"
+path="res://.godot/imported/sword clank4.wav-5d1780a1e96372b5791879d895635233.sample"
+
+[deps]
+
+source_file="res://assets/audio/sfx/combat/sword clank4.wav"
+dest_files=["res://.godot/imported/sword clank4.wav-5d1780a1e96372b5791879d895635233.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

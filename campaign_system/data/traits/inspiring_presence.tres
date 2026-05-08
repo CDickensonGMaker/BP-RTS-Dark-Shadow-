@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "inspiring_presence"
+trait_name = "Inspiring Presence"
+description = "This general's presence on the battlefield inspires troops to fight harder. Nearby units receive a morale bonus."
+category = 0
+conflicts_with = Array[String](["ruthless"])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Defiant Stand", "Victory Cheer"])
+subchoice_descriptions = Array[String](["Morale bonus increased to +5 when army is losing", "Morale bonus increased to +5 when army is winning"])
+morale_aura_bonus = 3.0
+subchoice_modifiers = [{"morale_aura_bonus": 2.0, "rout_threshold_mod": 0.05}, {"morale_aura_bonus": 2.0, "melee_attack_mod": 0.05}]

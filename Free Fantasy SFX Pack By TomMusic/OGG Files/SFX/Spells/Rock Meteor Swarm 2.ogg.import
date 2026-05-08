@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://d3fo52t681h88"
+path="res://.godot/imported/Rock Meteor Swarm 2.ogg-224f4224e0d62b2642b6aae36dc2c1ec.oggvorbisstr"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/OGG Files/SFX/Spells/Rock Meteor Swarm 2.ogg"
+dest_files=["res://.godot/imported/Rock Meteor Swarm 2.ogg-224f4224e0d62b2642b6aae36dc2c1ec.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

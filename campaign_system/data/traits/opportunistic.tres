@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "opportunistic"
+trait_name = "Opportunistic"
+description = "A cunning commander who exploits enemy weaknesses. Units excel at flanking and pursuing weakened foes."
+category = 4
+conflicts_with = Array[String]([])
+unlock_battles = 0
+unlock_kills = 0
+is_unlockable = false
+has_subchoices = true
+subchoice_names = Array[String](["Flanker", "Vulture"])
+subchoice_descriptions = Array[String](["+10% flanking damage bonus", "+15% damage vs weakened units"])
+opportunism_mod = 0.20
+subchoice_modifiers = [{"melee_attack_mod": 0.10}, {"melee_attack_mod": 0.15}]

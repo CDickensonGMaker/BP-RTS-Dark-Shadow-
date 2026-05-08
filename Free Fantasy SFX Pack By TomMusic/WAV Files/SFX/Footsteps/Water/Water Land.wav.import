@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://bb6kmyjl777ca"
+path="res://.godot/imported/Water Land.wav-d28147024e60f553c8f7da081ce421bd.sample"
+
+[deps]
+
+source_file="res://Free Fantasy SFX Pack By TomMusic/WAV Files/SFX/Footsteps/Water/Water Land.wav"
+dest_files=["res://.godot/imported/Water Land.wav-d28147024e60f553c8f7da081ce421bd.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

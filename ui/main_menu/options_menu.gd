@@ -28,7 +28,7 @@ func _connect_signals() -> void:
 
 
 func _load_settings() -> void:
-	var err := config.load(CONFIG_PATH)
+	var _err := config.load(CONFIG_PATH)  # Ignoring error - will use defaults if not found
 
 	# Audio
 	master_slider.value = config.get_value("audio", "master", 80)

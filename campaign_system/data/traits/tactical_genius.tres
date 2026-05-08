@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="GeneralTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://campaign_system/data/general_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+trait_id = "tactical_genius"
+trait_name = "Tactical Genius"
+description = "A master tactician whose battlefield awareness provides combat bonuses to all units under their command."
+category = 0
+conflicts_with = Array[String]([])
+unlock_battles = 5
+unlock_kills = 100
+is_unlockable = true
+has_subchoices = true
+subchoice_names = Array[String](["Master of Defense", "Master of Offense"])
+subchoice_descriptions = Array[String](["+10% defense bonus to all units", "+10% attack bonus to all units"])
+melee_attack_mod = 0.05
+melee_defense_mod = 0.05
+ranged_attack_mod = 0.05
+subchoice_modifiers = [{"melee_defense_mod": 0.10, "ranged_attack_mod": 0.0}, {"melee_attack_mod": 0.10, "charge_bonus_mod": 0.05}]

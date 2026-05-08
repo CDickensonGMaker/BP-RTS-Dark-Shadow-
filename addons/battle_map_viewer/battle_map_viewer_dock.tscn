@@ -1,0 +1,83 @@
+[gd_scene format=3 uid="uid://cm4djgtnx88lq"]
+
+[ext_resource type="Script" uid="uid://borcl8keh8ya5" path="res://addons/battle_map_viewer/battle_map_viewer_dock.gd" id="1_dock"]
+
+[node name="BattleMapViewerDock" type="Control" unique_id=383872094]
+custom_minimum_size = Vector2(200, 300)
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_dock")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=2085725294]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Label" type="Label" parent="VBoxContainer" unique_id=1237150909]
+layout_mode = 2
+text = "Battle Map Viewer"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="VBoxContainer" unique_id=727602502]
+layout_mode = 2
+
+[node name="SearchField" type="LineEdit" parent="VBoxContainer" unique_id=31498349]
+layout_mode = 2
+placeholder_text = "Search maps..."
+
+[node name="HeaderBar" type="HBoxContainer" parent="VBoxContainer" unique_id=715133472]
+layout_mode = 2
+
+[node name="RefreshButton" type="Button" parent="VBoxContainer/HeaderBar" unique_id=172814173]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Refresh"
+
+[node name="MapList" type="ItemList" parent="VBoxContainer" unique_id=1672195652]
+layout_mode = 2
+size_flags_vertical = 3
+item_count = 33
+item_0/text = "Badlands 01"
+item_1/text = "Badlands 02"
+item_2/text = "City Siege 01"
+item_3/text = "Cliff Edge"
+item_4/text = "Coastal 01"
+item_5/text = "Coastal 02"
+item_6/text = "Coastal Cliffs"
+item_7/text = "Dusty Mud Fog 1"
+item_8/text = "Farmland 01"
+item_9/text = "Farmland 02"
+item_10/text = "Forest Clearing"
+item_11/text = "Forest Dense 01"
+item_12/text = "Forest Dense 02"
+item_13/text = "Forest Hills"
+item_14/text = "Large Battle Zone"
+item_15/text = "Mountain Pass 01"
+item_16/text = "Mountain Pass 02"
+item_17/text = "Plains 01"
+item_18/text = "Plains 02"
+item_19/text = "Plains Rolling Hills"
+item_20/text = "River Crossing"
+item_21/text = "Siege Large 01"
+item_22/text = "Siege Large 02"
+item_23/text = "Siege Large 03"
+item_24/text = "Swamp Foggy"
+item_25/text = "Swamp Hills 01"
+item_26/text = "Swamp Hills 02"
+item_27/text = "Village 01"
+item_28/text = "Village 02"
+item_29/text = "Village 03"
+item_30/text = "Village 04"
+item_31/text = "Village 05"
+item_32/text = "Winter Plains"
+
+[node name="ViewButton" type="Button" parent="VBoxContainer" unique_id=1568487363]
+layout_mode = 2
+text = "View Selected Map"

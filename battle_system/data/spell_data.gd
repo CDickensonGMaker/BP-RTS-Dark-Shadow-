@@ -20,12 +20,13 @@ enum TargetType {
 }
 
 enum DamageType {
-	FIRE,        ## Fire damage - leaves burning hazard
+	PHYSICAL,    ## Physical damage - no special effects
+	FIRE,        ## Fire damage - leaves burning hazard, morale panic
 	ICE,         ## Ice damage - slows targets
 	LIGHTNING,   ## Lightning damage - chains to nearby
 	HOLY,        ## Holy damage - extra vs undead
 	DARK,        ## Dark damage - drains morale
-	PHYSICAL,    ## Physical damage - no special effects
+	POISON,      ## Poison damage - damage over time
 }
 
 enum EffectType {

@@ -24,6 +24,10 @@ var last_mouse_pos: Vector2
 var _centering_on_target: bool = false
 var camera_locked: bool = false  # When true, disables edge scrolling and WASD
 
+# Camera bookmarks (QOL Phase 1)
+var _camera_bookmarks: Dictionary = {}  # slot int -> Vector3
+const CAMERA_LERP_SPEED: float = 8.0
+
 
 func _ready():
 	add_to_group("battle_camera")
@@ -114,3 +118,34 @@ func center_on_regiment(regiment: Node3D):
 	"""Center the camera on a regiment's position."""
 	if regiment and is_instance_valid(regiment):
 		center_on(regiment.global_position)
+
+
+## Smoothly center the camera on a world position.
+func center_on_position(world_pos: Vector3, instant: bool = false) -> void:
+	if instant:
+		global_position.x = world_pos.x
+		global_position.z = world_pos.z + current_zoom * 0.7
+		target_position = global_position
+	else:
+		center_on(world_pos)
+
+
+## Save current camera position to a bookmark slot (0-3 for F5-F8).
+func save_bookmark(slot: int) -> void:
+	_camera_bookmarks[slot] = global_position
+	if DebugFlags and DebugFlags.battle_setup:
+		print("[Camera] Saved bookmark %d at %s" % [slot, global_position])
+
+
+## Snap camera to a saved bookmark slot.
+func snap_to_bookmark(slot: int) -> void:
+	if _camera_bookmarks.has(slot):
+		var pos: Vector3 = _camera_bookmarks[slot]
+		target_position = pos
+		current_zoom = pos.y
+		_centering_on_target = true
+
+
+## Check if a bookmark exists.
+func has_bookmark(slot: int) -> bool:
+	return _camera_bookmarks.has(slot)
