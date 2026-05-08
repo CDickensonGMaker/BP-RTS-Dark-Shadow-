@@ -41,6 +41,8 @@ enum Source {
 	OFFICER_AURA,
 	WINNING,
 	HIGH_GROUND,
+	BATTLE_TIDE,  # Momentum modifier from BattleTide system
+	NEARBY_ALLIES,  # Supported by nearby friendly units
 
 	# Territory modifiers (DEI-inspired)
 	FRIENDLY_TERRITORY,
@@ -179,6 +181,7 @@ static func get_source_name(src: Source) -> String:
 		Source.OFFICER_AURA: return "Officer Nearby"
 		Source.WINNING: return "Winning"
 		Source.HIGH_GROUND: return "High Ground"
+		Source.NEARBY_ALLIES: return "Allied Support"
 		Source.FRIENDLY_TERRITORY: return "Home Territory"
 		Source.ENEMY_TERRITORY: return "Enemy Territory"
 		Source.UNIT_TYPE_BONUS: return "Unit Discipline"

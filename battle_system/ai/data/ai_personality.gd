@@ -37,6 +37,10 @@ extends Resource
 ## How aggressively to pursue routing enemies
 @export_range(0.0, 1.0) var pursuit_aggression: float = 0.5
 
+## How well the AI exploits battlefield opportunities
+## Affects reactive plays like PunishOvercommit and ExploitLowMorale
+@export_range(0.0, 1.0) var opportunism: float = 0.5
+
 # =============================================================================
 # DIFFICULTY MODIFIERS
 # =============================================================================
@@ -68,6 +72,7 @@ static func easy() -> AIPersonality:
 	p.focus_fire = 0.3
 	p.target_priority = 0.3
 	p.pursuit_aggression = 0.2
+	p.opportunism = 0.2
 
 	p.reaction_delay_mult = 1.5
 	p.targeting_accuracy = 0.6
@@ -87,6 +92,7 @@ static func normal() -> AIPersonality:
 	p.focus_fire = 0.5
 	p.target_priority = 0.5
 	p.pursuit_aggression = 0.5
+	p.opportunism = 0.5
 
 	p.reaction_delay_mult = 1.0
 	p.targeting_accuracy = 0.8
@@ -106,6 +112,7 @@ static func hard() -> AIPersonality:
 	p.focus_fire = 0.7
 	p.target_priority = 0.7
 	p.pursuit_aggression = 0.7
+	p.opportunism = 0.7
 
 	p.reaction_delay_mult = 0.8
 	p.targeting_accuracy = 0.95
@@ -125,6 +132,7 @@ static func legendary() -> AIPersonality:
 	p.focus_fire = 0.9
 	p.target_priority = 0.9
 	p.pursuit_aggression = 0.8
+	p.opportunism = 0.9
 
 	p.reaction_delay_mult = 0.6
 	p.targeting_accuracy = 1.0
@@ -144,6 +152,7 @@ static func defensive() -> AIPersonality:
 	p.focus_fire = 0.4
 	p.target_priority = 0.5
 	p.pursuit_aggression = 0.2
+	p.opportunism = 0.4
 
 	p.reaction_delay_mult = 1.0
 	p.targeting_accuracy = 0.8
@@ -163,6 +172,7 @@ static func aggressive() -> AIPersonality:
 	p.focus_fire = 0.8
 	p.target_priority = 0.6
 	p.pursuit_aggression = 0.9
+	p.opportunism = 0.6
 
 	p.reaction_delay_mult = 0.8
 	p.targeting_accuracy = 0.7

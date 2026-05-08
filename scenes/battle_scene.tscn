@@ -1,6 +1,7 @@
 [gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://scenes/battle_scene.gd" id="0_main"]
+[ext_resource type="Script" path="res://addons/dynamic_weather/effects/weather_demo.gd" id="weather_demo"]
 [ext_resource type="Script" path="res://battle_system/terrain/battle_terrain.gd" id="1"]
 [ext_resource type="Script" path="res://battle_system/nodes/regiment.gd" id="2"]
 [ext_resource type="Script" path="res://battle_system/nodes/regiment_leader.gd" id="3"]
@@ -23,9 +24,6 @@
 [ext_resource type="Resource" path="res://battle_system/data/regiments/biguns_regiment.tres" id="enemy_archer2"]
 [ext_resource type="Resource" path="res://battle_system/data/regiments/wolfride_regiment.tres" id="enemy_cavalry"]
 
-; Supply Wagon
-[ext_resource type="Script" path="res://battle_system/nodes/supply_wagon.gd" id="supply_wagon"]
-
 [sub_resource type="CapsuleShape3D" id="CapsuleShape_1"]
 radius = 8.0
 height = 10.0
@@ -39,8 +37,9 @@ ambient_light_energy = 0.7
 
 [node name="BattleScene" type="Node3D"]
 script = ExtResource("0_main")
-stress_test_mode = false
-stress_test_units_per_side = 20
+stress_test_mode = true
+stress_test_units_per_side = 40
+enable_dynamic_weather = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_1")
@@ -54,19 +53,19 @@ light_energy = 1.2
 transform = Transform3D(1, 0, 0, 0, 0.707, 0.707, 0, -0.707, 0.707, 0, 30, 25)
 script = ExtResource("7")
 fov = 60.0
-map_bounds_min = Vector3(-120, 0, -120)
-map_bounds_max = Vector3(120, 100, 120)
+map_bounds_min = Vector3(-180, 0, -180)
+map_bounds_max = Vector3(180, 100, 180)
 
 [node name="BattleTerrain" type="Node3D" parent="."]
 script = ExtResource("1")
-terrain_size = Vector2(200, 200)
-terrain_resolution = 64
-height_scale = 6.0
-tree_count = 30
-building_count = 5
-prop_count = 20
-rock_count = 15
-bush_count = 25
+terrain_size = Vector2(300, 300)
+terrain_resolution = 96
+height_scale = 12.0
+tree_count = 50
+building_count = 8
+prop_count = 35
+rock_count = 25
+bush_count = 40
 
 ; ========== PLAYER UNITS (Left side, X = -30) ==========
 
@@ -378,26 +377,6 @@ monitorable = true
 [node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyWolfRiders/MeleeArea"]
 shape = SubResource("CapsuleShape_1")
 
-; ========== SUPPLY WAGONS ==========
-
-; Player Supply Wagon - Behind archers
-[node name="PlayerSupplyWagon" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -85, 10, 0)
-script = ExtResource("supply_wagon")
-supply_range = 50.0
-arrow_resupply_rate = 5.0
-provides_arrows = true
-faction = 0
-
-; Enemy Supply Wagon - Behind enemy archers
-[node name="EnemySupplyWagon" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 85, 10, 0)
-script = ExtResource("supply_wagon")
-supply_range = 50.0
-arrow_resupply_rate = 5.0
-provides_arrows = true
-faction = 1
-
 ; ========== UI LAYERS ==========
 
 [node name="BattleHUD" type="CanvasLayer" parent="."]
@@ -413,3 +392,7 @@ script = ExtResource("11_debug")
 
 [node name="BattleOverScreen" type="CanvasLayer" parent="."]
 script = ExtResource("12_battle_over")
+
+; Weather Demo - Press 1-7 to change weather, T for time, N/P for next/prev
+[node name="WeatherDemo" type="Node" parent="."]
+script = ExtResource("weather_demo")

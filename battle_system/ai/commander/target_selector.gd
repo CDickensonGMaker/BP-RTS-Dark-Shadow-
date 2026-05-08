@@ -62,8 +62,8 @@ const MAX_ENGAGEMENT_DISTANCE: Dictionary = {
 # PROPERTIES
 # =============================================================================
 
-var _cached_scores: Dictionary = {}
-var _cache_valid_time: float = 0.0
+var _cached_scores: Dictionary = {}  # Reserved for score caching
+var _cache_valid_time: float = 0.0  # Reserved for cache expiry
 const CACHE_DURATION: float = 0.25  # Cache scores for 250ms
 
 # =============================================================================
@@ -256,7 +256,7 @@ func get_best_flank_position(attacker: Node, defender: Node, distance: float = 8
 	return flank_pos
 
 
-func get_rear_attack_position(attacker: Node, defender: Node, distance: float = 8.0) -> Vector3:
+func get_rear_attack_position(_attacker: Node, defender: Node, distance: float = 8.0) -> Vector3:
 	## Calculate position to attack from rear.
 
 	var defender_back: Vector3 = defender.global_transform.basis.z.normalized()
@@ -386,7 +386,7 @@ func _get_max_engagement_distance(regiment: Node) -> float:
 # SPECIAL TARGETING
 # =============================================================================
 
-func find_weakest_target(regiment: Node, candidates: Array) -> Node:
+func find_weakest_target(_regiment: Node, candidates: Array) -> Node:
 	## Find the weakest (lowest HP) valid target.
 	var weakest: Node = null
 	var lowest_hp: float = INF
@@ -420,7 +420,7 @@ func find_closest_target(regiment: Node, candidates: Array) -> Node:
 	return closest
 
 
-func find_routing_target(regiment: Node, candidates: Array) -> Node:
+func find_routing_target(_regiment: Node, candidates: Array) -> Node:
 	## Find a routing target to finish off.
 	for candidate in candidates:
 		if _is_valid_target(candidate) and _is_routing(candidate):

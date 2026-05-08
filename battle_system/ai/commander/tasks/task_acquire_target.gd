@@ -14,11 +14,11 @@ func _init(p_commander: CommanderAI) -> void:
 func tick(_delta: float) -> Status:
 	## Try to find a new target.
 
-	# Don't acquire targets if routing or passive
+	# Don't acquire targets if routing or withdrawing
 	if commander.blackboard.get("is_routing", false):
 		return Status.FAILURE
 
-	if commander.current_stance == CommanderAI.Stance.PASSIVE:
+	if commander.current_stance == CommanderAI.Stance.WITHDRAWING:
 		return Status.FAILURE
 
 	# Get enemy candidates
@@ -46,17 +46,23 @@ func tick(_delta: float) -> Status:
 
 
 func _get_acquisition_range() -> float:
-	## Get maximum range for target acquisition based on stance.
+	## Get maximum range for target acquisition based on stance and unit type.
+	var base_range: float = 0.0
+
 	match commander.current_stance:
-		CommanderAI.Stance.PASSIVE:
-			return 0.0  # Don't acquire targets
 		CommanderAI.Stance.DEFENSIVE:
-			return 25.0  # Nearby threats only - hold position behavior
+			base_range = 25.0  # Nearby threats only - hold position behavior
 		CommanderAI.Stance.AGGRESSIVE:
-			return 120.0  # Full engagement range (increased from 80)
-		CommanderAI.Stance.FLANKING:
-			return 100.0  # Medium range for flanking (increased from 60)
-		CommanderAI.Stance.SKIRMISH:
-			return 150.0  # Long range for skirmishers (increased from 100)
+			base_range = 120.0  # Full engagement range
+		CommanderAI.Stance.WITHDRAWING:
+			return 0.0  # Don't acquire targets while withdrawing
 		_:
-			return 80.0
+			base_range = 80.0
+
+	# Ranged units get extended range based on their weapon range
+	if commander.regiment and commander.regiment.data:
+		if commander.regiment.data.ballistic_skill > 0 and commander.regiment.current_ammo > 0:
+			var weapon_range: float = commander.regiment.data.range_distance
+			base_range = maxf(base_range, weapon_range)
+
+	return base_range

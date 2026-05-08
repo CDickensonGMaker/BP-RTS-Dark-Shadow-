@@ -58,6 +58,9 @@ const CONTINUOUS_GENERAL_AURA: float = 0.4        # Near friendly general
 const CONTINUOUS_OFFICER_AURA: float = 0.2        # Near regiment leader
 const CONTINUOUS_WINNING: float = 0.3             # Winning the current engagement
 const CONTINUOUS_HIGH_GROUND: float = 0.15        # On elevated terrain
+const CONTINUOUS_NEARBY_ALLIES: float = 0.3       # +0.3/sec per nearby ally (up to 3)
+const NEARBY_ALLIES_RADIUS: float = 15.0          # Check radius for nearby allies
+const NEARBY_ALLIES_MAX_BONUS: int = 3            # Max allies that provide bonus
 
 # Territory modifiers (DEI-inspired)
 const CONTINUOUS_FRIENDLY_TERRITORY: float = 0.2  # +10% morale in friendly territory

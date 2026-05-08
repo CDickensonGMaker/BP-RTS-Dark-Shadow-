@@ -4,10 +4,15 @@ extends RefCounted
 ## Handles ranged damage calculations.
 ## Total War style: arrows hit formations easily, armor saves block damage.
 ## Includes terrain modifiers for height, cover, and concealment.
+## Includes weather modifiers for accuracy and range.
 ## Extracted from CombatManager for single responsibility.
 
 # Preload terrain modifiers
 const TerrainCombatModifiersScript = preload("res://battle_system/terrain/terrain_combat_modifiers.gd")
+const MatchupCalculatorScript = preload("res://battle_system/systems/combat/matchup_calculator.gd")
+
+# Weather system reference (autoload)
+var _weather_system: Node
 
 # Ranged combat constants - Total War style
 # Arrows land on formations easily, armor determines if damage is blocked
@@ -27,6 +32,40 @@ const MAX_RANGE_PENALTY: float = 0.6  # 60% accuracy at max range (was 50%)
 
 # Damage scaling
 const RANGED_STRENGTH_MULTIPLIER: float = 0.8  # Ranged strength slightly less than melee
+
+
+## Get weather system reference (cached).
+func _get_weather_system() -> Node:
+	if not _weather_system:
+		if Engine.has_singleton("WeatherSystem"):
+			_weather_system = Engine.get_singleton("WeatherSystem")
+		elif Engine.get_main_loop().root.has_node("/root/WeatherSystem"):
+			_weather_system = Engine.get_main_loop().root.get_node("/root/WeatherSystem")
+	return _weather_system
+
+
+## Get weather accuracy modifier (1.0 = no change).
+func _get_weather_accuracy_mod() -> float:
+	var ws := _get_weather_system()
+	if ws and ws.has_method("get_ranged_accuracy_modifier"):
+		return ws.get_ranged_accuracy_modifier()
+	return 1.0
+
+
+## Get weather range modifier (1.0 = no change).
+func _get_weather_range_mod() -> float:
+	var ws := _get_weather_system()
+	if ws and ws.has_method("get_ranged_range_modifier"):
+		return ws.get_ranged_range_modifier()
+	return 1.0
+
+
+## Check if weather blocks LOS at distance.
+func _weather_blocks_los(distance: float) -> bool:
+	var ws := _get_weather_system()
+	if ws and ws.has_method("blocks_los"):
+		return ws.blocks_los(distance)
+	return false
 
 
 ## Calculate ranged hit chance (arrows landing on formation).
@@ -59,7 +98,16 @@ func calculate_accuracy(attacker: Node, defender: Node) -> float:
 	elif defender.state == Regiment.State.ROUTING:
 		movement_mod = 0.85  # Routing units are fleeing/erratic
 
-	var final_acc: float = base_acc * range_mod * size_mod * movement_mod
+	# Apply unit type matchup modifier (ranged units vs target types)
+	var matchup_mod: float = 1.0
+	if attacker.data:
+		var target_type: UnitType.Type = defender.data.unit_type if defender.data else UnitType.Type.INFANTRY
+		matchup_mod = MatchupCalculatorScript.get_ranged_matchup(attacker.data.unit_type, target_type)
+
+	# Apply weather modifier (rain/storm reduce accuracy)
+	var weather_mod: float = _get_weather_accuracy_mod()
+
+	var final_acc: float = base_acc * range_mod * size_mod * movement_mod * matchup_mod * weather_mod
 	return clampf(final_acc, MIN_RANGED_ACCURACY, MAX_RANGED_ACCURACY)
 
 
@@ -88,6 +136,7 @@ func calculate_damage(attacker: Node, _defender: Node) -> int:
 ## Resolve a ranged attack.
 ## Total War style: hit roll, then armor save roll.
 ## Includes terrain modifiers: height accuracy, forest defense, concealment.
+## Includes weather modifiers: fog blocks LOS, rain/storm reduce accuracy.
 ## Returns Dictionary with hit/damage info.
 func resolve_ranged_attack(attacker: Node, defender: Node) -> Dictionary:
 	var result: Dictionary = {
@@ -95,13 +144,22 @@ func resolve_ranged_attack(attacker: Node, defender: Node) -> Dictionary:
 		"damage": 0,
 		"blocked": false,
 		"concealed": false,
+		"weather_blocked": false,
 		"accuracy": 0.0,
 		"armor_save": 0.0,
 		"terrain_defense_mod": 1.0,
 		"height_accuracy_mod": 1.0,
 		"height_damage_mod": 1.0,
+		"weather_accuracy_mod": 1.0,
 		"debug_info": {}
 	}
+
+	# Check weather LOS blocking (fog limits visibility)
+	var distance: float = attacker.global_position.distance_to(defender.global_position)
+	if _weather_blocks_los(distance):
+		result.weather_blocked = true
+		result.debug_info = {"outcome": "weather_blocked", "distance": distance}
+		return result  # Can't see through fog
 
 	# Get terrain modifiers
 	var tree: SceneTree = attacker.get_tree() if attacker.has_method("get_tree") else null
@@ -126,8 +184,10 @@ func resolve_ranged_attack(attacker: Node, defender: Node) -> Dictionary:
 	result.height_accuracy_mod = height_accuracy_mod
 	result.height_damage_mod = height_damage_mod
 	result.terrain_defense_mod = terrain_ranged_defense
+	result.weather_accuracy_mod = _get_weather_accuracy_mod()
 
 	# Step 1: Did the arrow land on the formation?
+	# Note: weather modifier already applied in calculate_accuracy()
 	var accuracy: float = calculate_accuracy(attacker, defender) * height_accuracy_mod
 	result.accuracy = accuracy
 
@@ -165,13 +225,21 @@ func resolve_ranged_attack(attacker: Node, defender: Node) -> Dictionary:
 	return result
 
 
-## Check if target is in range.
+## Check if target is in range (includes weather range modifier).
 func is_in_range(attacker: Node, target: Node) -> bool:
 	if not attacker.data:
 		return false
-	var max_range: float = attacker.data.attack_range
+	# Apply weather range modifier (fog reduces effective range)
+	var max_range: float = attacker.data.range_distance * _get_weather_range_mod()
 	var distance: float = attacker.global_position.distance_to(target.global_position)
 	return distance <= max_range
+
+
+## Get effective range after weather modifier.
+func get_effective_range(attacker: Node) -> float:
+	if not attacker.data:
+		return 0.0
+	return attacker.data.range_distance * _get_weather_range_mod()
 
 
 ## Check if attacker has ammunition.

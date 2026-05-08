@@ -7,6 +7,7 @@
 script = ExtResource("1")
 regiment_name = "Ironguard"
 unit_type = 0
+faction = "dwarf"
 attack = 12
 defense = 14
 weapon_skill = 12

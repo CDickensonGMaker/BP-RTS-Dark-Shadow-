@@ -1,0 +1,193 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BattleDebug Finding",
+  "description": "A finding from the BattleDebug agent combat testing system",
+  "type": "object",
+  "required": ["id", "severity", "category", "title", "summary", "evidence", "confidence"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^F-\\d{4}-\\d{2}-\\d{2}-\\d{3}$",
+      "description": "Unique finding ID in format F-YYYY-MM-DD-NNN"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low"],
+      "description": "Impact severity of the finding"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["bug", "balance", "difficulty", "ai", "feel"],
+      "description": "Category of the finding"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Short descriptive title"
+    },
+    "summary": {
+      "type": "string",
+      "description": "2-3 sentence description of the issue"
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["experiment", "n_battles"],
+      "properties": {
+        "experiment": {
+          "type": "string",
+          "description": "Name of the experiment that produced this evidence"
+        },
+        "n_battles": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of battles in the experiment"
+        },
+        "key_stats": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "Key statistics from the experiment"
+        },
+        "battle_labels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Labels of specific battles referenced"
+        },
+        "raw_data_path": {
+          "type": "string",
+          "description": "Path to the full experiment results file"
+        }
+      }
+    },
+    "hypothesis": {
+      "type": "string",
+      "description": "Theory about the root cause of the issue"
+    },
+    "suggested_action": {
+      "type": "string",
+      "description": "Recommended next step or fix approach"
+    },
+    "code_paths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Likely code locations to investigate (file:line format)"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Confidence in the finding (0.0-1.0)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["open", "investigating", "addressed", "dismissed", "wont_fix"],
+      "default": "open",
+      "description": "Current status of the finding"
+    },
+    "related_findings": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "IDs of related findings"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the finding was created"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the finding was last updated"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": { "type": "string", "format": "date-time" },
+          "author": { "type": "string" },
+          "content": { "type": "string" }
+        }
+      },
+      "description": "Additional notes and follow-up comments"
+    }
+  },
+  "examples": [
+    {
+      "id": "F-2026-05-07-001",
+      "severity": "high",
+      "category": "balance",
+      "title": "Halberdier anti-cav bonus survives flanking",
+      "summary": "When flanked by cavalry, halberdiers retain their full SPEAR_VS_CAVALRY_BONUS (1.25x). This makes spear units overpowered against cavalry regardless of positioning, eliminating tactical counterplay.",
+      "evidence": {
+        "experiment": "spear_anti_cav_audit_v2",
+        "n_battles": 40,
+        "key_stats": {
+          "frontal_charge_cav_win_rate": 0.20,
+          "flank_charge_cav_win_rate": 0.51,
+          "rear_charge_cav_win_rate": 0.55
+        }
+      },
+      "hypothesis": "The disorder_matchup_mult is applied AFTER counter_matchup is already baked into the damage calculation in melee_resolver.gd, so the spear bonus is never reduced by flanking disorder.",
+      "suggested_action": "Verify that counter_matchup multiplier is applied multiplicatively with disorder modifier, not additively. Check melee_resolver.gd around line 256.",
+      "code_paths": [
+        "battle_system/systems/combat/melee_resolver.gd:256",
+        "battle_system/systems/combat/matchup_calculator.gd:42"
+      ],
+      "confidence": 0.85,
+      "status": "open",
+      "created_at": "2026-05-07T14:30:00Z"
+    },
+    {
+      "id": "F-2026-05-07-002",
+      "severity": "medium",
+      "category": "difficulty",
+      "title": "HARD difficulty only 8% harder than NORMAL",
+      "summary": "Win rate gap between NORMAL (48%) and HARD (44%) is only 8%, well below the expected 15% gap. This makes difficulty progression feel flat.",
+      "evidence": {
+        "experiment": "difficulty_calibration_v1",
+        "n_battles": 100,
+        "key_stats": {
+          "easy_win_rate": 0.82,
+          "normal_win_rate": 0.48,
+          "hard_win_rate": 0.44,
+          "very_hard_win_rate": 0.31,
+          "iron_man_win_rate": 0.19
+        }
+      },
+      "hypothesis": "The ai_damage_dealt_mult for HARD (1.15) is too conservative. The AI aggression and flanking skill increases don't compensate.",
+      "suggested_action": "Increase HARD ai_damage_dealt_mult from 1.15 to 1.25, or increase ai_aggression_mult from 1.2 to 1.35",
+      "code_paths": [
+        "battle_system/ai/data/difficulty_profile.gd:82"
+      ],
+      "confidence": 0.92,
+      "status": "open",
+      "created_at": "2026-05-07T15:45:00Z"
+    },
+    {
+      "id": "F-2026-05-07-003",
+      "severity": "low",
+      "category": "feel",
+      "title": "Cavalry charges feel weak against infantry",
+      "summary": "Despite correct charge mechanics, player feedback indicates cavalry charges 'feel' ineffective against infantry. The charge impact damage (mass * speed * 2 / 3 = ~6-8 casualties) may be visually underwhelming.",
+      "evidence": {
+        "experiment": "charge_impact_visibility_v1",
+        "n_battles": 20,
+        "key_stats": {
+          "avg_charge_casualties": 7.2,
+          "avg_follow_up_casualties_per_tick": 3.1,
+          "charge_visible_impact_ratio": 2.3
+        }
+      },
+      "hypothesis": "The charge impact casualties are spread over a single frame without distinctive visual/audio feedback, making them blend with normal combat. The impact should be more visually distinct.",
+      "suggested_action": "Consider adding screen shake, distinct hit sound, or brief slow-motion on charge impact to make it feel more impactful",
+      "code_paths": [
+        "battle_system/systems/combat_manager.gd:455"
+      ],
+      "confidence": 0.60,
+      "status": "open",
+      "created_at": "2026-05-07T16:20:00Z"
+    }
+  ]
+}

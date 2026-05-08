@@ -6,19 +6,32 @@ extends Node
 
 signal siege_won(winner: String)
 signal capture_point_taken(point: CapturePoint, faction: String)
+signal victory_points_changed(player_pts: float, enemy_pts: float, required: int)
 
 ## Victory conditions
 @export var require_all_points: bool = true  # Must capture ALL points
 @export var hold_time: float = 0.0  # Seconds to hold after capture (0 = instant win)
 @export var attacker_is_player: bool = true  # Player is attacking the settlement
 
+## Victory points system (alternative to require_all_points)
+@export var use_victory_points: bool = false  # Enable weighted point system
+@export var victory_points_required: int = 150
+@export var points_per_second: float = 1.0  # Multiplier for points per second
+
 var capture_points: Array[CapturePoint] = []
 var hold_timer: float = 0.0
 var holding_faction: String = ""
 var victory_declared: bool = false
 
+## Victory points tracking
+var player_victory_points: float = 0.0
+var enemy_victory_points: float = 0.0  # Kept for UI display, but not used for victory
+var _battle_active: bool = false  # Prevent point accumulation before battle starts
+
 
 func _ready() -> void:
+	add_to_group("siege_managers")
+
 	# Find all capture points in scene
 	await get_tree().process_frame
 	_find_capture_points()
@@ -47,6 +60,11 @@ func _process(delta: float) -> void:
 
 func _check_victory_conditions(delta: float) -> void:
 	if capture_points.is_empty():
+		return
+
+	# Use victory points system if enabled
+	if use_victory_points:
+		_update_victory_points(delta)
 		return
 
 	# Count captured points
@@ -90,6 +108,33 @@ func _check_victory_conditions(delta: float) -> void:
 		hold_timer = 0.0
 
 
+func _update_victory_points(delta: float) -> void:
+	# Don't accumulate points until battle starts
+	if not _battle_active:
+		return
+
+	# Only the ATTACKER accumulates victory points
+	# The defender wins by preventing the attacker from reaching the threshold
+	# or by destroying all attacker units
+	var attacker_faction: String = "player" if attacker_is_player else "enemy"
+
+	for point in capture_points:
+		if point.get_owner_faction() == attacker_faction:
+			var value: float = float(point.get_point_value()) * points_per_second * delta
+			if attacker_is_player:
+				player_victory_points += value
+			else:
+				enemy_victory_points += value
+
+	victory_points_changed.emit(player_victory_points, enemy_victory_points, victory_points_required)
+
+	# Check for attacker victory (reached point threshold)
+	var attacker_points: float = player_victory_points if attacker_is_player else enemy_victory_points
+	if attacker_points >= victory_points_required:
+		print("[SiegeManager] Attacker reached %d victory points!" % victory_points_required)
+		_declare_victory(attacker_faction)
+
+
 func _declare_victory(winner: String) -> void:
 	if victory_declared:
 		return
@@ -127,6 +172,9 @@ func _on_battle_started() -> void:
 	victory_declared = false
 	hold_timer = 0.0
 	holding_faction = ""
+	player_victory_points = 0.0
+	enemy_victory_points = 0.0
+	_battle_active = true  # Now start accumulating victory points
 
 
 ## Get current siege status for UI
@@ -151,4 +199,8 @@ func get_status() -> Dictionary:
 		"total_points": capture_points.size(),
 		"holding_faction": holding_faction,
 		"hold_progress": hold_timer / maxf(hold_time, 0.01) if hold_time > 0 else 1.0,
+		"player_victory_points": player_victory_points,
+		"enemy_victory_points": enemy_victory_points,
+		"victory_points_required": victory_points_required,
+		"use_victory_points": use_victory_points,
 	}

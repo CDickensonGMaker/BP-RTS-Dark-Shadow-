@@ -3,6 +3,7 @@ extends Node3D
 
 # Preload to avoid parse-order issues with class_name
 const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.gd")
+const WorldCompassScript = preload("res://battle_system/data/world_compass.gd")
 
 ## MultiMesh-based formation manager for efficient sprite soldier rendering.
 ## Replaces SoldierFormation when use_sprite_soldiers is enabled.
@@ -51,6 +52,13 @@ var _soldier_time_offsets: PackedFloat32Array  # Animation stagger
 var _terrain_update_timer: float = 0.0
 const TERRAIN_UPDATE_INTERVAL: float = 0.1  # Update terrain positions 10x/sec
 
+# Phase 11: LOD optimization - reduce update frequency for distant formations
+var _lod_level: int = 0  # 0 = full quality, 1 = medium, 2 = low
+const LOD_DISTANCE_MEDIUM: float = 80.0  # Beyond this, use medium LOD
+const LOD_DISTANCE_LOW: float = 150.0     # Beyond this, use low LOD
+var _lod_check_timer: float = 0.0
+const LOD_CHECK_INTERVAL: float = 0.5  # Check LOD level 2x/sec
+
 # Corpse system - dead soldiers stay at world position where they died
 var _corpse_world_positions: PackedVector3Array  # World position where soldier died
 var _is_corpse: PackedFloat32Array  # 1.0 if this slot is now a static corpse
@@ -80,6 +88,10 @@ const MIN_TRANSITION_SPEED: float = 2.0  # Minimum movement speed so soldiers do
 # Staggered movement state (Phase 8.3 - aliveness)
 var _soldier_start_delays: PackedFloat32Array  # Per-soldier delay before starting movement
 var _soldier_speed_jitter: PackedFloat32Array  # Per-soldier speed multiplier (±15%)
+
+# Knockback scatter recovery state (rock-paper-scissors Part 2)
+var _is_recovering_from_scatter: bool = false
+var _scatter_recovery_timer: float = 0.0
 
 
 func _ready():
@@ -169,20 +181,52 @@ func _on_formation_type_changed(regiment: Node, _old_formation: int, new_formati
 
 
 func _process(delta: float):
+	# Phase 11: LOD check - reduce updates for distant formations
+	_lod_check_timer += delta
+	if _lod_check_timer >= LOD_CHECK_INTERVAL:
+		_lod_check_timer = 0.0
+		_update_lod_level()
+
+	# Apply LOD-scaled update intervals
+	var terrain_interval: float = TERRAIN_UPDATE_INTERVAL * (1.0 + float(_lod_level))  # 0.1s, 0.2s, 0.3s
+	var direction_interval: float = DIRECTION_UPDATE_INTERVAL * (1.0 + float(_lod_level) * 2.0)  # 0.05s, 0.15s, 0.25s
+
 	_terrain_update_timer += delta
-	if _terrain_update_timer >= TERRAIN_UPDATE_INTERVAL:
+	if _terrain_update_timer >= terrain_interval:
 		_terrain_update_timer = 0.0
 		_update_soldier_terrain_positions()
 
-	# Update sprite directions when camera rotates
-	_direction_update_timer += delta
-	if _direction_update_timer >= DIRECTION_UPDATE_INTERVAL:
-		_direction_update_timer = 0.0
-		_update_camera_relative_directions()
+	# NOTE: Camera rotation pump removed - sprite directions are now world-fixed (PS1-style)
+	# rather than camera-relative (RTS-style). Directions only change when units actually turn.
 
 	# Handle formation transition animation
 	if _is_transitioning:
 		_update_formation_transition(delta)
+
+	# Handle scatter recovery - soldiers slowly reform after knockback
+	if _is_recovering_from_scatter:
+		_scatter_recovery_timer -= delta
+		if _scatter_recovery_timer <= 0.0:
+			_is_recovering_from_scatter = false
+			# Trigger formation reform to bring soldiers back to positions
+			if _parent_regiment:
+				_apply_formation_layout(_parent_regiment.current_formation, 2.0)
+
+
+func _update_lod_level() -> void:
+	"""Phase 11: Update LOD level based on camera distance."""
+	var camera := get_viewport().get_camera_3d()
+	if not camera:
+		_lod_level = 0
+		return
+
+	var dist: float = camera.global_position.distance_to(global_position)
+	if dist > LOD_DISTANCE_LOW:
+		_lod_level = 2  # Low quality - fewest updates
+	elif dist > LOD_DISTANCE_MEDIUM:
+		_lod_level = 1  # Medium quality
+	else:
+		_lod_level = 0  # Full quality
 
 
 func _setup_shader():
@@ -207,6 +251,24 @@ func _setup_shader():
 		_material.set_shader_parameter("anim_speed", atlas.animation_speed)
 		# Debug: set to true to see red quads, false for actual sprites
 		_material.set_shader_parameter("debug_mode", false)
+
+		# Set direction-to-row mapping from atlas
+		var dir_row_map: PackedInt32Array = PackedInt32Array()
+		dir_row_map.resize(8)
+		for i in range(8):
+			if atlas.direction_rows.has(i):
+				dir_row_map[i] = mini(int(atlas.direction_rows[i]), atlas.rows - 1)
+			else:
+				dir_row_map[i] = mini(i, atlas.rows - 1)
+		_material.set_shader_parameter("direction_row_map", dir_row_map)
+		print("SpriteFormation: Direction row map: ", dir_row_map)
+
+		# Initialize direction-to-frame mapping (will be updated per animation)
+		var dir_frame_map: PackedInt32Array = PackedInt32Array()
+		dir_frame_map.resize(8)
+		for i in range(8):
+			dir_frame_map[i] = 0  # Default to frame 0, updated by _set_animation_params
+		_material.set_shader_parameter("direction_frame_map", dir_frame_map)
 
 		# Set death animation parameters for corpses on ground
 		var death_start := atlas.get_animation_start("death")
@@ -513,11 +575,17 @@ func kill_soldiers(amount: int):
 			else:
 				world_pos.y = global_position.y - height_offset + 0.1
 
-			# Transfer corpse to CorpseField immediately (fixes Bug #1 and #2)
+			# Transfer corpse to CorpseField or spawn bones for undead
 			# Corpses are owned by CorpseField in world space, not local to regiment
-			var corpse_field := get_node_or_null("/root/CorpseField")
-			if corpse_field and atlas:
-				corpse_field.add_corpse(world_pos, atlas, int(_soldier_directions[i]))
+			var bone_manager := get_node_or_null("/root/BoneDropManager")
+			if bone_manager and bone_manager.is_undead_unit(faction_color):
+				# Undead units crumble into bone piles instead of leaving corpses
+				bone_manager.spawn_bone_pile(world_pos, int(_soldier_directions[i]))
+			else:
+				# Normal units leave corpses
+				var corpse_field := get_node_or_null("/root/CorpseField")
+				if corpse_field and atlas:
+					corpse_field.add_corpse(world_pos, atlas, int(_soldier_directions[i]))
 
 			# Mark as dead and HIDE locally (corpse is now in CorpseField)
 			_soldier_dead[i] = 1.0  # Track that this slot was killed
@@ -527,6 +595,84 @@ func kill_soldiers(amount: int):
 			alive_count -= 1
 
 	soldiers_updated.emit(alive_count)
+
+	# Consolidate formation - fill gaps in front ranks
+	if killed > 0:
+		_consolidate_formation()
+
+
+func _consolidate_formation() -> void:
+	"""Move back-rank soldiers forward to fill gaps in front ranks.
+	Keeps front ranks fighting and prevents gaps from appearing in formation."""
+	if alive_count < 2:
+		return
+
+	# Get current formation layout
+	var formation_type: int = FormationType.Type.LINE
+	if _parent_regiment:
+		formation_type = _parent_regiment.current_formation
+
+	var layout := _get_formation_layout(formation_type, alive_count)
+	var target_rows: int = layout.rows
+	var target_spacing: float = layout.spacing
+	var cols := ceili(float(alive_count) / float(target_rows))
+
+	# Collect all living soldier indices
+	var living_indices: Array[int] = []
+	for i in max_soldiers:
+		if _soldier_alive[i] > 0.5 and _soldier_dead[i] < 0.5:
+			living_indices.append(i)
+
+	if living_indices.is_empty():
+		return
+
+	# Reassign positions based on optimal grid (front ranks first)
+	_start_positions.resize(max_soldiers)
+	_target_positions.resize(max_soldiers)
+	_soldier_start_delays.resize(max_soldiers)
+	_soldier_speed_jitter.resize(max_soldiers)
+
+	for slot_idx in range(living_indices.size()):
+		var soldier_idx: int = living_indices[slot_idx]
+		var row := slot_idx / cols
+		var col := slot_idx % cols
+
+		# Calculate new target position (compact grid with front ranks filled first)
+		var x := (float(col) - cols / 2.0) * target_spacing
+		var z := (float(row) - target_rows / 2.0) * target_spacing
+
+		# Apply formation-specific offsets (same as _apply_formation_layout)
+		match formation_type:
+			FormationType.Type.WEDGE:
+				var wedge_offset := float(row) * 0.3
+				x = x * (1.0 + wedge_offset * 0.2)
+			FormationType.Type.COLUMN:
+				x *= 0.7
+			FormationType.Type.LOOSE:
+				x *= 1.3
+				z *= 1.3
+			FormationType.Type.SQUARE:
+				if row % 2 == 1:
+					x += row_offset * 0.5
+			FormationType.Type.SHIELD_WALL:
+				x *= 0.6
+				z *= 0.8
+			FormationType.Type.SCHILTRON:
+				var angle := float(slot_idx) / float(alive_count) * TAU
+				var radius := target_spacing * sqrt(float(alive_count)) * 0.3
+				x = cos(angle) * radius
+				z = sin(angle) * radius
+
+		# Store for transition animation
+		_start_positions[soldier_idx] = _soldier_positions[soldier_idx]
+		_target_positions[soldier_idx] = Vector3(x, _soldier_positions[soldier_idx].y, z)
+		_soldier_start_delays[soldier_idx] = randf_range(0.0, 0.3)  # Slight stagger
+		_soldier_speed_jitter[soldier_idx] = randf_range(0.9, 1.1)
+
+	# Start smooth consolidation transition (shorter than full formation change)
+	_is_transitioning = true
+	_transition_time = 0.0
+	_transition_duration = 0.8  # Quick consolidation
 
 
 func play_animation_all(anim_name: String):
@@ -544,23 +690,36 @@ func play_animation_staggered(anim_name: String, _stagger_time: float = 0.05):
 
 
 func set_facing_direction(direction: Vector3):
-	"""Set all soldiers to face a direction (camera-relative)."""
-	# Store world-space angle for later camera rotation updates
-	_world_facing_angle = atan2(direction.x, direction.z)
+	"""Set all soldiers to face a direction (camera-relative).
+	Bug A fix: Also rotates the formation Node3D so geometry matches facing."""
+	if direction.length_squared() < 0.001:
+		return
+
+	# Bug A fix: Rotate the formation node so positions match facing
+	var dir_index := WorldCompassScript.direction_from_vector(direction)
+	var facing_angle := WorldCompassScript.angle_from_direction(dir_index)
+	rotation.y = facing_angle
+
+	# Store world-space direction index using WorldCompass
+	_world_facing_angle = float(dir_index)
 	_current_direction_index = -1  # Force recalculation when facing changes
 	_apply_camera_relative_direction()
 
 
 func set_facing_angle(angle_rad: float):
-	"""Set all soldiers to face an angle (radians, camera-relative)."""
-	# Store world-space angle for later camera rotation updates
-	_world_facing_angle = angle_rad
+	"""Set all soldiers to face an angle (radians, camera-relative).
+	Bug A fix: Also rotates the formation Node3D so geometry matches facing."""
+	# Bug A fix: Rotate the formation node so positions match facing
+	rotation.y = angle_rad
+
+	# Convert angle to direction index using WorldCompass
+	_world_facing_angle = float(WorldCompassScript.direction_from_angle(angle_rad))
 	_current_direction_index = -1  # Force recalculation when facing changes
 	_apply_camera_relative_direction()
 
 
 func _apply_camera_relative_direction():
-	"""Apply camera-relative direction to all soldiers based on stored world angle."""
+	"""Apply camera-relative direction to all soldiers based on stored world direction."""
 	var viewport := get_viewport()
 	if not viewport:
 		return
@@ -570,19 +729,15 @@ func _apply_camera_relative_direction():
 		camera_y_angle = camera.global_rotation.y
 		_last_camera_rotation = camera_y_angle
 
-	# Fixed: Add PI offset for correct camera-relative direction
-	# This ensures sprites show the correct facing relative to camera view
-	var camera_relative_angle := _world_facing_angle - camera_y_angle + PI
+	# Sprite atlas row is now locked to the unit's world facing.
+	# Previously this was camera-relative (RTS-style); now it's world-fixed
+	# for a more PS1-era "physical sprite" look.
+	var world_dir_index := int(_world_facing_angle)
+	var new_dir_index := world_dir_index
 
-	var new_dir_index := SpriteUnitAtlas.direction_from_angle(camera_relative_angle)
-
-	# Hysteresis: Only change direction if clearly in new zone to prevent jitter
-	if new_dir_index != _current_direction_index and _current_direction_index >= 0:
-		var normalized := fmod(camera_relative_angle + TAU, TAU)
-		var center_of_new := float(new_dir_index) * (PI / 4.0)
-		var diff := absf(fmod(normalized - center_of_new + PI, TAU) - PI)
-		if diff > DIRECTION_HYSTERESIS:
-			return  # Stay with current direction until clearly past boundary
+	# Simple change detection (WorldCompass handles the conversion consistently)
+	if new_dir_index == _current_direction_index:
+		return  # No change needed
 
 	_current_direction_index = new_dir_index
 
@@ -590,6 +745,11 @@ func _apply_camera_relative_direction():
 		if _soldier_alive[i] > 0.5:
 			_soldier_directions[i] = float(_current_direction_index)
 			_update_instance_custom_data(i)
+
+
+func get_current_direction_index() -> int:
+	"""Get the current screen-relative direction index (0-7) for debugging."""
+	return _current_direction_index
 
 
 func _update_camera_relative_directions():
@@ -623,10 +783,37 @@ func get_formation_bounds() -> AABB:
 	return AABB(min_pos, max_pos - min_pos)
 
 
+func apply_dramatic_scatter(direction: Vector3, scatter_amount: float, is_monster: bool) -> void:
+	"""Apply dramatic knockback scatter - soldiers thrown in different directions."""
+	var perpendicular: Vector3 = Vector3(-direction.z, 0, direction.x)
+
+	for i in range(_soldier_positions.size()):
+		if _soldier_alive[i] > 0.5:
+			var throw_angle: float = randf_range(-PI * 0.7, PI * 0.7)
+			var throw_distance: float = randf_range(0.3, 1.0) * scatter_amount
+
+			if is_monster:
+				throw_distance *= randf_range(1.2, 2.0)
+
+			var throw_dir: Vector3 = direction.rotated(Vector3.UP, throw_angle)
+			var offset: Vector3 = throw_dir * throw_distance
+			offset += perpendicular * randf_range(-1.0, 1.0) * throw_distance * 0.5
+
+			_soldier_positions[i] += offset
+
+			# Update MultiMesh transform immediately
+			var xform := Transform3D()
+			xform.origin = _soldier_positions[i]
+			_multimesh.set_instance_transform(i, xform)
+
+	_is_recovering_from_scatter = true
+	_scatter_recovery_timer = 1.5
+
+
 # --- INTERNAL METHODS ---
 
 func _set_animation_params(anim_name: String):
-	"""Set shader parameters for the current animation."""
+	"""Set shader parameters for the current animation, including per-direction overrides."""
 	if not atlas:
 		push_warning("SpriteFormation: No atlas when setting animation: ", anim_name)
 		return
@@ -634,12 +821,29 @@ func _set_animation_params(anim_name: String):
 		push_warning("SpriteFormation: No material when setting animation: ", anim_name)
 		return
 
-	var start_frame := atlas.get_animation_start(anim_name)
-	var frame_count := atlas.get_animation_frame_count(anim_name)
+	var default_start_frame := atlas.get_animation_start(anim_name)
+	var default_frame_count := atlas.get_animation_frame_count(anim_name)
 
-	print("SpriteFormation: Setting anim '", anim_name, "' start=", start_frame, " frames=", frame_count)
-	_material.set_shader_parameter("current_anim_start", start_frame)
-	_material.set_shader_parameter("current_anim_frames", frame_count)
+	# Build per-direction frame and row maps for this animation
+	var dir_frame_map: PackedInt32Array = PackedInt32Array()
+	var dir_row_map: PackedInt32Array = PackedInt32Array()
+	dir_frame_map.resize(8)
+	dir_row_map.resize(8)
+
+	for i in range(8):
+		# Get per-direction start frame (uses atlas helper which checks per_direction)
+		dir_frame_map[i] = atlas.get_animation_start_for_direction(anim_name, i)
+		# Get per-direction row (uses atlas helper which checks per_direction then direction_rows)
+		dir_row_map[i] = atlas.get_row_for_direction_and_anim(anim_name, i)
+
+	print("SpriteFormation: Setting anim '", anim_name, "' default_start=", default_start_frame, " frames=", default_frame_count)
+	print("  Per-dir frame map: ", dir_frame_map)
+	print("  Per-dir row map: ", dir_row_map)
+
+	_material.set_shader_parameter("current_anim_start", default_start_frame)
+	_material.set_shader_parameter("current_anim_frames", default_frame_count)
+	_material.set_shader_parameter("direction_frame_map", dir_frame_map)
+	_material.set_shader_parameter("direction_row_map", dir_row_map)
 
 
 func _update_instance(index: int):

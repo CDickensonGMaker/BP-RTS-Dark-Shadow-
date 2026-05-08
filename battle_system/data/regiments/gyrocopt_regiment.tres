@@ -7,6 +7,8 @@
 script = ExtResource("1")
 regiment_name = "Gyrocopter Squadron"
 unit_type = 2
+faction = "dwarf"
+weapon_class = 3
 attack = 6
 defense = 6
 weapon_skill = 6

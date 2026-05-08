@@ -1,0 +1,20 @@
+[gd_scene load_steps=2 format=3 uid="uid://dqy6m8q3j7wth"]
+
+[ext_resource type="Script" path="res://tools/agent/agent_test_runner.gd" id="1_runner"]
+
+[node name="AgentTestScene" type="Node3D"]
+
+[node name="AgentTestRunner" type="Node" parent="."]
+script = ExtResource("1_runner")
+auto_run = true
+quit_when_done = true
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 20, 0)
+light_energy = 1.5
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 50, 50)

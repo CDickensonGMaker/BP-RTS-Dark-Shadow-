@@ -26,7 +26,8 @@ enum Status {
 # =============================================================================
 
 var name: String = "StrategicPlay"
-var general_ai: GeneralAI
+var intent: String = ""  # Human-readable description of what this play aims to achieve
+var general_ai  # Untyped to avoid cyclic dependency with GeneralAI preloading plays
 var status: Status = Status.RUNNING
 
 # Play state
@@ -38,7 +39,7 @@ var _analysis: BattlefieldAnalysis = null
 # INITIALIZATION
 # =============================================================================
 
-func _init(p_general_ai: GeneralAI = null, p_name: String = "StrategicPlay") -> void:
+func _init(p_general_ai = null, p_name: String = "StrategicPlay") -> void:
 	general_ai = p_general_ai
 	name = p_name
 
@@ -46,7 +47,7 @@ func _init(p_general_ai: GeneralAI = null, p_name: String = "StrategicPlay") -> 
 # ABSTRACT METHODS
 # =============================================================================
 
-func evaluate(analysis: BattlefieldAnalysis) -> float:
+func evaluate(_analysis: BattlefieldAnalysis) -> float:
 	## Score this play given current battlefield state.
 	## Higher scores = better play for this situation.
 	## Override in subclasses.

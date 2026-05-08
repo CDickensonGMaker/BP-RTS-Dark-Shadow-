@@ -15,12 +15,15 @@ extends RefCounted
 # =============================================================================
 
 enum Stance {
-	PASSIVE,      # Hold position, don't attack unless attacked
-	DEFENSIVE,    # Hold position, attack threats in range
-	AGGRESSIVE,   # Seek and destroy enemies
-	FLANKING,     # Attempt to flank current target
-	SKIRMISH,     # Maintain distance, use ranged if available
+	DEFENSIVE,    # Default. Hold position, engage in range only
+	AGGRESSIVE,   # Pursue target, pursue routing up to 50m
+	WITHDRAWING,  # Moving away, no engagement
 }
+
+# Auto-engagement constants
+const AUTO_ENGAGE_RADIUS_AGGRESSIVE: float = 40.0  # Aggressive units engage within 40m
+const AUTO_ENGAGE_RADIUS_DEFENSIVE: float = 15.0   # Defensive units only engage close threats
+const AUTO_ENGAGE_CHECK_INTERVAL: float = 1.0      # Check every 1 second
 
 # =============================================================================
 # SIGNALS
@@ -37,7 +40,7 @@ signal order_issued(order_type: int, target)
 var regiment: Node = null
 var general_ai = null  # Optional GeneralAI for strategic coordination
 
-var current_stance: Stance = Stance.AGGRESSIVE
+var current_stance: Stance = Stance.DEFENSIVE
 var current_target: Node = null
 var current_order: Dictionary = {}
 
@@ -49,7 +52,7 @@ var auto_assist_enabled: bool = false  # For player unit assist mode
 
 # State
 var _is_active: bool = true
-var _last_target_check: float = 0.0
+var _last_target_check: float = 0.0  # Reserved for target check throttling
 var _faction: int = 0
 
 # Personality-driven state
@@ -94,12 +97,6 @@ func _init(p_regiment: Node, p_general_ai = null) -> void:
 
 	_init_blackboard()
 	_build_behavior_tree()
-
-	# Auto-assign SKIRMISH stance to ranged units for proper firing behavior
-	# Ranged units in AGGRESSIVE stance will try melee first, which is wrong
-	if regiment.data and regiment.data.ballistic_skill > 0 and regiment.current_ammo > 0:
-		current_stance = Stance.SKIRMISH
-		blackboard["stance"] = Stance.SKIRMISH
 
 	# Register with AIAutoload
 	if AIAutoload:
@@ -258,11 +255,17 @@ func tick() -> void:
 	# Check unit preservation - request retreat if HP low and trait is high
 	_check_unit_preservation()
 
+	# Check casualty thresholds for stance/behavior changes
+	_check_casualty_thresholds()
+
 	# Check pursuit aggression for routing enemies
 	_check_pursuit_behavior()
 
 	# Check if impetuous unit wants to charge without orders
 	_check_impetuous_charge()
+
+	# Check for auto-engagement based on stance
+	_check_auto_engagement()
 
 	# Update blackboard state
 	_update_blackboard()
@@ -296,9 +299,10 @@ func _update_blackboard() -> void:
 		elif current_target.has_method("is_queued_for_deletion") and current_target.is_queued_for_deletion():
 			set_target(null)
 
-	# Ammo depletion fallback - if out of ammo and in skirmish stance, switch to aggressive
-	if regiment and regiment.current_ammo <= 0 and current_stance == Stance.SKIRMISH:
-		set_stance(Stance.AGGRESSIVE)
+	# Ammo depletion fallback - ranged units out of ammo become aggressive for melee
+	if regiment and regiment.current_ammo <= 0 and regiment.data and regiment.data.ballistic_skill > 0:
+		if current_stance == Stance.DEFENSIVE:
+			set_stance(Stance.AGGRESSIVE)
 
 
 func _check_unit_preservation() -> void:
@@ -337,6 +341,82 @@ func _check_unit_preservation() -> void:
 			set_stance(Stance.DEFENSIVE)
 			var flee_pos: Vector3 = _find_flee_position()
 			issue_move_order(flee_pos)
+
+
+func _check_casualty_thresholds() -> void:
+	## Check casualty tracker thresholds for behavior changes.
+	## 15% loss -> CAUTION (DEFENSIVE), 50% -> WITHDRAW, 75% -> ROUT
+	if not regiment or not regiment.casualty_tracker:
+		return
+
+	# Skip if already routing
+	if blackboard.get("is_routing", false):
+		return
+
+	var tracker: CasualtyTracker = regiment.casualty_tracker
+
+	# Calculate aura bonus from nearby heroes/generals
+	var aura_bonus: float = _calculate_nearby_aura_bonus()
+
+	var threshold: String = tracker.check_thresholds(aura_bonus)
+
+	if threshold == "rout":
+		# Force immediate rout
+		print("[AI] %s reached ROUT threshold (75%% casualties)" % regiment.name)
+		if regiment.unit_morale:
+			regiment.unit_morale.force_rout()
+		blackboard["is_routing"] = true
+
+	elif threshold == "withdraw":
+		# Begin fighting withdrawal
+		print("[AI] %s entered FIGHTING WITHDRAWAL (50%% casualties)" % regiment.name)
+		set_stance(Stance.WITHDRAWING)
+		BattleSignals.unit_withdrawing.emit(regiment)
+		# Move away from enemy
+		var flee_pos: Vector3 = _find_flee_position()
+		issue_move_order(flee_pos)
+
+	elif threshold == "caution":
+		# Drop to defensive stance
+		print("[AI] %s entered CAUTION mode (15%% casualties)" % regiment.name)
+		set_stance(Stance.DEFENSIVE)
+		BattleSignals.unit_entered_caution.emit(regiment)
+
+
+func _calculate_nearby_aura_bonus() -> float:
+	## Calculate threshold bonus from nearby heroes/generals with auras.
+	## Returns the best aura_threshold_bonus from any nearby allied aura source.
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return 0.0
+
+	var my_faction: int = 0 if regiment.is_player_controlled else 1
+	var best_bonus: float = 0.0
+
+	# Query nearby allied units within a reasonable radius
+	var nearby_allies: Array[Node] = AIAutoload.spatial_hash.query_regiments_in_radius(
+		regiment.global_position,
+		30.0,  # Check within 30m for aura sources
+		my_faction
+	)
+
+	for ally in nearby_allies:
+		if ally == regiment:
+			continue
+		if not is_instance_valid(ally) or not ally.data:
+			continue
+		if not ally.data.has_aura:
+			continue
+		if ally.state == Regiment.State.DEAD:
+			continue
+
+		# Check if we're within this unit's aura radius
+		var dist: float = regiment.global_position.distance_to(ally.global_position)
+		if dist <= ally.data.aura_radius:
+			# Take the best bonus
+			if ally.data.aura_threshold_bonus > best_bonus:
+				best_bonus = ally.data.aura_threshold_bonus
+
+	return best_bonus
 
 
 func _check_pursuit_behavior() -> void:
@@ -398,6 +478,50 @@ func _check_impetuous_charge() -> void:
 		# CHARGE!
 		set_target(nearest_enemy)
 		issue_charge_order(nearest_enemy)
+
+
+func _check_auto_engagement() -> void:
+	## Check if unit should auto-engage nearby enemies based on stance.
+	if not regiment or regiment.state == Regiment.State.ENGAGING:
+		return  # Already in combat
+	if regiment.state == Regiment.State.ROUTING:
+		return  # Can't engage while routing
+	if current_stance == Stance.WITHDRAWING:
+		return  # Withdrawing units don't engage
+
+	# Determine engagement radius based on stance
+	var engage_radius: float = 0.0
+	match current_stance:
+		Stance.AGGRESSIVE:
+			engage_radius = AUTO_ENGAGE_RADIUS_AGGRESSIVE
+		Stance.DEFENSIVE:
+			engage_radius = AUTO_ENGAGE_RADIUS_DEFENSIVE
+
+	if engage_radius <= 0:
+		return
+
+	# Find nearest enemy within radius
+	var nearest_enemy: Node = AIAutoload.query_nearest_enemy(
+		regiment.global_position, engage_radius, _faction
+	)
+
+	if not nearest_enemy or not is_instance_valid(nearest_enemy):
+		return
+	if nearest_enemy.state == Regiment.State.DEAD:
+		return
+
+	# Set target and issue appropriate order
+	set_target(nearest_enemy)
+
+	if current_stance == Stance.AGGRESSIVE:
+		# Aggressive: move to attack
+		issue_attack_order(nearest_enemy)
+	else:
+		# Defensive: engage if within reasonable melee range (15m)
+		# This ensures units actually fight nearby enemies instead of watching
+		var dist: float = regiment.global_position.distance_to(nearest_enemy.global_position)
+		if dist < 15.0:
+			issue_attack_order(nearest_enemy)
 
 # =============================================================================
 # TARGET MANAGEMENT
@@ -585,9 +709,10 @@ func receive_strategic_order(order: Dictionary) -> void:
 				issue_hold_order()
 
 		"FLANK":
-			set_stance(Stance.FLANKING)
+			set_stance(Stance.AGGRESSIVE)  # Flanking is aggressive action
 			if order.has("target"):
 				set_target(order["target"])
+				issue_attack_order(order["target"])
 
 		"HOLD":
 			issue_hold_order()

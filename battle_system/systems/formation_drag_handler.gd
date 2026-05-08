@@ -5,6 +5,8 @@
 # - Formation width = distance A to B
 extends Node
 
+const WorldCompassScript = preload("res://battle_system/data/world_compass.gd")
+
 
 # Drag state
 var is_dragging: bool = false
@@ -226,8 +228,9 @@ func _update_ghost_markers():
 		else:
 			ghost_markers[marker_idx].material_override = ghost_material
 
-		# Set rotation to match facing
-		var facing_angle: float = atan2(facing.x, facing.z)
+		# Set rotation to match facing (use WorldCompass for consistency)
+		var dir_index := WorldCompassScript.direction_from_vector(facing)
+		var facing_angle: float = WorldCompassScript.angle_from_direction(dir_index)
 		ghost_markers[marker_idx].rotation.y = facing_angle
 		ghost_markers[marker_idx].visible = true
 
@@ -372,10 +375,12 @@ func _issue_simple_move(screen_pos: Vector2):
 	var spread_positions := _calculate_spread_positions(move_group, ground_pos)
 
 	# Issue orders with spread positions and set movement group
+	# QOL Phase 4: Shift+click queues orders instead of replacing
+	var append: bool = Input.is_key_pressed(KEY_SHIFT)
 	for regiment in move_group:
 		regiment.set_movement_group(move_group)
 		var target_pos: Vector3 = spread_positions.get(regiment, ground_pos)
-		regiment.give_order(OrderType.Type.MOVE, target_pos)
+		regiment.give_order(OrderType.Type.MOVE, target_pos, append)
 
 
 func _apply_formation(center: Vector3, facing: Vector3, width: float):
@@ -434,8 +439,10 @@ func _apply_formation(center: Vector3, facing: Vector3, width: float):
 			BattleSignals.unit_repositioned.emit(regiment, target_pos)
 		else:
 			# During combat, set movement group and issue move order
+			# QOL Phase 4: Shift+click queues orders instead of replacing
+			var append: bool = Input.is_key_pressed(KEY_SHIFT)
 			regiment.set_movement_group(move_group)
-			regiment.give_order(OrderType.Type.MOVE, target_pos)
+			regiment.give_order(OrderType.Type.MOVE, target_pos, append)
 
 		BattleSignals.formation_applied.emit(regiment, target_pos, facing, width)
 
@@ -607,10 +614,11 @@ func _face_regiment(regiment: Regiment, facing: Vector3):
 	if facing.length() < 0.01:
 		return
 
-	var look_target = regiment.global_position + facing * 10.0
-	# Use look_at but only for Y rotation
-	var current_pos = regiment.global_position
-	var angle = atan2(facing.x, facing.z)
+	var _look_target = regiment.global_position + facing * 10.0  # Reserved for smooth rotation
+	# Use look_at but only for Y rotation (WorldCompass for consistent snapping)
+	var _current_pos = regiment.global_position  # Reserved for position-based rotation
+	var dir_index := WorldCompassScript.direction_from_vector(facing)
+	var angle := WorldCompassScript.angle_from_direction(dir_index)
 	regiment.rotation.y = angle
 
 	if regiment.leader:
@@ -828,9 +836,11 @@ func _issue_attack_order(regiment: Regiment, target: Regiment) -> void:
 		regiment.enable_ai_assist(true)
 		if regiment.ai_controller:
 			regiment.ai_controller.set_target(target)
-			# Set stance to SKIRMISH for ranged units (fire and avoid melee)
-			regiment.ai_controller.set_stance(CommanderAI.Stance.SKIRMISH)
+			# Set stance to DEFENSIVE for ranged units (hold and fire)
+			regiment.ai_controller.set_stance(CommanderAI.Stance.DEFENSIVE)
 	else:
 		# Melee unit - charge towards enemy approach point (not center)
+		# QOL Phase 4: Shift+click queues orders instead of replacing
+		var append: bool = Input.is_key_pressed(KEY_SHIFT)
 		var attack_pos: Vector3 = Regiment.get_attack_approach_position(regiment.global_position, target.global_position)
-		regiment.give_order(OrderType.Type.ATTACK_MOVE, attack_pos)
+		regiment.give_order(OrderType.Type.ATTACK_MOVE, attack_pos, append)

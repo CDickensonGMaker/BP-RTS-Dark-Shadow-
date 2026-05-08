@@ -58,6 +58,70 @@ Key fixes:
 - Atlas textures in `assets/sprites/`
 - Shader handles billboarding and animation
 
+## World Compass (True North)
+
+**Canonical Reference:** `battle_system/data/world_compass.gd`
+
+The battle map has a fixed compass orientation. **True North is the top of the screen** when viewing the map top-down (default camera position).
+
+### World Space Axes
+```
+                NORTH (-Z)
+                   ↑
+                   |
+     WEST (-X) ←———+———→ EAST (+X)
+                   |
+                   ↓
+                SOUTH (+Z)
+```
+
+### Sprite Direction Indices (0-7)
+
+Sprite sheets use 8 rows for directions, ordered **clockwise starting from North**:
+
+```
+           0 (N)
+        7       1
+   (W) 6    +    2 (E)
+        5       3
+           4 (S)
+```
+
+| Index | Direction | World Vector | Sprite Row |
+|-------|-----------|--------------|------------|
+| 0 | North | (0, 0, -1) | Row 0 |
+| 1 | Northeast | (+0.7, 0, -0.7) | Row 1 |
+| 2 | East | (+1, 0, 0) | Row 2 |
+| 3 | Southeast | (+0.7, 0, +0.7) | Row 3 |
+| 4 | South | (0, 0, +1) | Row 4 |
+| 5 | Southwest | (-0.7, 0, +0.7) | Row 5 |
+| 6 | West | (-1, 0, 0) | Row 6 |
+| 7 | Northwest | (-0.7, 0, -0.7) | Row 7 |
+
+This matches the SotHR (Shadow of the Horned Rat) extractor output: N, NE, E, SE, S, SW, W, NW
+
+### Usage
+```gdscript
+# Get direction index from a world vector
+var dir_idx := WorldCompass.direction_from_vector(unit.velocity.normalized())
+
+# Get world vector from direction index
+var facing := WorldCompass.vector_from_direction(WorldCompass.DIR_NORTH)
+
+# Check flanking zone
+var zone := WorldCompass.flanking_zone(attacker_dir, defender_dir)  # "front", "flank", or "rear"
+
+# Camera-relative sprite selection (for rendering)
+var screen_dir := WorldCompass.world_to_screen_direction(world_dir, camera.rotation.y)
+```
+
+### Key Constants
+- `WorldCompass.NORTH` = Vector3(0, 0, -1)
+- `WorldCompass.SOUTH` = Vector3(0, 0, 1)
+- `WorldCompass.EAST` = Vector3(1, 0, 0)
+- `WorldCompass.WEST` = Vector3(-1, 0, 0)
+- `WorldCompass.DIR_NORTH` = 0, `DIR_SOUTH` = 4, `DIR_EAST` = 2, `DIR_WEST` = 6
+
 ## Collision Layers
 - Layer 1: Terrain
 - Layer 2: Units (MeleeArea)

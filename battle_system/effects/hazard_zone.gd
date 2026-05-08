@@ -225,7 +225,7 @@ func _setup_ground_decal() -> void:
 
 func _update_visuals() -> void:
 	## Update visual intensity based on remaining duration.
-	var remaining_ratio: float = 1.0 - (_time_alive / duration)
+	var _remaining_ratio: float = 1.0 - (_time_alive / duration)  # Reserved for intensity scaling
 
 	# Fade out in last 2 seconds
 	if _time_alive > duration - 2.0:
@@ -356,3 +356,106 @@ func get_remaining_duration() -> float:
 ## Get progress (0.0 = just started, 1.0 = about to expire)
 func get_progress() -> float:
 	return _time_alive / duration
+
+
+# === STATIC FACTORY METHODS ===
+
+## Create a HazardZone from a configuration dictionary.
+## This is the preferred way to create hazards for consistency between spells and weapons.
+##
+## Config keys:
+##   - radius: float (default 5.0)
+##   - damage_per_tick: int (default 10)
+##   - tick_interval: float (default 0.5)
+##   - duration: float (default 10.0)
+##   - damage_type: SpellData.DamageType (default FIRE)
+##   - color: Color (optional - auto-derived from damage_type if not set)
+##   - secondary_color: Color (optional - auto-derived from damage_type if not set)
+##   - faction: int (-1 = damages all, 0 = player, 1 = AI)
+##
+## Usage:
+##   var config = { "radius": 6.0, "damage_per_tick": 8, "duration": 12.0, "damage_type": SpellData.DamageType.FIRE }
+##   var hazard = HazardZone.create_from_config(config, impact_pos, caster_regiment)
+##   get_tree().current_scene.add_child(hazard)
+static func create_from_config(config: Dictionary, position: Vector3, source: Regiment = null) -> HazardZone:
+	var hazard := HazardZone.new()
+
+	# Extract config values with defaults
+	var p_radius: float = config.get("radius", 5.0)
+	var p_damage: int = config.get("damage_per_tick", 10)
+	var p_interval: float = config.get("tick_interval", 0.5)
+	var p_duration: float = config.get("duration", 10.0)
+	var p_damage_type: int = config.get("damage_type", SpellData.DamageType.FIRE)
+
+	# Determine faction from source regiment if not explicitly set
+	var p_faction: int = config.get("faction", -1)
+	if p_faction == -1 and source:
+		p_faction = 0 if source.is_player_controlled else 1
+
+	# Get colors - use provided colors or derive from damage type
+	var colors: Dictionary = _get_colors_for_damage_type(p_damage_type)
+	var p_color: Color = config.get("color", colors.primary)
+	var p_secondary: Color = config.get("secondary_color", colors.secondary)
+
+	# Set properties before _ready() runs
+	hazard.radius = p_radius
+	hazard.tick_damage = p_damage
+	hazard.tick_interval = p_interval
+	hazard.duration = p_duration
+	hazard.damage_type = p_damage_type
+	hazard.effect_color = p_color
+	hazard.secondary_color = p_secondary
+	hazard.source_faction = p_faction
+	hazard.caster = source
+
+	# Position will be set after adding to scene tree
+	hazard.set_meta("spawn_position", position)
+
+	# Connect to tree_entered to set position after _ready()
+	hazard.tree_entered.connect(func():
+		hazard.global_position = hazard.get_meta("spawn_position", Vector3.ZERO)
+		hazard.global_position.y += 0.1  # Slightly above ground
+		# Update collision shape if already created
+		if hazard._collision_shape:
+			var shape := hazard._collision_shape.shape as CylinderShape3D
+			if shape:
+				shape.radius = hazard.radius
+	, CONNECT_ONE_SHOT)
+
+	return hazard
+
+
+## Get primary and secondary colors for a damage type.
+## Used for consistent visual theming across spells and weapons.
+static func _get_colors_for_damage_type(damage_type: int) -> Dictionary:
+	match damage_type:
+		SpellData.DamageType.FIRE:
+			return {
+				"primary": Color(1.0, 0.5, 0.1, 0.8),   # Orange fire
+				"secondary": Color(1.0, 0.2, 0.0, 0.5)  # Deep red
+			}
+		SpellData.DamageType.ICE:
+			return {
+				"primary": Color(0.4, 0.8, 1.0, 0.8),   # Icy blue
+				"secondary": Color(0.2, 0.5, 0.9, 0.5)  # Deep blue
+			}
+		SpellData.DamageType.LIGHTNING:
+			return {
+				"primary": Color(0.8, 0.8, 1.0, 0.9),   # Electric white-blue
+				"secondary": Color(0.5, 0.5, 1.0, 0.5)  # Purple-blue
+			}
+		SpellData.DamageType.HOLY:
+			return {
+				"primary": Color(1.0, 1.0, 0.8, 0.9),   # Golden white
+				"secondary": Color(1.0, 0.9, 0.5, 0.5)  # Warm gold
+			}
+		SpellData.DamageType.DARK:
+			return {
+				"primary": Color(0.4, 0.1, 0.5, 0.8),   # Dark purple
+				"secondary": Color(0.2, 0.0, 0.3, 0.5)  # Deep shadow
+			}
+		SpellData.DamageType.PHYSICAL, _:
+			return {
+				"primary": Color(0.6, 0.5, 0.4, 0.7),   # Dusty brown
+				"secondary": Color(0.4, 0.3, 0.2, 0.4)  # Darker earth
+			}

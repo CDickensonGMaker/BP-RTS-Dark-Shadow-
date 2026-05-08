@@ -74,7 +74,7 @@ func clear_children() -> void:
 # EXECUTION
 # =============================================================================
 
-func tick(delta: float) -> Status:
+func tick(_delta: float) -> Status:
 	## Execute this node. Override in subclasses.
 	return Status.SUCCESS
 

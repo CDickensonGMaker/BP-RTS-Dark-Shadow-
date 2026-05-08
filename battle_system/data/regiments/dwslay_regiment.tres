@@ -5,21 +5,26 @@
 
 [resource]
 script = ExtResource("1")
-regiment_name = "Dwarf Slayers"
+regiment_name = "Slayers"
 unit_type = 0
-attack = 18
-defense = 10
-weapon_skill = 10
+faction = "dwarf"
+attack = 20
+defense = 6
+weapon_skill = 16
 ballistic_skill = 0
 strength = 6
-max_soldiers = 40
-current_soldiers = 40
-base_morale = 85.0
-morale_save = 5
-speed = 3.5
-charge_bonus = 6
+armor = 0
+max_soldiers = 16
+current_soldiers = 16
+base_morale = 100.0
+morale_save = 2
+walk_speed = 1.6
+run_speed = 2.4
+charge_speed = 3.5
+charge_speed_distance = 15.0
+charge_bonus = 8
 max_ammo = 0
 current_ammo = 0
 range_distance = 0.0
-faction_color = Color(0.6, 0.4, 0.2, 1)
+faction_color = Color(0.8, 0.4, 0.1, 1)
 sprite_atlas = ExtResource("2")

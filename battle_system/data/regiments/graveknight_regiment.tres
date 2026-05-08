@@ -7,12 +7,13 @@
 script = ExtResource("1")
 regiment_name = "Grave Knights"
 unit_type = 1
+faction = "undead"
 personality = 3
 attack = 14
 defense = 12
 weapon_skill = 12
 ballistic_skill = 0
-strength = 5
+strength = 8
 armor = 7
 max_soldiers = 16
 current_soldiers = 16

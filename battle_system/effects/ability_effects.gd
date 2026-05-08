@@ -226,7 +226,7 @@ func _configure_charge_particles(particles: GPUParticles3D) -> void:
 	particles.draw_pass_1 = mesh
 
 
-func _update_charge_effects(delta: float) -> void:
+func _update_charge_effects(_delta: float) -> void:
 	## Update active charge effects.
 	var to_remove: Array = []
 

@@ -17,6 +17,15 @@ func _init(p_commander: CommanderAI) -> void:
 func tick(_delta: float) -> Status:
 	## Engage target in melee combat.
 
+	var regiment: Node = commander.regiment
+	if not regiment or not is_instance_valid(regiment):
+		return Status.FAILURE
+
+	# Artillery units should NEVER melee - they stay at range and retreat if necessary
+	# Return FAILURE so behavior tree doesn't push them into melee
+	if regiment.data and regiment.data.unit_type == UnitType.Type.ARTILLERY:
+		return Status.FAILURE
+
 	# Validate target - check for freed instances before accessing properties
 	var target_ref: Variant = blackboard.get("target")
 	if target_ref == null or not is_instance_valid(target_ref):
@@ -28,10 +37,6 @@ func tick(_delta: float) -> Status:
 
 	if target.state == Regiment.State.DEAD:
 		commander.clear_target()
-		return Status.FAILURE
-
-	var regiment: Node = commander.regiment
-	if not regiment or not is_instance_valid(regiment):
 		return Status.FAILURE
 
 	var distance: float = regiment.global_position.distance_to(target.global_position)

@@ -1,19 +1,21 @@
 [gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
-[ext_resource type="Resource" path="res://assets/sprites/units/voleygun_atlas.tres" id="2"]
+[ext_resource type="PackedScene" path="res://assets/models/3d units/artillery_great_cannon.tscn" id="2_model"]
 
 [resource]
 script = ExtResource("1")
 regiment_name = "Volley Gun"
 unit_type = 3
+faction = "empire"
+weapon_class = 7
 attack = 4
 defense = 4
 weapon_skill = 4
 ballistic_skill = 14
 strength = 8
-max_soldiers = 8
-current_soldiers = 8
+max_soldiers = 3
+current_soldiers = 3
 base_morale = 55.0
 morale_save = 4
 walk_speed = 0.75
@@ -25,4 +27,6 @@ max_ammo = 12
 current_ammo = 12
 range_distance = 80.0
 faction_color = Color(0.2, 0.4, 0.8, 1)
-sprite_atlas = ExtResource("2")
+artillery_model = ExtResource("2_model")
+artillery_model_scale = Vector3(0.5, 0.5, 0.5)
+artillery_pieces_count = 3

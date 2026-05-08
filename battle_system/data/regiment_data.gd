@@ -17,13 +17,44 @@ enum FireMode {
 	DIRECT,  # Accurate single target, lower rate - for skirmishers/crossbows
 }
 
+## Hero trait-based weaknesses (flexible system for any hero)
+enum HeroTrait {
+	NONE,
+	ARROGANT,       # Weak vs INFANTRY (underestimates common soldiers)
+	IMPATIENT,      # Weak vs RANGED (charges into arrows)
+	GROUNDED,       # Weak vs CAVALRY (can't handle mounted foes)
+	FEARLESS,       # Weak vs MONSTER (overconfident, doesn't retreat)
+	DUELIST,        # Weak vs ARTILLERY (focused on single combat)
+}
+
+## Weapon class — defines reload, fire pattern, projectile base, line-of-sight rules.
+## This replaces the implicit weapon-from-unit-name detection in CombatManager.
+enum WeaponClass {
+	NONE,            # Melee-only unit, no ranged weapon
+	BOW,             # Volley fire, short-medium range, indirect arc OK
+	CROSSBOW,        # Stagger fire, flat trajectory, requires LOS
+	HANDGUN,         # Stagger fire, flat trajectory, slow but punchy, requires LOS
+	THROWN,          # Volley fire, very short range, javelins/axes
+	CANNON,          # Single shot per crew, direct fire, pierces ranks, requires LOS
+	MORTAR,          # Single shot per crew, indirect fire (high arc), AOE on landing
+	WAR_MACHINE,     # Catch-all for special weapons (warpfire, volley gun, doom diver)
+	BREATH_FIRE,     # Dragon/monster fire breath - cone attack with cooldown
+	BREATH_POISON,   # Wyvern/creature poison breath
+	MAGIC_MISSILE,   # Hero/wizard ranged magic attack with cooldown
+}
+
 
 @export var regiment_name: String = "Unnamed Regiment"
 @export var unit_type: UnitType.Type = UnitType.Type.INFANTRY
+@export var faction: String = "neutral"  # empire, dwarf, greenskin, undead, skaven, woodelf, neutral
 
 # Unit personality and behavior
 @export var personality: Personality = Personality.NORMAL
 @export var fire_mode: FireMode = FireMode.VOLLEY  # Only matters for ranged units
+
+# Elite and discipline
+@export var is_elite: bool = false      # Elite units have delayed casualty reactions
+@export var discipline: int = 10        # Used for disengage rolls (vs enemy weapon_skill)
 
 # Combat stats
 @export var attack: int = 10
@@ -52,9 +83,19 @@ enum FireMode {
 @export var turn_rate: float = 3.0      # radians/sec (infantry=3.0, cavalry=1.5, artillery=0.5)
 
 # Ranged (optional)
+@export var weapon_class: WeaponClass = WeaponClass.NONE
 @export var max_ammo: int = 0           # 0 = melee only
 @export var current_ammo: int = 0
 @export var range_distance: float = 0.0
+@export var breath_cooldown: float = 8.0  # Cooldown for breath/magic attacks (dragons, heroes)
+@export var default_round_type: int = 0  # WeaponClassData.RoundType.STANDARD
+
+# Aura (for heroes/generals) - affects nearby allied units
+@export var has_aura: bool = false                  # Enable aura effects
+@export var aura_radius: float = 25.0               # Radius of aura effect
+@export var aura_morale_bonus: float = 5.0          # Per-tick morale bonus to nearby allies
+@export var aura_casualty_resistance: float = 0.5   # 0.5 = reduces cascade pressure by 50%
+@export var aura_threshold_bonus: float = 0.05      # +5% to casualty thresholds (more resilient)
 
 # Display
 @export var sprite_texture: Texture2D
@@ -63,6 +104,26 @@ enum FireMode {
 
 # Batched sprite soldiers (for use_sprite_soldiers mode)
 @export var sprite_atlas: SpriteUnitAtlas
+
+# 3D Artillery model (for ARTILLERY unit type with 3D models instead of sprites)
+@export var artillery_model: PackedScene
+@export var artillery_model_scale: Vector3 = Vector3(0.5, 0.5, 0.5)
+@export var artillery_pieces_count: int = 4  # Number of guns in the battery
+
+# Hero trait (for GENERAL units - defines weakness)
+@export var hero_trait: HeroTrait = HeroTrait.NONE
+
+# --- HERO TRAIT WEAKNESS CONSTANTS ---
+# NOTE: FEARLESS maps to MONSTER (value 5) - requires MONSTER to be added to UnitType.Type
+const TRAIT_WEAKNESS_MAP := {
+	HeroTrait.ARROGANT: UnitType.Type.INFANTRY,
+	HeroTrait.IMPATIENT: UnitType.Type.RANGED,
+	HeroTrait.GROUNDED: UnitType.Type.CAVALRY,
+	HeroTrait.FEARLESS: 5,  # UnitType.Type.MONSTER (pending addition to UnitType)
+	HeroTrait.DUELIST: UnitType.Type.ARTILLERY,
+}
+
+const TRAIT_WEAKNESS_PENALTY: float = 0.75  # -25% when fighting weakness
 
 
 # --- PERSONALITY HELPERS ---
@@ -128,3 +189,20 @@ func get_armor_fatigue_multiplier() -> float:
 func is_skirmisher_type() -> bool:
 	## Returns true if this is a skirmisher (direct fire, better melee).
 	return ballistic_skill > 0 and fire_mode == FireMode.DIRECT
+
+
+# --- HERO TRAIT HELPERS ---
+
+func get_weakness_penalty_vs(enemy_type: UnitType.Type) -> float:
+	## Returns penalty multiplier if fighting weakness type based on trait.
+	if hero_trait == HeroTrait.NONE:
+		return 1.0
+	var weakness_type = TRAIT_WEAKNESS_MAP.get(hero_trait, -1)
+	if weakness_type == enemy_type:
+		return TRAIT_WEAKNESS_PENALTY
+	return 1.0
+
+
+func get_trait_name() -> String:
+	## Returns the string name of the current hero trait.
+	return HeroTrait.keys()[hero_trait]

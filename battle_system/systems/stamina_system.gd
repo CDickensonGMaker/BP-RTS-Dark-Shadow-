@@ -70,7 +70,7 @@ func update(delta: float) -> void:
 			current_stamina = maxf(current_stamina - CHARGE_DRAIN_RATE * armor_fatigue_multiplier * delta, 0.0)
 
 	# Check for fatigue state change (TotalWarSimulator)
-	var old_state: FatigueState = fatigue_state
+	var _old_state: FatigueState = fatigue_state
 	var was_exhausted: bool = is_exhausted
 
 	if current_stamina < EXHAUSTED_THRESHOLD:

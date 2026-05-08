@@ -12,6 +12,11 @@ signal point_contested()
 @export var capture_radius: float = 15.0
 @export var capture_time: float = 30.0  # Seconds to capture at full strength
 @export var point_name: String = "Stronghold"
+@export_enum("neutral", "player", "enemy") var initial_owner: String = "neutral"
+
+## Victory point settings
+@export var point_value: int = 0  # 0 = auto-calculate from radius
+var calculated_value: int = 0
 
 ## Visual settings
 @export var circle_color: Color = Color(1.0, 0.85, 0.2, 0.8)  # Gold
@@ -38,8 +43,39 @@ const PULSE_SPEED := 2.0
 
 func _ready() -> void:
 	add_to_group("capture_points")
+	_calculate_point_value()
+	_apply_initial_owner()
 	_create_visuals()
 	_create_capture_bar()
+	# Update bar color for initial owner
+	await get_tree().process_frame
+	_update_capture_bar()
+
+
+func _apply_initial_owner() -> void:
+	# Set initial ownership state
+	current_owner = initial_owner
+	if initial_owner == "player":
+		capture_progress = 1.0
+	elif initial_owner == "enemy":
+		capture_progress = -1.0
+	else:
+		capture_progress = 0.0
+
+
+func _calculate_point_value() -> void:
+	# Auto-calculate value from radius if not manually set
+	if point_value > 0:
+		calculated_value = point_value
+	else:
+		# Small (10-12m) = 10pts, Medium (15m) = 20pts, Large (18+m) = 30pts
+		if capture_radius >= 18.0:
+			calculated_value = 30
+		elif capture_radius >= 14.0:
+			calculated_value = 20
+		else:
+			calculated_value = 10
+	print("[CapturePoint] %s: radius=%.1f, value=%d" % [point_name, capture_radius, calculated_value])
 
 
 func _process(delta: float) -> void:
@@ -126,7 +162,7 @@ func _create_star_mesh() -> ArrayMesh:
 	var t := star_size * 0.3  # Thickness
 
 	# 4 triangular points extending outward
-	var points := [
+	var points: Array[Vector3] = [
 		Vector3(s, 0, 0),   # Right
 		Vector3(-s, 0, 0),  # Left
 		Vector3(0, s, 0),   # Up
@@ -137,9 +173,9 @@ func _create_star_mesh() -> ArrayMesh:
 
 	# Center octahedron
 	for i in range(0, 6, 2):
-		var p1 := points[i]
-		var p2 := points[(i + 2) % 6]
-		var p3 := points[(i + 4) % 6]
+		var p1: Vector3 = points[i]
+		var p2: Vector3 = points[(i + 2) % 6]
+		var p3: Vector3 = points[(i + 4) % 6]
 
 		# Front face
 		st.add_vertex(p1 * 0.5)
@@ -279,7 +315,7 @@ func _update_capture_bar() -> void:
 		return
 
 	# Scale and color based on progress
-	var abs_progress := abs(capture_progress)
+	var abs_progress: float = absf(capture_progress)
 	fill.scale.x = maxf(abs_progress, 0.01)
 
 	var mat: StandardMaterial3D = fill.material_override
@@ -325,3 +361,7 @@ func is_captured_by_player() -> bool:
 
 func is_captured_by_enemy() -> bool:
 	return current_owner == "enemy"
+
+
+func get_point_value() -> int:
+	return calculated_value

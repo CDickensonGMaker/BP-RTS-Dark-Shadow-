@@ -1,13 +1,37 @@
-[gd_scene load_steps=6 format=3 uid="uid://bp_city_siege_01"]
+[gd_scene load_steps=8 format=3 uid="uid://bp_city_siege_01"]
 
 [ext_resource type="Script" path="res://scenes/battle_scene.gd" id="1_main"]
 [ext_resource type="Script" path="res://battle_system/terrain/battle_terrain.gd" id="2_terrain"]
 [ext_resource type="Script" path="res://battle_system/ui/battle_over_screen.gd" id="3_battle_over"]
 [ext_resource type="Script" path="res://battle_system/objectives/capture_point.gd" id="4_capture"]
 [ext_resource type="Script" path="res://battle_system/objectives/siege_manager.gd" id="5_siege"]
+[ext_resource type="Script" path="res://camera/battle_camera.gd" id="6_camera"]
+[ext_resource type="Script" path="res://addons/dynamic_weather/effects/weather_demo.gd" id="7_weather"]
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 1
+background_color = Color(0.45, 0.6, 0.75, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.9, 0.9, 0.95, 1)
+ambient_light_energy = 0.7
 
 [node name="BattleScene" type="Node3D"]
 script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 40, 0)
+shadow_enabled = true
+light_energy = 1.2
+
+[node name="BattleCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707, 0.707, 0, -0.707, 0.707, 0, 80, 80)
+script = ExtResource("6_camera")
+fov = 60.0
+map_bounds_min = Vector3(-180, 0, -180)
+map_bounds_max = Vector3(180, 100, 180)
 
 [node name="BattleTerrain" type="Node3D" parent="."]
 script = ExtResource("2_terrain")
@@ -70,3 +94,7 @@ point_name = "Treasury"
 
 [node name="BattleOverScreen" type="CanvasLayer" parent="."]
 script = ExtResource("3_battle_over")
+
+; Weather Demo - Press 1-7 for weather, T for time, N/P next/prev
+[node name="WeatherDemo" type="Node" parent="."]
+script = ExtResource("7_weather")

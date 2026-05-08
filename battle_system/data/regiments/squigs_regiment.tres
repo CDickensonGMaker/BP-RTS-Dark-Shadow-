@@ -7,6 +7,7 @@
 script = ExtResource("1")
 regiment_name = "Squig Hoppers"
 unit_type = 0
+faction = "greenskin"
 attack = 10
 defense = 10
 weapon_skill = 10

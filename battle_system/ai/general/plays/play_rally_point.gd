@@ -19,6 +19,7 @@ var _units_rallied: Dictionary = {}  # Regiment -> bool (has reached rally point
 
 func _init(p_general_ai: GeneralAI = null) -> void:
 	super._init(p_general_ai, "Rally Point")
+	intent = "Designate safe rally position and recover routing units while screening force holds"
 
 
 func evaluate(analysis: BattlefieldAnalysis) -> float:

@@ -52,6 +52,15 @@ const RANGED_BONUS := {
 	Level.ELITE: 0.10,
 }
 
+# General HP bonus per veterancy level (hero balance)
+# Base HP is 12, scales up to 20 at Elite
+const GENERAL_HP_BONUS := {
+	Level.FRESH: 0,     # 12 HP total
+	Level.BLOODED: 2,   # 14 HP total
+	Level.VETERAN: 5,   # 17 HP total
+	Level.ELITE: 8,     # 20 HP total (capped)
+}
+
 # XP gains per action
 const XP_PER_KILL: int = 10
 const XP_PER_BATTLE_SURVIVED: int = 25
@@ -130,6 +139,10 @@ func get_ranged_bonus() -> float:
 
 func get_morale_bonus() -> float:
 	return MORALE_BONUS.get(current_level, 0.0)
+
+
+func get_general_hp_bonus() -> int:
+	return GENERAL_HP_BONUS.get(current_level, 0)
 
 
 func get_level_name() -> String:

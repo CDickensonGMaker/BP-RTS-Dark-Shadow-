@@ -7,6 +7,7 @@
 script = ExtResource("1")
 regiment_name = "Orc Boyz"
 unit_type = 0
+faction = "greenskin"
 attack = 12
 defense = 8
 weapon_skill = 10

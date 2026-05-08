@@ -64,10 +64,14 @@ func process_melee_casualties(
 			attacker.veterancy.add_kill()
 
 
-## Play melee combat audio.
+## Play melee combat audio with layered sounds for fuller impact.
 func _play_melee_audio(position: Vector3, casualties: int) -> void:
-	# Sword hit sound
-	_play_sfx_random("sword_hit", 5, position)
+	# Use layered melee hit if available
+	if _audio_manager and _audio_manager.has_method("play_layered_melee_hit"):
+		_audio_manager.play_layered_melee_hit(position)
+	else:
+		# Fallback to basic sword hit
+		_play_sfx_random("sword_hit", 5, position)
 
 	# Death cries (limit to avoid spam)
 	var cries_to_play: int = mini(casualties, 2)
@@ -114,12 +118,12 @@ func _apply_flank_morale_events(flanked: Node, flanker: Node, is_rear: bool) -> 
 
 	# Flanked units take a morale hit from the shock
 	var flank_penalty: float = -15.0 if is_rear else -8.0
+	var source = MoraleEvent.Source.REAR_ATTACK if is_rear else MoraleEvent.Source.FLANK_ATTACK
 
-	# Apply continuous flanking morale penalty
-	flanked.unit_morale.set_continuous_modifier_all(
-		MoraleEvent.Source.ENEMY_NEARBY,
-		flank_penalty
-	)
+	# FLANKING FIX: use dedicated FLANK_ATTACK/REAR_ATTACK sources so we can
+	# clear them precisely when the engagement ends, without affecting
+	# unrelated ENEMY_NEARBY pressure.
+	flanked.unit_morale.set_continuous_modifier_all(source, flank_penalty)
 
 	# Emit signal for UI/debug
 	BattleSignals.unit_flanked.emit(flanked, flanker, is_rear)

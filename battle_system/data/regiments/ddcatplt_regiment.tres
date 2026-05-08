@@ -1,19 +1,21 @@
 [gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
-[ext_resource type="Resource" path="res://assets/sprites/units/ddcatplt_atlas.tres" id="2"]
+[ext_resource type="PackedScene" path="res://assets/models/3d units/artillery_catapult.tscn" id="2_model"]
 
 [resource]
 script = ExtResource("1")
-regiment_name = "Ddcatplt"
+regiment_name = "Doom-Flayer"
 unit_type = 3
+faction = "skaven"
+weapon_class = 7
 attack = 4
 defense = 4
 weapon_skill = 4
 ballistic_skill = 14
 strength = 8
-max_soldiers = 8
-current_soldiers = 8
+max_soldiers = 2
+current_soldiers = 2
 base_morale = 55.0
 morale_save = 4
 walk_speed = 0.75
@@ -24,5 +26,7 @@ charge_bonus = 0
 max_ammo = 12
 current_ammo = 12
 range_distance = 80.0
-faction_color = Color(0.5, 0.5, 0.5, 1)
-sprite_atlas = ExtResource("2")
+faction_color = Color(0.3, 0.1, 0.4, 1)
+artillery_model = ExtResource("2_model")
+artillery_model_scale = Vector3(0.5, 0.5, 0.5)
+artillery_pieces_count = 2

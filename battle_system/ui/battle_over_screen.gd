@@ -47,6 +47,12 @@ func _connect_signals() -> void:
 
 func _on_battle_ended(result: Dictionary) -> void:
 	battle_result = result
+
+	# Skip showing during stress tests - check for Unit Zoo stress test running
+	var unit_zoo = get_node_or_null("/root/UnitZoo")
+	if unit_zoo and unit_zoo.has_method("is_stress_test_running") and unit_zoo.is_stress_test_running():
+		return  # Don't show battle over screen during stress tests
+
 	_populate_data(result)
 	_show()
 

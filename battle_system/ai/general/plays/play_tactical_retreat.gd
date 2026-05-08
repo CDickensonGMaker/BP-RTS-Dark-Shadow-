@@ -19,6 +19,7 @@ var _retreat_direction: Vector3 = Vector3.BACK
 
 func _init(p_general_ai: GeneralAI = null) -> void:
 	super._init(p_general_ai, "Tactical Retreat")
+	intent = "Pull damaged units back while ranged units provide covering fire; disengage safely"
 
 
 func evaluate(analysis: BattlefieldAnalysis) -> float:

@@ -252,7 +252,7 @@ func _end_brace() -> void:
 func _do_volley_fire(target: Variant) -> void:
 	if target is Node and regiment.data.ballistic_skill > 0:
 		# Fire synchronized volley with morale damage bonus
-		var volley_data: Dictionary = {
+		var _volley_data: Dictionary = {  # Reserved for enhanced volley effects
 			"volley": true,
 			"morale_multiplier": 1.5,
 		}

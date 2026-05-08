@@ -38,6 +38,19 @@ func calculate_attack_angle(attacker: Node, defender: Node) -> float:
 	# Convert to angle in degrees (0-180 range)
 	var angle: float = rad_to_deg(acos(clampf(dot, -1.0, 1.0)))
 
+	# FLANKING DEBUG: log angle calculations when debug flag is enabled
+	if DebugFlags and DebugFlags.flanking:
+		var att_name: String = attacker.name if attacker else "?"
+		var def_name: String = defender.name if defender else "?"
+		var zone: String = "FRONT"
+		if angle > FLANK_REAR_ANGLE:
+			zone = "REAR"
+		elif angle > FLANK_SIDE_ANGLE:
+			zone = "FLANK"
+		print("[FLANK_CHECK] %s -> %s: angle=%.1f° zone=%s facing=%s" % [
+			att_name, def_name, angle, zone, str(defender_facing)
+		])
+
 	return angle
 
 

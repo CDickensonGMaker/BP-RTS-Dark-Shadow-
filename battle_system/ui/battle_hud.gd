@@ -6,13 +6,19 @@ extends CanvasLayer
 
 
 const UnitCardScript = preload("res://battle_system/ui/unit_card.gd")
+const BattleCompassScript = preload("res://battle_system/ui/battle_compass.gd")
 
 # UI Elements
 var unit_card_container: HBoxContainer
 var battle_timer_label: Label
 var speed_label: Label
 var minimap: BattleMinimap
+var compass: Control  # BattleCompass
 var control_group_bar: ControlGroupBar
+var tide_bar_container: Control
+var tide_bar_fill: ColorRect
+var tide_bar_marker: ColorRect
+var pause_label: Label  # QOL Phase 2 - PAUSED overlay
 var selected_unit_panel: Panel
 var selected_unit_portrait: TextureRect
 var selected_unit_name: Label
@@ -32,6 +38,22 @@ var formation_buttons: Dictionary = {}  # FormationType.Type -> Button
 var ability_buttons: Array[Button] = []
 var ability_overlays: Array[Control] = []  # Cooldown overlay controls
 var ability_types: Array = []  # Track which ability each button represents
+
+# QOL Phase 5: Hover preview
+var hover_preview_panel: Panel = null
+var hover_preview_name: Label = null
+var hover_preview_stats: Label = null
+var _hovered_regiment: Regiment = null
+
+# Phase 6.6: Trait Status Panel
+var trait_panel: Panel = null
+var trait_panel_header: Button = null
+var trait_panel_content: VBoxContainer = null
+var _trait_panel_expanded: bool = false
+
+# QOL Phase 8: After-action report
+var after_action_panel: Panel = null
+var after_action_content: VBoxContainer = null
 
 
 # === ABILITY COOLDOWN OVERLAY ===
@@ -90,11 +112,49 @@ const COLOR_GOLD = Color(0.85, 0.7, 0.4, 1.0)
 const COLOR_TEXT = Color(0.95, 0.92, 0.85, 1.0)
 const COLOR_TEXT_DIM = Color(0.7, 0.65, 0.55, 1.0)
 
+# Button styling colors
+const COLOR_BTN_BG = Color(0.12, 0.11, 0.10, 0.95)
+const COLOR_BTN_HOVER = Color(0.18, 0.16, 0.14, 0.95)
+const COLOR_BTN_PRESSED = Color(0.08, 0.07, 0.06, 0.95)
+const COLOR_BTN_ACTIVE = Color(0.15, 0.25, 0.15, 0.95)  # Green tint for active
+
+
+## Apply consistent dark theme styling to HUD buttons
+func _apply_hud_button_style(btn: Button) -> void:
+	var normal_style = StyleBoxFlat.new()
+	normal_style.bg_color = COLOR_BTN_BG
+	normal_style.border_color = COLOR_PANEL_BORDER
+	normal_style.set_border_width_all(2)
+	normal_style.set_corner_radius_all(4)
+	normal_style.set_content_margin_all(6)
+	btn.add_theme_stylebox_override("normal", normal_style)
+
+	var hover_style = normal_style.duplicate()
+	hover_style.bg_color = COLOR_BTN_HOVER
+	hover_style.border_color = COLOR_GOLD
+	btn.add_theme_stylebox_override("hover", hover_style)
+
+	var pressed_style = normal_style.duplicate()
+	pressed_style.bg_color = COLOR_BTN_PRESSED
+	pressed_style.border_color = COLOR_GOLD
+	btn.add_theme_stylebox_override("pressed", pressed_style)
+
+	var disabled_style = normal_style.duplicate()
+	disabled_style.bg_color = Color(0.08, 0.08, 0.08, 0.6)
+	disabled_style.border_color = Color(0.3, 0.3, 0.3, 0.6)
+	btn.add_theme_stylebox_override("disabled", disabled_style)
+
+	btn.add_theme_color_override("font_color", COLOR_TEXT)
+	btn.add_theme_color_override("font_hover_color", COLOR_GOLD)
+	btn.add_theme_color_override("font_pressed_color", COLOR_GOLD)
+	btn.add_theme_color_override("font_disabled_color", COLOR_TEXT_DIM)
+
 
 func _ready():
 	_setup_ui()
 	_connect_signals()
-	call_deferred("_populate_unit_cards")
+	# Delay card population to ensure regiments are spawned (battle_scene waits 0.6s)
+	get_tree().create_timer(0.8).timeout.connect(_populate_unit_cards)
 
 
 func _setup_ui():
@@ -104,8 +164,17 @@ func _setup_ui():
 	# === TOP CENTER - Battle Timer ===
 	_create_timer_display()
 
+	# === BELOW TIMER - Battle Tide Bar ===
+	_create_tide_bar()
+
+	# === PAUSED OVERLAY (QOL Phase 2) ===
+	_create_pause_overlay()
+
 	# === TOP RIGHT - Minimap ===
 	_create_minimap()
+
+	# === BELOW MINIMAP - Compass ===
+	_create_compass()
 
 	# === TOP LEFT - Deployment Panel (visible during deployment phase) ===
 	_create_deployment_panel()
@@ -118,6 +187,12 @@ func _setup_ui():
 
 	# === BOTTOM RIGHT - Speed Controls ===
 	_create_speed_controls()
+
+	# === HOVER PREVIEW (QOL Phase 5) ===
+	_create_hover_preview()
+
+	# === TRAIT STATUS PANEL (Phase 6.6) ===
+	_create_trait_panel()
 
 
 func _create_control_group_bar():
@@ -161,13 +236,82 @@ func _create_timer_display():
 	timer_container.add_child(battle_timer_label)
 
 
+func _create_tide_bar():
+	# Battle Tide indicator - horizontal bar showing momentum
+	# Center = even, left = enemy winning, right = player winning
+	tide_bar_container = Control.new()
+	tide_bar_container.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	tide_bar_container.offset_left = -100
+	tide_bar_container.offset_right = 100
+	tide_bar_container.offset_top = 54  # Below timer
+	tide_bar_container.offset_bottom = 66
+	tide_bar_container.tooltip_text = "Battle Tide: Even"
+	add_child(tide_bar_container)
+
+	# Background bar
+	var bg = Panel.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var bg_style = StyleBoxFlat.new()
+	bg_style.bg_color = Color(0.1, 0.1, 0.1, 0.8)
+	bg_style.border_color = COLOR_PANEL_BORDER
+	bg_style.set_border_width_all(1)
+	bg_style.set_corner_radius_all(4)
+	bg.add_theme_stylebox_override("panel", bg_style)
+	tide_bar_container.add_child(bg)
+
+	# Fill bar (slides left/right)
+	tide_bar_fill = ColorRect.new()
+	tide_bar_fill.size = Vector2(0, 8)
+	tide_bar_fill.position = Vector2(100, 2)  # Start at center
+	tide_bar_fill.color = Color(0.3, 0.7, 0.4, 0.9)  # Green for player
+	tide_bar_container.add_child(tide_bar_fill)
+
+	# Center marker (neutral point)
+	tide_bar_marker = ColorRect.new()
+	tide_bar_marker.size = Vector2(2, 12)
+	tide_bar_marker.position = Vector2(99, 0)  # Center of 200px bar
+	tide_bar_marker.color = Color(1.0, 1.0, 1.0, 0.6)
+	tide_bar_container.add_child(tide_bar_marker)
+
+	# Connect to BattleTide signal if available
+	if has_node("/root/BattleTide"):
+		var battle_tide = get_node("/root/BattleTide")
+		if battle_tide.has_signal("tide_changed"):
+			battle_tide.tide_changed.connect(_on_tide_changed)
+
+
+func _create_pause_overlay():
+	# QOL Phase 2 - PAUSED text overlay
+	pause_label = Label.new()
+	pause_label.text = "⏸ PAUSED"
+	pause_label.add_theme_font_size_override("font_size", 32)
+	pause_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.6))
+	pause_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	pause_label.offset_top = 75
+	pause_label.offset_left = -80
+	pause_label.offset_right = 80
+	pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pause_label.process_mode = Node.PROCESS_MODE_ALWAYS  # Visible while paused
+	pause_label.visible = false
+	add_child(pause_label)
+
+	# Connect to pause signal
+	if BattleSignals:
+		BattleSignals.battle_paused.connect(_on_battle_paused)
+
+
+func _on_battle_paused(is_paused: bool):
+	if pause_label:
+		pause_label.visible = is_paused
+
+
 func _create_minimap():
 	var minimap_panel: Panel = Panel.new()
 	minimap_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	minimap_panel.offset_left = -180
+	minimap_panel.offset_left = -200  # Wider for better visibility
 	minimap_panel.offset_right = -10
 	minimap_panel.offset_top = 10
-	minimap_panel.offset_bottom = 165
+	minimap_panel.offset_bottom = 180  # Taller for better visibility
 
 	var mini_style: StyleBoxFlat = StyleBoxFlat.new()
 	mini_style.bg_color = Color(0.1, 0.08, 0.06, 0.95)
@@ -183,6 +327,32 @@ func _create_minimap():
 	minimap.offset_top = 5
 	minimap.offset_bottom = -5
 	minimap_panel.add_child(minimap)
+
+
+func _create_compass():
+	# Compass showing direction system: N=0, NE=1, E=2, SE=3, S=4, SW=5, W=6, NW=7
+	var compass_container: Panel = Panel.new()
+	compass_container.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	compass_container.offset_left = -100  # 90px wide
+	compass_container.offset_right = -10
+	compass_container.offset_top = 185  # Below minimap (which ends at ~180)
+	compass_container.offset_bottom = 280  # 95px tall
+
+	var compass_style: StyleBoxFlat = StyleBoxFlat.new()
+	compass_style.bg_color = Color(0.1, 0.08, 0.06, 0.95)
+	compass_style.border_color = COLOR_PANEL_BORDER
+	compass_style.set_border_width_all(2)
+	compass_container.add_theme_stylebox_override("panel", compass_style)
+	add_child(compass_container)
+
+	# Compass widget
+	compass = BattleCompassScript.new()
+	compass.set_anchors_preset(Control.PRESET_CENTER)
+	compass.offset_left = -40
+	compass.offset_right = 40
+	compass.offset_top = -40
+	compass.offset_bottom = 40
+	compass_container.add_child(compass)
 
 
 func _create_deployment_panel():
@@ -232,8 +402,8 @@ func _create_selected_unit_panel():
 	selected_unit_panel = Panel.new()
 	selected_unit_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	selected_unit_panel.offset_left = 10
-	selected_unit_panel.offset_right = 280
-	selected_unit_panel.offset_top = -275
+	selected_unit_panel.offset_right = 300  # Wider to fit larger buttons
+	selected_unit_panel.offset_top = -310  # Taller to fit larger buttons
 	selected_unit_panel.offset_bottom = -50
 	selected_unit_panel.visible = false  # Hidden until unit selected
 
@@ -291,19 +461,19 @@ func _create_selected_unit_panel():
 	var stance_label: Label = Label.new()
 	stance_label.text = "Stance"
 	stance_label.offset_left = 8
-	stance_label.offset_top = 85
+	stance_label.offset_top = 90
 	stance_label.offset_right = 60
-	stance_label.offset_bottom = 100
-	stance_label.add_theme_font_size_override("font_size", 10)
+	stance_label.offset_bottom = 106
+	stance_label.add_theme_font_size_override("font_size", 11)
 	stance_label.add_theme_color_override("font_color", COLOR_TEXT_DIM)
 	selected_unit_panel.add_child(stance_label)
 
 	stance_container = HBoxContainer.new()
 	stance_container.offset_left = 8
-	stance_container.offset_top = 100
-	stance_container.offset_right = 265
-	stance_container.offset_bottom = 125
-	stance_container.add_theme_constant_override("separation", 3)
+	stance_container.offset_top = 108
+	stance_container.offset_right = 285
+	stance_container.offset_bottom = 145
+	stance_container.add_theme_constant_override("separation", 5)
 	selected_unit_panel.add_child(stance_container)
 	_create_stance_buttons()
 
@@ -311,19 +481,19 @@ func _create_selected_unit_panel():
 	var formation_label: Label = Label.new()
 	formation_label.text = "Formation"
 	formation_label.offset_left = 8
-	formation_label.offset_top = 128
+	formation_label.offset_top = 150
 	formation_label.offset_right = 80
-	formation_label.offset_bottom = 143
-	formation_label.add_theme_font_size_override("font_size", 10)
+	formation_label.offset_bottom = 166
+	formation_label.add_theme_font_size_override("font_size", 11)
 	formation_label.add_theme_color_override("font_color", COLOR_TEXT_DIM)
 	selected_unit_panel.add_child(formation_label)
 
 	formation_container = HBoxContainer.new()
 	formation_container.offset_left = 8
-	formation_container.offset_top = 143
-	formation_container.offset_right = 265
-	formation_container.offset_bottom = 168
-	formation_container.add_theme_constant_override("separation", 3)
+	formation_container.offset_top = 168
+	formation_container.offset_right = 285
+	formation_container.offset_bottom = 205
+	formation_container.add_theme_constant_override("separation", 5)
 	selected_unit_panel.add_child(formation_container)
 	_create_formation_buttons()
 
@@ -331,26 +501,26 @@ func _create_selected_unit_panel():
 	var ability_label: Label = Label.new()
 	ability_label.text = "Abilities (Q/E/R)"
 	ability_label.offset_left = 8
-	ability_label.offset_top = 171
+	ability_label.offset_top = 210
 	ability_label.offset_right = 120
-	ability_label.offset_bottom = 186
-	ability_label.add_theme_font_size_override("font_size", 10)
+	ability_label.offset_bottom = 226
+	ability_label.add_theme_font_size_override("font_size", 11)
 	ability_label.add_theme_color_override("font_color", COLOR_TEXT_DIM)
 	selected_unit_panel.add_child(ability_label)
 
 	ability_container = HBoxContainer.new()
 	ability_container.offset_left = 8
-	ability_container.offset_top = 186
-	ability_container.offset_right = 265
-	ability_container.offset_bottom = 220
-	ability_container.add_theme_constant_override("separation", 5)
+	ability_container.offset_top = 228
+	ability_container.offset_right = 285
+	ability_container.offset_bottom = 270
+	ability_container.add_theme_constant_override("separation", 6)
 	selected_unit_panel.add_child(ability_container)
 
 
 func _create_unit_card_bar():
 	var bottom_panel = Panel.new()
 	bottom_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	bottom_panel.offset_left = 290  # Leave room for selected unit panel
+	bottom_panel.offset_left = 310  # Leave room for wider selected unit panel
 	bottom_panel.offset_right = -200  # Leave room for speed controls
 	bottom_panel.offset_top = -170
 	bottom_panel.offset_bottom = -50
@@ -372,11 +542,13 @@ func _create_unit_card_bar():
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS  # Always show scrollbar for many units
 	scroll.follow_focus = true  # Auto-scroll to selected unit
+	scroll.mouse_filter = Control.MOUSE_FILTER_PASS  # Let clicks pass through to unit cards
 	bottom_panel.add_child(scroll)
 
 	unit_card_container = HBoxContainer.new()
 	unit_card_container.add_theme_constant_override("separation", 4)  # Smaller spacing for more units
 	unit_card_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	unit_card_container.mouse_filter = Control.MOUSE_FILTER_PASS  # Let clicks pass through to unit cards
 	scroll.add_child(unit_card_container)
 
 
@@ -433,8 +605,34 @@ func _create_speed_controls():
 func _create_speed_button(text: String, speed: float) -> Button:
 	var btn = Button.new()
 	btn.text = text
-	btn.custom_minimum_size = Vector2(35, 35)
-	btn.add_theme_font_size_override("font_size", 14)
+	btn.custom_minimum_size = Vector2(44, 44)  # Larger click target
+	btn.add_theme_font_size_override("font_size", 16)
+	btn.focus_mode = Control.FOCUS_NONE  # Prevent focus stealing
+	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+
+	# Apply consistent dark theme styling
+	var normal_style = StyleBoxFlat.new()
+	normal_style.bg_color = Color(0.12, 0.11, 0.10, 0.95)
+	normal_style.border_color = COLOR_PANEL_BORDER
+	normal_style.set_border_width_all(2)
+	normal_style.set_corner_radius_all(4)
+	normal_style.set_content_margin_all(8)
+	btn.add_theme_stylebox_override("normal", normal_style)
+
+	var hover_style = normal_style.duplicate()
+	hover_style.bg_color = Color(0.18, 0.16, 0.14, 0.95)
+	hover_style.border_color = COLOR_GOLD
+	btn.add_theme_stylebox_override("hover", hover_style)
+
+	var pressed_style = normal_style.duplicate()
+	pressed_style.bg_color = Color(0.08, 0.07, 0.06, 0.95)
+	pressed_style.border_color = COLOR_GOLD
+	btn.add_theme_stylebox_override("pressed", pressed_style)
+
+	btn.add_theme_color_override("font_color", COLOR_TEXT)
+	btn.add_theme_color_override("font_hover_color", COLOR_GOLD)
+	btn.add_theme_color_override("font_pressed_color", COLOR_GOLD)
+
 	btn.pressed.connect(func(): _set_game_speed(speed))
 	return btn
 
@@ -447,6 +645,355 @@ func _set_game_speed(speed: float):
 	speed_label.text = "%.1fx" % speed
 
 
+# === HOVER PREVIEW (QOL Phase 5) ===
+
+func _create_hover_preview():
+	"""Create floating panel that shows unit info on mouse hover."""
+	hover_preview_panel = Panel.new()
+	hover_preview_panel.visible = false
+	hover_preview_panel.custom_minimum_size = Vector2(200, 80)
+	hover_preview_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Don't block input
+
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.05, 0.08, 0.95)
+	style.border_color = Color(0.8, 0.3, 0.3, 1.0)  # Red-ish for enemies
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(4)
+	style.set_content_margin_all(8)
+	hover_preview_panel.add_theme_stylebox_override("panel", style)
+	add_child(hover_preview_panel)
+
+	# Unit name label
+	hover_preview_name = Label.new()
+	hover_preview_name.add_theme_font_size_override("font_size", 14)
+	hover_preview_name.add_theme_color_override("font_color", COLOR_GOLD)
+	hover_preview_name.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	hover_preview_name.offset_left = 8
+	hover_preview_name.offset_top = 6
+	hover_preview_panel.add_child(hover_preview_name)
+
+	# Stats label (morale, soldiers, etc.)
+	hover_preview_stats = Label.new()
+	hover_preview_stats.add_theme_font_size_override("font_size", 12)
+	hover_preview_stats.add_theme_color_override("font_color", COLOR_TEXT)
+	hover_preview_stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	hover_preview_stats.offset_left = 8
+	hover_preview_stats.offset_top = 28
+	hover_preview_panel.add_child(hover_preview_stats)
+
+
+func _create_trait_panel():
+	"""Create collapsible panel showing active general traits (Phase 6.6)."""
+	trait_panel = Panel.new()
+	trait_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	trait_panel.offset_left = 10
+	trait_panel.offset_top = 90  # Below control group bar
+	trait_panel.offset_right = 180
+	trait_panel.offset_bottom = 115  # Collapsed height
+
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.06, 0.05, 0.85)
+	style.border_color = COLOR_GOLD
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	trait_panel.add_theme_stylebox_override("panel", style)
+	add_child(trait_panel)
+
+	# Header button (click to expand/collapse)
+	trait_panel_header = Button.new()
+	trait_panel_header.text = "▶ General Traits"
+	trait_panel_header.add_theme_font_size_override("font_size", 11)
+	trait_panel_header.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	trait_panel_header.offset_top = 2
+	trait_panel_header.offset_bottom = 22
+	trait_panel_header.offset_left = 4
+	trait_panel_header.offset_right = -4
+	trait_panel_header.flat = true
+	trait_panel_header.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	trait_panel_header.pressed.connect(_on_trait_panel_toggle)
+	trait_panel.add_child(trait_panel_header)
+
+	# Content container (hidden by default)
+	trait_panel_content = VBoxContainer.new()
+	trait_panel_content.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	trait_panel_content.offset_top = 24
+	trait_panel_content.offset_left = 8
+	trait_panel_content.offset_right = -8
+	trait_panel_content.visible = false
+	trait_panel.add_child(trait_panel_content)
+
+	# Hide initially if no traits
+	_update_trait_panel()
+
+
+func _on_trait_panel_toggle():
+	"""Toggle trait panel expanded/collapsed state."""
+	_trait_panel_expanded = not _trait_panel_expanded
+	trait_panel_content.visible = _trait_panel_expanded
+	trait_panel_header.text = "▼ General Traits" if _trait_panel_expanded else "▶ General Traits"
+
+	# Resize panel
+	if _trait_panel_expanded:
+		var content_height: int = trait_panel_content.get_children().size() * 18 + 30
+		trait_panel.offset_bottom = trait_panel.offset_top + content_height
+	else:
+		trait_panel.offset_bottom = trait_panel.offset_top + 25
+
+
+func _update_trait_panel():
+	"""Update trait panel with current general traits."""
+	if not trait_panel or not trait_panel_content:
+		return
+
+	# Clear old labels
+	for child in trait_panel_content.get_children():
+		child.queue_free()
+
+	# Get trait names from BattleModifiers
+	if not BattleModifiers or not BattleModifiers.is_active():
+		trait_panel.visible = false
+		return
+
+	var player_traits: Array[String] = BattleModifiers.get_trait_names(true)
+	if player_traits.is_empty():
+		trait_panel.visible = false
+		return
+
+	trait_panel.visible = true
+
+	# Add trait labels
+	for trait_name in player_traits:
+		var lbl = Label.new()
+		lbl.text = "• " + trait_name
+		lbl.add_theme_font_size_override("font_size", 10)
+		lbl.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7, 1.0))
+		trait_panel_content.add_child(lbl)
+
+
+func _on_regiment_hover_entered(regiment: Regiment) -> void:
+	"""Show hover preview for regiment under mouse."""
+	if not is_instance_valid(regiment) or not regiment.data:
+		return
+
+	_hovered_regiment = regiment
+	hover_preview_panel.visible = true
+
+	# Update content
+	hover_preview_name.text = regiment.data.regiment_name
+	hover_preview_stats.text = "Soldiers: %d/%d\nMorale: %d%%" % [
+		regiment.current_soldiers,
+		regiment.data.max_soldiers,
+		int(regiment.current_morale)
+	]
+
+	# Add threat info for enemies
+	if not regiment.is_player_controlled:
+		hover_preview_stats.text += "\nAtk: %d | Def: %d" % [
+			regiment.data.attack,
+			regiment.data.defense
+		]
+
+	# Position near mouse (offset to not obscure)
+	_update_hover_position()
+
+
+func _on_regiment_hover_exited(_regiment: Regiment) -> void:
+	"""Hide hover preview."""
+	_hovered_regiment = null
+	hover_preview_panel.visible = false
+
+
+# === AUTO-PAUSE (QOL Phase 7) ===
+var _auto_pause_enabled: bool = false  # Disabled - was causing unwanted pauses during battle
+
+func _on_regiment_routing_autopause(regiment: Regiment) -> void:
+	"""Auto-pause when a player unit starts routing."""
+	if not _auto_pause_enabled:
+		return
+	if not regiment or not regiment.is_player_controlled:
+		return
+	# Auto-pause the game
+	if not get_tree().paused:
+		get_tree().paused = true
+		BattleSignals.battle_paused.emit(true)
+
+
+func _on_battle_ended_autopause(result: Dictionary) -> void:
+	"""Auto-pause when battle ends and show after-action report."""
+	# Skip during stress tests - check for Unit Zoo stress test running
+	var unit_zoo = get_node_or_null("/root/UnitZoo")
+	if unit_zoo and unit_zoo.has_method("is_stress_test_running") and unit_zoo.is_stress_test_running():
+		return  # Don't show after-action report during stress tests
+
+	if not get_tree().paused:
+		get_tree().paused = true
+		BattleSignals.battle_paused.emit(true)
+	# Show after-action report
+	_show_after_action_report(result)
+
+
+# === AFTER-ACTION REPORT (QOL Phase 8) ===
+
+func _show_after_action_report(result: Dictionary) -> void:
+	"""Display battle summary after victory/defeat."""
+	if not result.has("winner"):
+		return
+
+	# Create panel if it doesn't exist
+	if not after_action_panel:
+		_create_after_action_panel()
+
+	# Clear previous content
+	for child in after_action_content.get_children():
+		child.queue_free()
+
+	# Victory/Defeat header
+	var header := Label.new()
+	var is_victory: bool = result.get("player_victory", false)
+	header.text = "VICTORY!" if is_victory else "DEFEAT"
+	header.add_theme_font_size_override("font_size", 28)
+	header.add_theme_color_override("font_color", Color(0.9, 0.8, 0.3) if is_victory else Color(0.8, 0.3, 0.3))
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	after_action_content.add_child(header)
+
+	# Duration
+	var duration: float = result.get("duration", 0.0)
+	var duration_label := Label.new()
+	duration_label.text = "Battle Duration: %d:%02d" % [int(duration) / 60, int(duration) % 60]
+	duration_label.add_theme_font_size_override("font_size", 14)
+	duration_label.add_theme_color_override("font_color", COLOR_TEXT)
+	duration_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	after_action_content.add_child(duration_label)
+
+	# Spacer
+	var spacer := Control.new()
+	spacer.custom_minimum_size.y = 20
+	after_action_content.add_child(spacer)
+
+	# Casualties summary
+	var casualties: Dictionary = result.get("casualties", {})
+	var player_kills: int = casualties.get("player_kills", 0)
+	var player_losses: int = casualties.get("player_losses", 0)
+	var enemy_kills: int = casualties.get("enemy_kills", 0)
+	var enemy_losses: int = casualties.get("enemy_losses", 0)
+
+	# Your Army section
+	var your_header := Label.new()
+	your_header.text = "YOUR FORCES"
+	your_header.add_theme_font_size_override("font_size", 16)
+	your_header.add_theme_color_override("font_color", COLOR_GOLD)
+	after_action_content.add_child(your_header)
+
+	var your_stats := Label.new()
+	your_stats.text = "Kills: %d | Losses: %d" % [player_kills, player_losses]
+	your_stats.add_theme_font_size_override("font_size", 14)
+	your_stats.add_theme_color_override("font_color", COLOR_TEXT)
+	after_action_content.add_child(your_stats)
+
+	# Per-unit breakdown (player)
+	var player_unit_stats: Dictionary = casualties.get("player_unit_stats", {})
+	for unit_name in player_unit_stats:
+		var s: Dictionary = player_unit_stats[unit_name]
+		var unit_label := Label.new()
+		var remaining: int = s.get("starting", 0) - s.get("losses", 0)
+		unit_label.text = "  %s: %d/%d (K:%d)" % [s.get("display_name", unit_name), remaining, s.get("starting", 0), s.get("kills", 0)]
+		unit_label.add_theme_font_size_override("font_size", 12)
+		unit_label.add_theme_color_override("font_color", COLOR_TEXT_DIM)
+		after_action_content.add_child(unit_label)
+
+	# Spacer
+	var spacer2 := Control.new()
+	spacer2.custom_minimum_size.y = 10
+	after_action_content.add_child(spacer2)
+
+	# Enemy Forces section
+	var enemy_header := Label.new()
+	enemy_header.text = "ENEMY FORCES"
+	enemy_header.add_theme_font_size_override("font_size", 16)
+	enemy_header.add_theme_color_override("font_color", Color(0.8, 0.4, 0.4))
+	after_action_content.add_child(enemy_header)
+
+	var enemy_stats := Label.new()
+	enemy_stats.text = "Kills: %d | Losses: %d" % [enemy_kills, enemy_losses]
+	enemy_stats.add_theme_font_size_override("font_size", 14)
+	enemy_stats.add_theme_color_override("font_color", COLOR_TEXT)
+	after_action_content.add_child(enemy_stats)
+
+	# Continue button
+	var spacer3 := Control.new()
+	spacer3.custom_minimum_size.y = 20
+	after_action_content.add_child(spacer3)
+
+	var continue_btn := Button.new()
+	continue_btn.text = "CONTINUE"
+	continue_btn.custom_minimum_size = Vector2(120, 40)
+	_apply_hud_button_style(continue_btn)
+	continue_btn.pressed.connect(_on_after_action_continue)
+	after_action_content.add_child(continue_btn)
+
+	after_action_panel.visible = true
+
+
+func _create_after_action_panel() -> void:
+	"""Create the after-action report panel."""
+	after_action_panel = Panel.new()
+	after_action_panel.set_anchors_preset(Control.PRESET_CENTER)
+	after_action_panel.offset_left = -200
+	after_action_panel.offset_right = 200
+	after_action_panel.offset_top = -200
+	after_action_panel.offset_bottom = 200
+	after_action_panel.visible = false
+	after_action_panel.process_mode = Node.PROCESS_MODE_ALWAYS  # Works when paused
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.04, 0.03, 0.98)
+	style.border_color = COLOR_GOLD
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(8)
+	after_action_panel.add_theme_stylebox_override("panel", style)
+	add_child(after_action_panel)
+
+	# Scrollable content
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scroll.set_anchor_and_offset(SIDE_LEFT, 0, 15)
+	scroll.set_anchor_and_offset(SIDE_RIGHT, 1, -15)
+	scroll.set_anchor_and_offset(SIDE_TOP, 0, 15)
+	scroll.set_anchor_and_offset(SIDE_BOTTOM, 1, -15)
+	scroll.process_mode = Node.PROCESS_MODE_ALWAYS
+	after_action_panel.add_child(scroll)
+
+	after_action_content = VBoxContainer.new()
+	after_action_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	after_action_content.add_theme_constant_override("separation", 4)
+	after_action_content.process_mode = Node.PROCESS_MODE_ALWAYS
+	scroll.add_child(after_action_content)
+
+
+func _on_after_action_continue() -> void:
+	"""Close after-action report and return to campaign or main menu."""
+	after_action_panel.visible = false
+	# Unpause so the game can transition
+	get_tree().paused = false
+	BattleSignals.battle_paused.emit(false)
+
+
+func _update_hover_position() -> void:
+	"""Position hover panel near mouse cursor."""
+	if not hover_preview_panel.visible:
+		return
+	var mouse_pos: Vector2 = get_viewport().get_mouse_position()
+	var screen_size: Vector2 = get_viewport().get_visible_rect().size
+	var panel_size: Vector2 = hover_preview_panel.size
+
+	# Offset to right of cursor, flip if near edge
+	var offset := Vector2(20, -20)
+	if mouse_pos.x + panel_size.x + 20 > screen_size.x:
+		offset.x = -panel_size.x - 20
+
+	hover_preview_panel.global_position = mouse_pos + offset
+
+
 func _connect_signals():
 	if BattleSignals:
 		if not BattleSignals.regiment_selected.is_connected(_on_regiment_selected):
@@ -457,10 +1004,26 @@ func _connect_signals():
 			BattleSignals.deployment_ended.connect(_on_deployment_ended)
 		if not BattleSignals.battle_started.is_connected(_on_battle_started):
 			BattleSignals.battle_started.connect(_on_battle_started)
+		if not BattleSignals.unit_disengage_failed.is_connected(_on_unit_disengage_failed):
+			BattleSignals.unit_disengage_failed.connect(_on_unit_disengage_failed)
+		if not BattleSignals.unit_disengage_success.is_connected(_on_unit_disengage_success):
+			BattleSignals.unit_disengage_success.connect(_on_unit_disengage_success)
+		# QOL Phase 5: Hover preview
+		if not BattleSignals.regiment_hover_entered.is_connected(_on_regiment_hover_entered):
+			BattleSignals.regiment_hover_entered.connect(_on_regiment_hover_entered)
+		if not BattleSignals.regiment_hover_exited.is_connected(_on_regiment_hover_exited):
+			BattleSignals.regiment_hover_exited.connect(_on_regiment_hover_exited)
+		# QOL Phase 7: Auto-pause on important events
+		if not BattleSignals.regiment_routing.is_connected(_on_regiment_routing_autopause):
+			BattleSignals.regiment_routing.connect(_on_regiment_routing_autopause)
+		if not BattleSignals.battle_ended.is_connected(_on_battle_ended_autopause):
+			BattleSignals.battle_ended.connect(_on_battle_ended_autopause)
 
 
 func _on_deployment_ended():
 	deployment_panel.visible = false
+	# Repopulate cards in case any were missed during initial load
+	_populate_unit_cards()
 
 
 func _on_battle_started():
@@ -469,8 +1032,10 @@ func _on_battle_started():
 
 
 func _populate_unit_cards():
+	# Clear existing cards
 	for card in unit_cards.values():
-		card.queue_free()
+		if is_instance_valid(card):
+			card.queue_free()
 	unit_cards.clear()
 
 	await get_tree().process_frame
@@ -481,9 +1046,18 @@ func _populate_unit_cards():
 		return
 
 	var regiments = get_tree().get_nodes_in_group("player_regiments")
+	print("[BattleHUD] Populating unit cards - found %d player regiments" % regiments.size())
+
 	for regiment in regiments:
-		if regiment is Regiment:
+		if regiment is Regiment and regiment not in unit_cards:
 			_add_unit_card(regiment)
+
+	print("[BattleHUD] Created %d unit cards" % unit_cards.size())
+
+
+## Public method to refresh unit cards (for unit zoo and dynamic spawning)
+func refresh_unit_cards() -> void:
+	_populate_unit_cards()
 
 
 func _add_unit_card(regiment: Regiment):
@@ -491,6 +1065,8 @@ func _add_unit_card(regiment: Regiment):
 	unit_card_container.add_child(card)
 	card.setup(regiment)
 	card.card_clicked.connect(_on_card_clicked)
+	card.card_shift_clicked.connect(_on_card_shift_clicked)  # Multi-select (add)
+	card.card_ctrl_clicked.connect(_on_card_ctrl_clicked)    # Toggle selection
 	unit_cards[regiment] = card
 
 
@@ -503,6 +1079,61 @@ func _remove_unit_card(regiment: Regiment):
 func _on_card_clicked(regiment: Regiment):
 	if SelectionManager:
 		SelectionManager.select_regiment(regiment)
+
+
+func _on_card_shift_clicked(regiment: Regiment):
+	# Add to selection without clearing existing selection
+	if SelectionManager:
+		SelectionManager.add_to_selection(regiment)
+
+
+func _on_card_ctrl_clicked(regiment: Regiment):
+	# Toggle regiment in selection (add if not selected, remove if selected)
+	if SelectionManager:
+		if regiment in SelectionManager.selected_regiments:
+			SelectionManager._remove_from_selection(regiment)
+		else:
+			SelectionManager.add_to_selection(regiment)
+
+
+func _on_tide_changed(_old_value: float, new_value: float):
+	# Update tide bar visualization
+	# new_value ranges from -100 (enemy winning) to +100 (player winning)
+	if not tide_bar_fill or not tide_bar_container:
+		return
+
+	# Calculate bar position and size
+	# Bar is 200px wide, center is at x=100
+	var bar_width: float = 200.0
+	var center: float = bar_width / 2.0
+	var normalized: float = new_value / 100.0  # -1 to +1
+
+	if new_value >= 0:
+		# Player winning: fill from center to right (green)
+		var fill_width: float = normalized * center
+		tide_bar_fill.position.x = center
+		tide_bar_fill.size.x = fill_width
+		tide_bar_fill.color = Color(0.3, 0.7, 0.4, 0.9)  # Green
+	else:
+		# Enemy winning: fill from center to left (red)
+		var fill_width: float = -normalized * center
+		tide_bar_fill.position.x = center - fill_width
+		tide_bar_fill.size.x = fill_width
+		tide_bar_fill.color = Color(0.8, 0.3, 0.3, 0.9)  # Red
+
+	# Update tooltip
+	var status: String
+	if new_value > 30:
+		status = "Winning"
+	elif new_value > 10:
+		status = "Advantage"
+	elif new_value < -30:
+		status = "Losing"
+	elif new_value < -10:
+		status = "Disadvantage"
+	else:
+		status = "Even"
+	tide_bar_container.tooltip_text = "Battle Tide: %s (%.0f)" % [status, new_value]
 
 
 func _on_regiment_selected(regiment: Regiment):
@@ -606,8 +1237,11 @@ func _create_stance_buttons():
 		var btn: Button = Button.new()
 		btn.text = StanceType.get_stance_name(stance).substr(0, 1)  # First letter
 		btn.tooltip_text = "%s (%s)" % [StanceType.get_stance_name(stance), OS.get_keycode_string(StanceType.get_hotkey(stance))]
-		btn.custom_minimum_size = Vector2(25, 22)
-		btn.add_theme_font_size_override("font_size", 11)
+		btn.custom_minimum_size = Vector2(40, 32)  # Larger click target
+		btn.add_theme_font_size_override("font_size", 13)
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		_apply_hud_button_style(btn)
 		btn.pressed.connect(_on_stance_button_pressed.bind(stance))
 		stance_container.add_child(btn)
 		stance_buttons[stance] = btn
@@ -625,8 +1259,11 @@ func _create_formation_buttons():
 		var btn: Button = Button.new()
 		btn.text = FormationType.get_formation_name(formation).substr(0, 3)  # First 3 letters
 		btn.tooltip_text = "%s (F%d)" % [FormationType.get_formation_name(formation), formations.find(formation) + 1]
-		btn.custom_minimum_size = Vector2(35, 22)
-		btn.add_theme_font_size_override("font_size", 10)
+		btn.custom_minimum_size = Vector2(50, 32)  # Larger click target
+		btn.add_theme_font_size_override("font_size", 12)
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		_apply_hud_button_style(btn)
 		btn.pressed.connect(_on_formation_button_pressed.bind(formation))
 		formation_container.add_child(btn)
 		formation_buttons[formation] = btn
@@ -694,7 +1331,7 @@ func _update_ability_buttons(regiment: Regiment):
 
 		# Create container to hold button and overlay
 		var container: Control = Control.new()
-		container.custom_minimum_size = Vector2(45, 30)
+		container.custom_minimum_size = Vector2(58, 38)  # Larger click target
 
 		var btn: Button = Button.new()
 		btn.text = data.get("name", "?").substr(0, 3)
@@ -704,7 +1341,10 @@ func _update_ability_buttons(regiment: Regiment):
 			data.get("cooldown", 0.0)
 		]
 		btn.set_anchors_preset(Control.PRESET_FULL_RECT)
-		btn.add_theme_font_size_override("font_size", 10)
+		btn.add_theme_font_size_override("font_size", 11)
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		_apply_hud_button_style(btn)
 
 		# Show hotkey
 		if idx < hotkeys.size():
@@ -753,6 +1393,44 @@ func _on_regiment_dead(regiment: Regiment):
 	if current_selected_regiment == regiment:
 		selected_unit_panel.visible = false
 		current_selected_regiment = null
+
+
+func _on_unit_disengage_failed(regiment: Regiment) -> void:
+	if regiment == current_selected_regiment:
+		_show_combat_message("Disengage failed! (%.1fs cooldown)" % regiment._disengage_cooldown)
+
+
+func _on_unit_disengage_success(regiment: Regiment) -> void:
+	if regiment == current_selected_regiment:
+		_show_combat_message("Disengaged!")
+
+
+# Combat message label (created on first use)
+var _combat_message_label: Label = null
+
+func _show_combat_message(message: String) -> void:
+	## Display a temporary combat feedback message at center-bottom of screen.
+	if not _combat_message_label:
+		_combat_message_label = Label.new()
+		_combat_message_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		_combat_message_label.offset_top = -180
+		_combat_message_label.offset_bottom = -150
+		_combat_message_label.offset_left = -150
+		_combat_message_label.offset_right = 150
+		_combat_message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_combat_message_label.add_theme_font_size_override("font_size", 16)
+		_combat_message_label.add_theme_color_override("font_color", COLOR_GOLD)
+		add_child(_combat_message_label)
+
+	_combat_message_label.text = message
+	_combat_message_label.visible = true
+	_combat_message_label.modulate = Color.WHITE
+
+	# Fade out after 2 seconds
+	var tween: Tween = create_tween()
+	tween.tween_interval(1.5)
+	tween.tween_property(_combat_message_label, "modulate:a", 0.0, 0.5)
+	tween.tween_callback(func(): _combat_message_label.visible = false)
 
 
 func _process(_delta):

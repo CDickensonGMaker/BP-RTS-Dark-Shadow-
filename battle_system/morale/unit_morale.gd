@@ -38,9 +38,16 @@ var _is_routing: bool = false
 var _is_shattered: bool = false
 var _average_morale: float = 80.0
 
-# Tick accumulator (4 Hz = 0.25s tick rate)
+# Morale cap system - recovery ceiling that only drops during battle
+var morale_cap: float = 100.0  # Recovery ceiling, can only drop during battle
+const MORALE_CAP_FLOOR: float = 10.0  # Minimum cap value
+const CAP_DRIFT_RATIO: float = 0.10  # 10% of morale damage applies to cap
+const CAP_DIMINISHING_DIVISOR: float = 20.0  # Controls diminishing returns above cap
+
+# Tick accumulator (4 Hz = 0.25s tick rate for engaged, 2 Hz for idle)
 var _tick_accumulator: float = 0.0
 const TICK_INTERVAL: float = MoraleConstants.MORALE_TICK_RATE
+const TICK_INTERVAL_IDLE: float = 0.5  # Phase 11: Slower tick for non-engaged units
 
 # Aura/environment tick (1 Hz = 1.0s tick rate for surrounding/winning/aura checks)
 var _aura_tick_accumulator: float = 0.0
@@ -69,6 +76,33 @@ func setup(p_regiment: Node) -> void:
 		faction = 0 if p_regiment.is_player_controlled else 1
 
 # =============================================================================
+# MORALE CAP SYSTEM
+# =============================================================================
+
+func drop_cap(amount: float, reason: String = "") -> void:
+	## Lowers the recovery ceiling. Only ever drops, never raises during battle.
+	## Floor at MORALE_CAP_FLOOR.
+	if amount <= 0:
+		return
+	var old_cap: float = morale_cap
+	morale_cap = maxf(MORALE_CAP_FLOOR, morale_cap - amount)
+	if DebugFlags and DebugFlags.morale and old_cap != morale_cap:
+		var reg_name: String = owner_regiment.name if owner_regiment else "?"
+		print("[CAP] %s cap %.1f -> %.1f (-%.1f from %s)" % [
+			reg_name, old_cap, morale_cap, amount, reason
+		])
+
+
+func get_morale_cap() -> float:
+	## Returns the current morale cap (recovery ceiling).
+	return morale_cap
+
+
+func set_initial_cap(cap_value: float) -> void:
+	## Set the initial cap (used when loading from campaign data).
+	morale_cap = clampf(cap_value, MORALE_CAP_FLOOR, 100.0)
+
+# =============================================================================
 # SOLDIER REGISTRATION
 # =============================================================================
 
@@ -90,6 +124,18 @@ func register_soldiers(soldiers: Array, base_morale: float = 80.0) -> void:
 	for soldier in soldiers:
 		if is_instance_valid(soldier):
 			register_soldier(soldier, base_morale)
+
+
+func register_virtual_soldiers(count: int, base_morale: float = 80.0) -> void:
+	## Register virtual soldiers for sprite-based units (no Node3D soldiers).
+	## Creates morale components without owner nodes.
+	for i in range(count):
+		var component: MoraleComponent = MoraleComponent.new(null, base_morale, faction)
+		_soldier_components.append(component)
+		component.soldier_broke.connect(_on_soldier_broke)
+		component.state_changed.connect(_on_soldier_state_changed.bind(component))
+	_total_count = _soldier_components.size()
+	_update_averages()
 
 
 func unregister_soldier(component: MoraleComponent) -> void:
@@ -115,12 +161,18 @@ func get_component_for_soldier(soldier_node: Node) -> MoraleComponent:
 # =============================================================================
 
 func update(delta: float) -> void:
-	## Call each frame. Batches soldier ticks at 4 Hz.
+	## Call each frame. Batches soldier ticks at 4 Hz (engaged) or 2 Hz (idle).
+	## Phase 11 optimization: slower tick rate for non-engaged units saves CPU.
 	_tick_accumulator += delta
 
-	if _tick_accumulator >= TICK_INTERVAL:
-		_tick_accumulator -= TICK_INTERVAL
-		_tick_all_soldiers(TICK_INTERVAL)
+	# Use faster tick rate when engaged in combat, slower when idle
+	var effective_interval: float = TICK_INTERVAL
+	if owner_regiment and owner_regiment.state != Regiment.State.ENGAGING:
+		effective_interval = TICK_INTERVAL_IDLE  # 0.5s for idle units
+
+	if _tick_accumulator >= effective_interval:
+		_tick_accumulator -= effective_interval
+		_tick_all_soldiers(effective_interval)
 		_update_averages()
 		_check_unit_state()
 
@@ -192,6 +244,37 @@ func _update_environment_modifiers() -> void:
 	else:
 		clear_continuous_modifier_all(MoraleEvent.Source.SURROUNDED)
 
+	# --- BATTLE TIDE MODIFIER ---
+	# Apply morale modifier based on overall battle momentum
+	if BattleTide:
+		var tide_bonus: float = BattleTide.get_morale_modifier(owner_regiment.is_player_controlled)
+		if tide_bonus != 0.0:
+			set_continuous_modifier_all(MoraleEvent.Source.BATTLE_TIDE, tide_bonus)
+		else:
+			clear_continuous_modifier_all(MoraleEvent.Source.BATTLE_TIDE)
+
+	# --- NEARBY ALLIES BUFF ---
+	var ally_count: int = _check_nearby_allies(position)
+	if ally_count > 0:
+		var ally_bonus: float = MoraleConstants.CONTINUOUS_NEARBY_ALLIES * float(ally_count)
+		set_continuous_modifier_all(MoraleEvent.Source.NEARBY_ALLIES, ally_bonus)
+	else:
+		clear_continuous_modifier_all(MoraleEvent.Source.NEARBY_ALLIES)
+
+	# --- OUTNUMBERED MODIFIER ---
+	var is_outnumbered: bool = _check_outnumbered(position)
+	if is_outnumbered:
+		set_continuous_modifier_all(MoraleEvent.Source.OUTNUMBERED, MoraleConstants.CONTINUOUS_OUTNUMBERED)
+	else:
+		clear_continuous_modifier_all(MoraleEvent.Source.OUTNUMBERED)
+
+	# --- UNDER FIRE MODIFIER ---
+	var is_under_fire: bool = _check_under_fire()
+	if is_under_fire:
+		set_continuous_modifier_all(MoraleEvent.Source.UNDER_FIRE, MoraleConstants.CONTINUOUS_UNDER_FIRE)
+	else:
+		clear_continuous_modifier_all(MoraleEvent.Source.UNDER_FIRE)
+
 
 func _check_winning_combat() -> bool:
 	## Check if regiment is inflicting more casualties than receiving.
@@ -227,7 +310,7 @@ func _check_surrounded(position: Vector3) -> bool:
 	if not AIAutoload or not AIAutoload.spatial_hash:
 		return false
 
-	var enemy_faction: int = 1 if faction == 0 else 0
+	var _enemy_faction: int = 1 if faction == 0 else 0  # Reserved for faction checks
 	var nearby_enemies: Array = AIAutoload.spatial_hash.query_radius_enemies(
 		position, 25.0, faction
 	)
@@ -272,6 +355,58 @@ func _check_surrounded(position: Vector3) -> bool:
 
 	# Surrounded = enemies in 3+ quadrants
 	return quadrants_with_enemies >= 3
+
+
+func _check_nearby_allies(position: Vector3) -> int:
+	## Count friendly regiments within support radius.
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return 0
+
+	var nearby_allies: Array = AIAutoload.spatial_hash.query_radius(
+		position,
+		MoraleConstants.NEARBY_ALLIES_RADIUS,
+		faction,
+		SpatialHash.EntityType.REGIMENT
+	)
+
+	# Count valid, living allies (exclude self)
+	var count: int = 0
+	for ally in nearby_allies:
+		if not is_instance_valid(ally) or ally == owner_regiment:
+			continue
+		if ally.state == Regiment.State.DEAD or ally.state == Regiment.State.ROUTING:
+			continue
+		count += 1
+
+	return mini(count, MoraleConstants.NEARBY_ALLIES_MAX_BONUS)
+
+
+func _check_outnumbered(position: Vector3) -> bool:
+	## Check if locally outnumbered (enemies > allies * 1.5).
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return false
+
+	var check_radius: float = 25.0
+
+	var nearby_enemies: Array = AIAutoload.spatial_hash.query_radius_enemies(
+		position, check_radius, faction
+	)
+	var nearby_allies: Array = AIAutoload.spatial_hash.query_radius(
+		position, check_radius, faction, SpatialHash.EntityType.REGIMENT
+	)
+
+	var enemy_count: int = nearby_enemies.size()
+	var ally_count: int = nearby_allies.size()  # Includes self
+
+	return enemy_count > int(float(ally_count) * 1.5)
+
+
+func _check_under_fire() -> bool:
+	## Check if regiment recently took ranged damage.
+	## Uses casualty tracker's recent damage flag.
+	if not owner_regiment or not owner_regiment.casualty_tracker:
+		return false
+	return owner_regiment.casualty_tracker.took_ranged_damage_recently()
 
 
 func track_casualties_inflicted(count: int) -> void:
@@ -323,14 +458,14 @@ func _check_unit_state() -> void:
 			BattleSignals.regiment_rallied.emit(owner_regiment)
 
 
-func _on_soldier_broke(soldier: Node) -> void:
+func _on_soldier_broke(_soldier: Node) -> void:
 	## Called when an individual soldier breaks.
 	_broken_count += 1
 	broken_ratio_changed.emit(get_broken_ratio())
 	_check_unit_state()
 
 
-func _on_soldier_state_changed(old_state: MoraleEvent.State, new_state: MoraleEvent.State, component: MoraleComponent) -> void:
+func _on_soldier_state_changed(old_state: MoraleEvent.State, new_state: MoraleEvent.State, _component: MoraleComponent) -> void:
 	## Track state changes for broken count.
 	# If soldier recovered from broken
 	if old_state == MoraleEvent.State.BROKEN and new_state != MoraleEvent.State.BROKEN:
@@ -449,6 +584,35 @@ func is_routing() -> bool:
 func is_shattered() -> bool:
 	## Returns true if unit is shattered (cannot rally).
 	return _is_shattered
+
+
+func force_rout() -> void:
+	## Force the unit to immediately rout (from casualty threshold).
+	if _is_routing:
+		return
+	# Check if unit can rout (Fanatic units cannot)
+	if owner_regiment and owner_regiment.data and not owner_regiment.data.can_rout():
+		return
+	_is_routing = true
+	unit_routed.emit()
+	BattleSignals.regiment_routing.emit(owner_regiment)
+
+
+func rally() -> void:
+	## Rally the unit from routing state.
+	if not _is_routing or _is_shattered:
+		return
+	_is_routing = false
+	# Restore average morale to 40%
+	apply_morale_modifier(40.0 - _average_morale)
+	unit_rallied.emit()
+	BattleSignals.regiment_rallied.emit(owner_regiment)
+
+
+func apply_morale_modifier(amount: float) -> void:
+	## Apply a direct morale modifier to all soldiers.
+	for component in _soldier_components:
+		component.apply_direct_modifier(amount)
 
 
 func get_soldier_count() -> int:

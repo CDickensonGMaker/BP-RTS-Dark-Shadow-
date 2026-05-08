@@ -14,6 +14,7 @@ var _support_units: Array = []
 
 func _init(p_general_ai: GeneralAI = null) -> void:
 	super._init(p_general_ai, "All-Out Assault")
+	intent = "Concentrate all forces and overwhelm the enemy with aggressive attack"
 
 
 func evaluate(analysis: BattlefieldAnalysis) -> float:

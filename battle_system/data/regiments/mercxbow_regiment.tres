@@ -7,6 +7,8 @@
 script = ExtResource("1")
 regiment_name = "Blackwood Marksmen"
 unit_type = 2
+faction = "empire"
+weapon_class = 2
 attack = 8
 defense = 8
 weapon_skill = 10

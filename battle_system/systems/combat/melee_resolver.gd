@@ -11,6 +11,7 @@ extends RefCounted
 const FlankingCalculatorScript = preload("res://battle_system/systems/combat/flanking_calculator.gd")
 const ChargeSystemScript = preload("res://battle_system/systems/combat/charge_system.gd")
 const TerrainCombatModifiersScript = preload("res://battle_system/terrain/terrain_combat_modifiers.gd")
+const MatchupCalculatorScript = preload("res://battle_system/systems/combat/matchup_calculator.gd")
 
 # To Hit table (attacker WS vs defender WS)
 # Difference -> hit chance
@@ -44,6 +45,11 @@ const SLOPE_WS_BONUS: int = 2  # +2 effective WS when defending uphill
 const DEFAULT_FILES_PER_RANK: int = 8  # Default front rank width
 const SUPPORT_RANK_MULTIPLIER: float = 0.5  # Second rank fights at 50% effectiveness
 
+# === GENERAL COMBAT MULTIPLIER ===
+# Generals are single units that fight with the strength of many soldiers.
+# Balanced to be powerful but not invincible (roughly one strong front rank).
+const GENERAL_EFFECTIVE_SOLDIERS: int = 10  # General fights like 10 elite soldiers
+
 # References to helper systems
 var flanking  # FlankingCalculator
 var charge    # ChargeSystem
@@ -55,28 +61,36 @@ func _init() -> void:
 
 
 ## Get the number of soldiers that can fight in the front rank.
-## Uses formation width if available, otherwise defaults to 8.
+## BUG #2 FIX: Use current_formation (always exists on Regiment) instead of checking
+## formation.rows which may be null or missing.
 func get_front_rank_size(regiment: Node) -> int:
-	# Try to get formation width from regiment
-	if "formation" in regiment and regiment.formation:
-		var formation = regiment.formation
-		# SoldierFormation stores 'rows' which is ranks deep
-		# Files = soldiers / ranks
-		var alive_count: int = regiment.current_soldiers if "current_soldiers" in regiment else 20
-		if "alive_count" in formation:
-			alive_count = formation.alive_count
-		var ranks: int = 3  # Default
-		if "rows" in formation:
-			ranks = formation.rows
-		return ceili(float(alive_count) / float(maxi(ranks, 1)))
+	var total_soldiers: int = 20
+	if "current_soldiers" in regiment:
+		total_soldiers = regiment.current_soldiers
 
-	# Fallback to default
-	return DEFAULT_FILES_PER_RANK
+	# Get ranks from current_formation using FormationType.RANKS dictionary
+	var ranks: int = 3  # Default LINE formation
+	if "current_formation" in regiment:
+		var formation_type = regiment.current_formation
+		if formation_type in FormationType.RANKS:
+			ranks = FormationType.RANKS[formation_type]
+			# Special formations (0) use dynamic calculation
+			if ranks == 0:
+				# Wedge/Square/Schiltron: estimate based on soldier count
+				ranks = maxi(2, ceili(sqrt(float(total_soldiers)) / 2.0))
+
+	# Files = soldiers / ranks (how many in front rank)
+	return ceili(float(total_soldiers) / float(maxi(ranks, 1)))
 
 
 ## Calculate effective number of attacks based on front rank limiting.
 ## Only front rank attacks at full strength, support rank at 50%.
+## Generals are special: they fight as if they were GENERAL_EFFECTIVE_SOLDIERS.
 func calculate_effective_attacks(regiment: Node) -> int:
+	# Check if this is a General unit - they fight with the strength of many
+	if "data" in regiment and regiment.data and regiment.data.unit_type == UnitType.Type.GENERAL:
+		return GENERAL_EFFECTIVE_SOLDIERS
+
 	var total_soldiers: int = 20
 	if "current_soldiers" in regiment:
 		total_soldiers = regiment.current_soldiers
@@ -314,7 +328,19 @@ func resolve_bidirectional_melee(
 		var terrain_attack_mod: float = TerrainCombatModifiersScript.get_total_attack_modifier(tree, attacker, defender, false)
 		att_ws = int(float(att_ws) * terrain_attack_mod)
 
+	# Apply unit type matchup bonus (rock-paper-scissors system)
+	var matchup_bonus: float = MatchupCalculatorScript.get_melee_matchup(attacker.data.unit_type, defender.data.unit_type)
+	if MatchupCalculatorScript.is_spear_unit(attacker.data) and defender.data.unit_type == UnitType.Type.CAVALRY:
+		matchup_bonus *= MatchupCalculatorScript.SPEAR_VS_CAVALRY_BONUS
+	# Apply hero trait weakness penalty (heroes have personal weaknesses)
+	if attacker.data.unit_type == UnitType.Type.GENERAL:
+		matchup_bonus *= attacker.data.get_weakness_penalty_vs(defender.data.unit_type)
+	att_ws = int(float(att_ws) * matchup_bonus)
+
 	var att_strength: int = attacker.data.strength if attacker.data else 3
+	# BUG #3 FIX: Save base strength before charge bonus for damage-per-wound calculation.
+	# Charge bonus should affect To Wound rolls, not damage scaling.
+	var att_base_strength: int = att_strength
 
 	# Apply charge bonus
 	var effective_charge_bonus: int = 0
@@ -345,8 +371,9 @@ func resolve_bidirectional_melee(
 	var to_wound_chance: float = calculate_to_wound(att_strength, def_defense)
 	var armor_save: float = calculate_armor_save(def_armor, def_formation_bonus)
 
-	# Damage per wound based on strength (strength 3 = 1, strength 6 = 2, etc.)
-	var att_damage_per_wound: int = maxi(1, att_strength / 3)
+	# BUG #3 FIX: Damage per wound uses BASE strength (before charge bonus).
+	# Charge bonus affects hit/wound chances, not damage scaling.
+	var att_damage_per_wound: int = maxi(1, att_base_strength / 3)
 
 	for i in att_attacks:
 		# To Hit
@@ -393,10 +420,35 @@ func resolve_bidirectional_melee(
 	var def_total_casualties: int = 0
 	var def_any_hit: bool = false
 
+	# FLANKING FIX: compute disorder multipliers FIRST. Must happen before
+	# counter_matchup is baked into def_att_ws below, otherwise the matchup
+	# disorder is applied too late to affect anything.
+	var defender_is_flanked: bool = result.attacker.get("is_flank", false)
+	var defender_is_rear: bool = result.attacker.get("is_rear", false)
+	var disorder_attack_mult: float = 1.0
+	var disorder_matchup_mult: float = 1.0
+	if defender_is_rear:
+		disorder_attack_mult = 0.4    # 60% counter-attack reduction from rear
+		disorder_matchup_mult = 0.3   # spear-vs-cav advantage almost gone
+	elif defender_is_flanked:
+		disorder_attack_mult = 0.65   # 35% counter-attack reduction from flank
+		disorder_matchup_mult = 0.6   # spear-vs-cav advantage halved
+
 	# Get defender attack stats (they attack back)
 	var def_att_ws: int = defender.data.weapon_skill if defender.data else 10
 	var def_att_mod: float = defender.get_attack_modifier() if defender.has_method("get_attack_modifier") else 1.0
 	def_att_ws = int(float(def_att_ws) * def_att_mod)
+
+	# Apply unit type matchup bonus for counter-attack (defender attacking attacker)
+	var counter_matchup: float = MatchupCalculatorScript.get_melee_matchup(defender.data.unit_type, attacker.data.unit_type)
+	if MatchupCalculatorScript.is_spear_unit(defender.data) and attacker.data.unit_type == UnitType.Type.CAVALRY:
+		counter_matchup *= MatchupCalculatorScript.SPEAR_VS_CAVALRY_BONUS
+	# Apply hero trait weakness penalty for counter-attack
+	if defender.data.unit_type == UnitType.Type.GENERAL:
+		counter_matchup *= defender.data.get_weakness_penalty_vs(attacker.data.unit_type)
+	# FLANKING FIX: apply disorder to matchup before it's baked into def_att_ws
+	counter_matchup *= disorder_matchup_mult
+	def_att_ws = int(float(def_att_ws) * counter_matchup)
 
 	var def_strength: int = defender.data.strength if defender.data else 3
 
@@ -442,10 +494,12 @@ func resolve_bidirectional_melee(
 		result.defender_counter.is_rear = flanking.is_rear_attack(defender, attacker)
 
 		# Apply modifiers to total casualties
+		# FLANKING FIX: disorder_attack_mult reduces counter-attack when defender is flanked
 		result.defender_counter.casualties = maxi(0, int(
 			float(def_total_casualties) *
 			result.defender_counter.height_mod *
 			result.defender_counter.flank_mod *
+			disorder_attack_mult *
 			counter_ai_multiplier
 		))
 

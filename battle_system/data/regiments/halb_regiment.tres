@@ -7,6 +7,7 @@
 script = ExtResource("1")
 regiment_name = "Halberdiers"
 unit_type = 0
+faction = "empire"
 attack = 8
 defense = 10
 weapon_skill = 8

@@ -1,12 +1,14 @@
 [gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
-[ext_resource type="Resource" path="res://assets/sprites/units/gravearch_atlas.tres" id="2"]
+[ext_resource type="Resource" path="res://assets/sprites/units/skelarch_atlas.tres" id="2"]
 
 [resource]
 script = ExtResource("1")
 regiment_name = "Skeleton Archers"
 unit_type = 2
+faction = "undead"
+weapon_class = 1
 personality = 3
 fire_mode = 0
 attack = 5

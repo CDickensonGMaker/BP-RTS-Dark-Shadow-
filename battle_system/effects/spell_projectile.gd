@@ -48,6 +48,9 @@ var target_regiment: Regiment = null
 ## Visual scale
 var visual_scale: float = 1.0
 
+## Use sprite-based visuals instead of particles
+var use_sprite_visuals: bool = true
+
 # === INTERNAL STATE ===
 
 var _start_position: Vector3 = Vector3.ZERO
@@ -55,9 +58,11 @@ var _time_alive: float = 0.0
 var _total_distance: float = 0.0
 var _distance_traveled: float = 0.0
 var _direction: Vector3 = Vector3.FORWARD
-var _particles: GPUParticles3D = null
+var _particles_ref: GPUParticles3D = null  # Reserved for future particle effects
 var _mesh: MeshInstance3D = null
 var _trail: GPUParticles3D = null
+var _sprite_effect_idx: int = -1
+var _sprite_direction: int = 0
 
 
 func _ready() -> void:
@@ -111,6 +116,32 @@ func setup(spell: SpellData, source: Regiment, target_pos: Vector3) -> void:
 
 func _setup_visuals() -> void:
 	## Create visual representation.
+	# Try to use sprite-based visuals
+	if use_sprite_visuals:
+		_setup_sprite_visuals()
+		if _sprite_effect_idx >= 0:
+			return  # Sprite setup succeeded
+
+	# Fallback to particle visuals
+	_setup_particle_visuals()
+
+
+func _setup_sprite_visuals() -> void:
+	## Setup sprite-based projectile visuals.
+	var sprite_pool := get_node_or_null("/root/SpriteEffectPool")
+	if not sprite_pool:
+		return
+
+	_sprite_direction = _direction_to_index(_direction)
+	_sprite_effect_idx = sprite_pool.spawn_spell_projectile(
+		global_position,
+		_sprite_direction,
+		damage_type
+	)
+
+
+func _setup_particle_visuals() -> void:
+	## Setup particle-based projectile visuals (fallback).
 	# Create glowing sphere mesh
 	_mesh = MeshInstance3D.new()
 	var sphere := SphereMesh.new()
@@ -171,6 +202,14 @@ func _setup_visuals() -> void:
 
 	add_child(_trail)
 	_trail.emitting = true
+
+
+func _direction_to_index(dir: Vector3) -> int:
+	## Convert direction to 8-way index.
+	var angle := atan2(dir.x, -dir.z)
+	if angle < 0:
+		angle += TAU
+	return int(round(angle / (TAU / 8.0))) % 8
 
 
 func _update_arc_movement(delta: float) -> void:
@@ -304,7 +343,10 @@ func _find_regiment_at_position(pos: Vector3, radius: float) -> Regiment:
 
 func _spawn_impact_effect() -> void:
 	## Create impact visual effect.
-	if CombatEffects:
+	# Try sprite-based impact first
+	if SpellEffects and SpellEffects.has_method("spawn_sprite_impact"):
+		SpellEffects.spawn_sprite_impact(global_position, damage_type, max(impact_radius, 3.0))
+	elif CombatEffects:
 		match damage_type:
 			SpellData.DamageType.FIRE:
 				CombatEffects.spawn_melee_hit(global_position)
@@ -323,5 +365,18 @@ func _expire() -> void:
 	if _trail:
 		_trail.emitting = false
 
+	# Hide sprite effect
+	_hide_sprite_effect()
+
 	projectile_expired.emit()
 	queue_free()
+
+
+func _hide_sprite_effect() -> void:
+	## Hide the sprite effect if using sprite visuals.
+	if _sprite_effect_idx < 0:
+		return
+
+	# The sprite effect pool handles cleanup automatically via duration
+	# No explicit cleanup needed as the effect will auto-hide
+	_sprite_effect_idx = -1

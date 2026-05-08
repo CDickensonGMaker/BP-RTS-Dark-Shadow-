@@ -1,0 +1,76 @@
+[gd_scene format=3 uid="uid://siege_stress_test_01"]
+
+[ext_resource type="Script" uid="uid://7x6x7woj7u" path="res://scenes/battle_scene.gd" id="1_main"]
+[ext_resource type="Script" uid="uid://biqn168xq7h7o" path="res://battle_system/terrain/battle_terrain.gd" id="2_terrain"]
+[ext_resource type="Script" uid="uid://b3xvmk7tjv40s" path="res://battle_system/ui/battle_over_screen.gd" id="3_battle_over"]
+[ext_resource type="Script" uid="uid://c341y0x14wvlo" path="res://battle_system/objectives/capture_point.gd" id="4_capture"]
+[ext_resource type="Script" uid="uid://eit583hnmom1" path="res://battle_system/objectives/siege_manager.gd" id="5_siege"]
+
+[node name="BattleScene" type="Node3D"]
+script = ExtResource("1_main")
+stress_test_mode = true
+stress_test_units_per_side = 20
+auto_start_battle = true
+siege_defense_mode = true
+
+[node name="BattleTerrain" type="Node3D" parent="."]
+script = ExtResource("2_terrain")
+terrain_size = Vector2(300, 300)
+terrain_resolution = 96
+height_scale = 6.0
+tree_count = 15
+building_count = 25
+prop_count = 40
+bush_count = 20
+
+[node name="SiegeManager" type="Node" parent="."]
+script = ExtResource("5_siege")
+require_all_points = false
+hold_time = 0.0
+attacker_is_player = true
+use_victory_points = true
+victory_points_required = 150
+points_per_second = 1.0
+
+[node name="Citadel" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+script = ExtResource("4_capture")
+capture_radius = 18.0
+capture_time = 40.0
+point_name = "Citadel"
+initial_owner = "enemy"
+
+[node name="Market" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 35, 0, 25)
+script = ExtResource("4_capture")
+capture_radius = 15.0
+capture_time = 30.0
+point_name = "Market"
+initial_owner = "enemy"
+
+[node name="Barracks" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -35, 0, -25)
+script = ExtResource("4_capture")
+capture_radius = 15.0
+capture_time = 30.0
+point_name = "Barracks"
+initial_owner = "enemy"
+
+[node name="EastGate" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0, -10)
+script = ExtResource("4_capture")
+capture_radius = 12.0
+capture_time = 20.0
+point_name = "East Gate"
+initial_owner = "enemy"
+
+[node name="WestGate" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -50, 0, 10)
+script = ExtResource("4_capture")
+capture_radius = 12.0
+capture_time = 20.0
+point_name = "West Gate"
+initial_owner = "enemy"
+
+[node name="BattleOverScreen" type="CanvasLayer" parent="."]
+script = ExtResource("3_battle_over")

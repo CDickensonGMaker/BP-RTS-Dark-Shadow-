@@ -7,9 +7,22 @@ extends PanelContainer
 
 signal card_clicked(regiment: Regiment)
 signal card_right_clicked(regiment: Regiment)
+signal card_shift_clicked(regiment: Regiment)  # Multi-select support (add to selection)
+signal card_ctrl_clicked(regiment: Regiment)   # Toggle selection support
 
 var regiment: Regiment
 var is_selected: bool = false
+
+# === REGIMENT STATE COLOR CODING ===
+# Background colors based on what the unit is DOING (behavioral state)
+const STATE_BG_COLORS = {
+	Regiment.State.IDLE: Color(0.25, 0.25, 0.25, 0.9),        # Dark gray - waiting
+	Regiment.State.MARCHING: Color(0.15, 0.3, 0.55, 0.9),     # Blue - moving
+	Regiment.State.ENGAGING: Color(0.55, 0.15, 0.15, 0.9),    # Red - fighting
+	Regiment.State.ROUTING: Color(0.35, 0.1, 0.1, 0.9),       # Dark red - fleeing
+	Regiment.State.RALLYING: Color(0.5, 0.45, 0.15, 0.9),     # Yellow - recovering
+	Regiment.State.DEAD: Color(0.15, 0.15, 0.15, 0.6),        # Very dark - dead
+}
 
 # === CARD STATE SYSTEM (Task 1) ===
 enum CardState {
@@ -66,6 +79,8 @@ const COLOR_STATUS_BRACED = Color(0.4, 0.6, 0.9, 1.0)  # Blue
 const COLOR_STATUS_CHARGING = Color(0.9, 0.7, 0.2, 1.0)  # Yellow
 const COLOR_STATUS_INSPIRED = Color(0.85, 0.7, 0.4, 1.0)  # Gold
 const COLOR_STATUS_HOLD_FIRE = Color(0.8, 0.3, 0.3, 1.0)  # Red
+const COLOR_STATUS_RUNNING = Color(0.3, 0.9, 0.5, 1.0)  # Green - running mode
+const COLOR_STATUS_SHAKEN = Color(0.7, 0.5, 0.9, 1.0)   # Purple - hasn't fully recovered
 
 # === MORALE THRESHOLDS (Task 4) ===
 const MORALE_STEADY_THRESHOLD: float = 70.0
@@ -95,6 +110,8 @@ var unit_type_label: Label
 var status_container: HBoxContainer
 var morale_bar_container: Control
 var morale_threshold_markers: Array[ColorRect] = []
+var morale_cap_marker: ColorRect  # Vertical notch showing morale cap
+var morale_cap_shade: ColorRect   # Shaded region above cap
 var ability_cooldown_container: HBoxContainer
 
 # Ammo warning state
@@ -143,19 +160,21 @@ func _ready():
 
 
 func _setup_ui():
-	custom_minimum_size = Vector2(120, 150)
+	# Unit cards: 85px wide, 145px tall for better readability
+	custom_minimum_size = Vector2(85, 145)
 	# Ensure this card captures mouse clicks
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 2)
+	vbox.add_theme_constant_override("separation", 1)
 	# Children should pass mouse events to parent (this card)
 	vbox.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(vbox)
 
 	# Portrait area with faction color background
 	var portrait_container = Control.new()
-	portrait_container.custom_minimum_size = Vector2(100, 60)
+	portrait_container.custom_minimum_size = Vector2(75, 55)  # Taller portrait
 	portrait_container.mouse_filter = Control.MOUSE_FILTER_PASS
 	vbox.add_child(portrait_container)
 
@@ -165,64 +184,66 @@ func _setup_ui():
 	portrait_rect.mouse_filter = Control.MOUSE_FILTER_PASS
 	portrait_container.add_child(portrait_rect)
 
-	# === CHEVRON BADGES (Task 2) ===
+	# === CHEVRON BADGES (Task 2) - smaller ===
 	chevron_container = HBoxContainer.new()
-	chevron_container.position = Vector2(4, 4)
-	chevron_container.add_theme_constant_override("separation", 2)
-	chevron_container.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
+	chevron_container.position = Vector2(2, 2)
+	chevron_container.add_theme_constant_override("separation", 1)
+	chevron_container.mouse_filter = Control.MOUSE_FILTER_PASS
 	portrait_container.add_child(chevron_container)
 
-	# === UNIT TYPE BADGE (Task 3) ===
+	# === UNIT TYPE BADGE (Task 3) - slightly larger for visibility ===
 	unit_type_badge = Panel.new()
 	unit_type_badge.custom_minimum_size = Vector2(16, 16)
-	unit_type_badge.position = Vector2(80, 4)  # Top-right of portrait
-	unit_type_badge.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
+	unit_type_badge.position = Vector2(52, 2)  # Top-right of portrait
+	unit_type_badge.mouse_filter = Control.MOUSE_FILTER_PASS
 	var badge_style = StyleBoxFlat.new()
 	badge_style.bg_color = Color(0.4, 0.5, 0.7)
-	badge_style.set_corner_radius_all(3)
+	badge_style.set_corner_radius_all(2)
 	unit_type_badge.add_theme_stylebox_override("panel", badge_style)
 	portrait_container.add_child(unit_type_badge)
 
 	unit_type_label = Label.new()
 	unit_type_label.text = "I"
-	unit_type_label.add_theme_font_size_override("font_size", 10)
+	unit_type_label.add_theme_font_size_override("font_size", 9)
 	unit_type_label.add_theme_color_override("font_color", Color.WHITE)
 	unit_type_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	unit_type_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	unit_type_label.set_anchors_preset(Control.PRESET_FULL_RECT)
-	unit_type_label.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Ignore clicks
+	unit_type_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	unit_type_badge.add_child(unit_type_label)
 
-	# Unit name
+	# Unit name - readable size
 	name_label = Label.new()
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", 12)
+	name_label.add_theme_font_size_override("font_size", 9)
+	name_label.clip_text = true  # Clip if too long
+	name_label.custom_minimum_size.x = 76
 	vbox.add_child(name_label)
 
-	# === STATUS ICONS (Task 3) ===
+	# === STATUS ICONS (Task 3) - compact row ===
 	status_container = HBoxContainer.new()
-	status_container.custom_minimum_size = Vector2(0, 14)
-	status_container.add_theme_constant_override("separation", 2)
+	status_container.custom_minimum_size = Vector2(0, 10)
+	status_container.add_theme_constant_override("separation", 1)
 	status_container.alignment = BoxContainer.ALIGNMENT_CENTER
-	status_container.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
+	status_container.mouse_filter = Control.MOUSE_FILTER_PASS
 	vbox.add_child(status_container)
 
-	# Soldier count
+	# Soldier count - smaller
 	soldier_count_label = Label.new()
 	soldier_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	soldier_count_label.add_theme_font_size_override("font_size", 10)
+	soldier_count_label.add_theme_font_size_override("font_size", 8)
 	vbox.add_child(soldier_count_label)
 
-	# Health bar
+	# Health bar - visible
 	health_bar = ProgressBar.new()
-	health_bar.custom_minimum_size = Vector2(100, 8)
+	health_bar.custom_minimum_size = Vector2(74, 6)
 	health_bar.show_percentage = false
 	health_bar.max_value = 100
 	vbox.add_child(health_bar)
 
 	# === MORALE BAR WITH THRESHOLDS (Task 4) ===
 	morale_bar_container = Control.new()
-	morale_bar_container.custom_minimum_size = Vector2(100, 8)
+	morale_bar_container.custom_minimum_size = Vector2(74, 6)
 	vbox.add_child(morale_bar_container)
 
 	morale_bar = ProgressBar.new()
@@ -239,15 +260,32 @@ func _setup_ui():
 	_add_morale_marker(MORALE_WAVERING_THRESHOLD, COLOR_MORALE_WAVERING)
 	_add_morale_marker(MORALE_SHAKEN_THRESHOLD, COLOR_MORALE_BROKEN)
 
-	# Ammo container (for ranged units)
+	# Morale cap shade (region above cap where recovery is diminished)
+	morale_cap_shade = ColorRect.new()
+	morale_cap_shade.custom_minimum_size = Vector2(0, 6)
+	morale_cap_shade.color = Color(0.0, 0.0, 0.0, 0.4)  # Semi-transparent dark overlay
+	morale_cap_shade.position = Vector2(74, 0)  # Start off-screen, will be positioned in update
+	morale_cap_shade.size = Vector2(0, 6)
+	morale_cap_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	morale_bar_container.add_child(morale_cap_shade)
+
+	# Morale cap marker (vertical notch showing current cap)
+	morale_cap_marker = ColorRect.new()
+	morale_cap_marker.custom_minimum_size = Vector2(2, 6)
+	morale_cap_marker.color = Color(1.0, 1.0, 1.0, 0.8)  # White notch
+	morale_cap_marker.position = Vector2(74, 0)  # Will be positioned in update
+	morale_cap_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	morale_bar_container.add_child(morale_cap_marker)
+
+	# Ammo container (for ranged units) - compact
 	ammo_container = VBoxContainer.new()
-	ammo_container.add_theme_constant_override("separation", 1)
+	ammo_container.add_theme_constant_override("separation", 0)
 	ammo_container.visible = false
 	vbox.add_child(ammo_container)
 
-	# Ammo bar
+	# Ammo bar - visible
 	ammo_bar = ProgressBar.new()
-	ammo_bar.custom_minimum_size = Vector2(100, 6)
+	ammo_bar.custom_minimum_size = Vector2(74, 5)
 	ammo_bar.show_percentage = false
 	ammo_bar.max_value = 100
 	var ammo_bar_style = StyleBoxFlat.new()
@@ -258,28 +296,29 @@ func _setup_ui():
 	ammo_bar.add_theme_stylebox_override("background", ammo_bg_style)
 	ammo_container.add_child(ammo_bar)
 
-	# Ammo count label
+	# Ammo count label - hide text, just use bar
 	ammo_label = Label.new()
 	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	ammo_label.add_theme_font_size_override("font_size", 9)
+	ammo_label.add_theme_font_size_override("font_size", 7)
 	ammo_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.9))
+	ammo_label.visible = false  # Hide text for skinnier look
 	ammo_container.add_child(ammo_label)
 
-	# OUT OF AMMO warning label
+	# OUT OF AMMO warning label - abbreviated
 	ammo_warning_label = Label.new()
-	ammo_warning_label.text = "OUT OF AMMO"
+	ammo_warning_label.text = "NO AMMO"
 	ammo_warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	ammo_warning_label.add_theme_font_size_override("font_size", 8)
+	ammo_warning_label.add_theme_font_size_override("font_size", 6)
 	ammo_warning_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2))
 	ammo_warning_label.visible = false
 	ammo_container.add_child(ammo_warning_label)
 
-	# === ABILITY COOLDOWN BADGES (Task 5) ===
+	# === ABILITY COOLDOWN BADGES (Task 5) - smaller ===
 	ability_cooldown_container = HBoxContainer.new()
 	ability_cooldown_container.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	ability_cooldown_container.position = Vector2(-52, -16)
-	ability_cooldown_container.add_theme_constant_override("separation", 2)
-	ability_cooldown_container.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
+	ability_cooldown_container.position = Vector2(-30, -12)
+	ability_cooldown_container.add_theme_constant_override("separation", 1)
+	ability_cooldown_container.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(ability_cooldown_container)
 
 	# === CREATE CACHED STYLEBOXES (Performance Optimization) ===
@@ -298,30 +337,36 @@ func _setup_ui():
 
 func _add_morale_marker(threshold: float, color: Color):
 	var marker = ColorRect.new()
-	marker.custom_minimum_size = Vector2(2, 8)
+	marker.custom_minimum_size = Vector2(1, 6)
 	marker.color = color
 	marker.color.a = 0.6
-	marker.position = Vector2(threshold - 1, 0)
+	# Scale threshold position for 74px wide bar
+	marker.position = Vector2((threshold / 100.0) * 74 - 0.5, 0)
 	morale_bar_container.add_child(marker)
 	morale_threshold_markers.append(marker)
 
+
+var _last_regiment_state: int = -1
 
 func setup(reg: Regiment):
 	regiment = reg
 	if not regiment:
 		return
 
-	name_label.text = regiment.data.regiment_name
+	# Abbreviate long names for skinnier cards
+	var display_name: String = regiment.data.regiment_name
+	if display_name.length() > 10:
+		display_name = display_name.substr(0, 9) + "."
+	name_label.text = display_name
 	_setup_unit_type_badge()
 
-	# Initialize cached panel style with faction color (reused for all state changes)
+	# Initialize cached panel style - will update color based on state
 	_cached_panel_style = StyleBoxFlat.new()
-	_cached_panel_style.bg_color = regiment.data.faction_color
-	_cached_panel_style.bg_color.a = 0.3
-	_cached_panel_style.corner_radius_top_left = 4
-	_cached_panel_style.corner_radius_top_right = 4
-	_cached_panel_style.corner_radius_bottom_left = 4
-	_cached_panel_style.corner_radius_bottom_right = 4
+	_cached_panel_style.bg_color = STATE_BG_COLORS.get(Regiment.State.IDLE, Color(0.25, 0.25, 0.25, 0.9))
+	_cached_panel_style.corner_radius_top_left = 3
+	_cached_panel_style.corner_radius_top_right = 3
+	_cached_panel_style.corner_radius_bottom_left = 3
+	_cached_panel_style.corner_radius_bottom_right = 3
 	_cached_panel_style.border_width_left = 1
 	_cached_panel_style.border_width_right = 1
 	_cached_panel_style.border_width_top = 1
@@ -347,6 +392,9 @@ func setup(reg: Regiment):
 		ammo_bar.max_value = regiment.data.max_ammo
 		_ammo_empty_warning_played = false
 		_ammo_low_warning_played = false
+
+	# Build card tooltip with hatred info if applicable
+	_update_card_tooltip()
 
 
 func _setup_unit_type_badge():
@@ -386,6 +434,7 @@ func _process(delta: float):
 		_update_status_icons_throttled()
 		_update_morale_display_throttled()
 		_update_ability_cooldowns_throttled()
+		_update_state_background_color()
 
 
 # === CARD STATE SYSTEM (Task 1) ===
@@ -573,25 +622,25 @@ func _update_chevrons():
 
 
 func _create_chevron(color: Color) -> Control:
-	# Create a simple chevron/triangle badge
+	# Create a simple chevron/triangle badge - smaller for compact cards
 	var badge = Panel.new()
-	badge.custom_minimum_size = Vector2(10, 10)
-	badge.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
+	badge.custom_minimum_size = Vector2(8, 8)
+	badge.mouse_filter = Control.MOUSE_FILTER_PASS
 
 	var style = StyleBoxFlat.new()
 	style.bg_color = color
-	style.set_corner_radius_all(2)
+	style.set_corner_radius_all(1)
 	badge.add_theme_stylebox_override("panel", style)
 
 	# Add a "^" symbol for chevron look
 	var lbl = Label.new()
 	lbl.text = "^"
-	lbl.add_theme_font_size_override("font_size", 8)
+	lbl.add_theme_font_size_override("font_size", 6)
 	lbl.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
-	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Ignore clicks
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge.add_child(lbl)
 
 	return badge
@@ -613,6 +662,12 @@ func _update_status_icons_throttled():
 		status_hash |= 4
 	if regiment.hold_fire:
 		status_hash |= 8
+	# Movement mode: bit 16 = running
+	if regiment.leader and regiment.leader.move_mode == RegimentLeader.MoveMode.RUN:
+		status_hash |= 16
+	# Shaken: bit 32 = morale cap below 100 (hasn't fully recovered)
+	if regiment.unit_morale and regiment.unit_morale.get_morale_cap() < 99.5:
+		status_hash |= 32
 
 	# Skip if unchanged
 	if status_hash == _last_status_hash:
@@ -636,6 +691,13 @@ func _update_status_icons_throttled():
 	if status_hash & 8:
 		_add_status_icon("X", COLOR_STATUS_HOLD_FIRE, "Hold Fire")
 
+	if status_hash & 16:
+		_add_status_icon("R", COLOR_STATUS_RUNNING, "Running (press R to toggle)")
+
+	if status_hash & 32:
+		var cap: float = regiment.unit_morale.get_morale_cap() if regiment.unit_morale else 100.0
+		_add_status_icon("~", COLOR_STATUS_SHAKEN, "Shaken (cap: %.0f%% - hasn't fully recovered)" % cap)
+
 
 # Legacy function for compatibility
 func _update_status_icons():
@@ -644,9 +706,9 @@ func _update_status_icons():
 
 func _add_status_icon(letter: String, color: Color, tooltip: String):
 	var icon = Panel.new()
-	icon.custom_minimum_size = Vector2(12, 12)
+	icon.custom_minimum_size = Vector2(10, 10)  # Smaller for skinnier cards
 	icon.tooltip_text = tooltip
-	icon.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow clicks through
+	icon.mouse_filter = Control.MOUSE_FILTER_PASS
 
 	var style = StyleBoxFlat.new()
 	style.bg_color = color
@@ -655,12 +717,12 @@ func _add_status_icon(letter: String, color: Color, tooltip: String):
 
 	var lbl = Label.new()
 	lbl.text = letter
-	lbl.add_theme_font_size_override("font_size", 8)
+	lbl.add_theme_font_size_override("font_size", 7)
 	lbl.add_theme_color_override("font_color", Color.WHITE)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
-	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Ignore clicks
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.add_child(lbl)
 
 	status_container.add_child(icon)
@@ -674,6 +736,25 @@ func _update_morale_display_throttled():
 
 	var morale = regiment.current_morale
 	morale_bar.value = morale
+
+	# Get morale cap from unit_morale component
+	var cap: float = 100.0
+	if regiment.unit_morale:
+		cap = regiment.unit_morale.get_morale_cap()
+
+	# Update cap marker position (74px bar width)
+	if morale_cap_marker:
+		var cap_x: float = (cap / 100.0) * 74.0 - 1.0  # -1 to center the 2px marker
+		morale_cap_marker.position.x = cap_x
+		# Only show cap marker if cap < 100
+		morale_cap_marker.visible = cap < 99.5
+
+	# Update cap shade (region above cap)
+	if morale_cap_shade:
+		var cap_x: float = (cap / 100.0) * 74.0
+		morale_cap_shade.position.x = cap_x
+		morale_cap_shade.size.x = 74.0 - cap_x
+		morale_cap_shade.visible = cap < 99.5
 
 	# Determine morale band (0-3) for dirty checking
 	var morale_band: int
@@ -701,13 +782,38 @@ func _update_morale_display_throttled():
 			0: _cached_morale_style.bg_color = COLOR_MORALE_BROKEN
 		morale_bar.add_theme_stylebox_override("fill", _cached_morale_style)
 
-	# Tooltip can be updated (strings are cheap)
-	morale_bar.tooltip_text = "Morale: %.0f%% (%s)" % [morale, state_name]
+	# Tooltip shows current morale and cap
+	if cap < 99.5:
+		morale_bar.tooltip_text = "Morale: %.0f / %.0f (cap) - %s" % [morale, cap, state_name]
+	else:
+		morale_bar.tooltip_text = "Morale: %.0f%% (%s)" % [morale, state_name]
 
 
 # Legacy function for compatibility
 func _update_morale_display():
 	_update_morale_display_throttled()
+
+
+# === STATE-BASED BACKGROUND COLOR ===
+func _update_state_background_color():
+	if not regiment or not _cached_panel_style:
+		return
+
+	var current_state: int = regiment.state
+
+	# Skip if state unchanged
+	if current_state == _last_regiment_state:
+		return
+	_last_regiment_state = current_state
+
+	# Update background color based on regiment state
+	var state_color: Color = STATE_BG_COLORS.get(current_state, Color(0.25, 0.25, 0.25, 0.9))
+	_cached_panel_style.bg_color = state_color
+
+	# Add faction color tint overlay
+	if regiment.data:
+		var faction_tint: Color = regiment.data.faction_color
+		_cached_panel_style.bg_color = _cached_panel_style.bg_color.lerp(faction_tint, 0.15)
 
 
 # === ABILITY COOLDOWNS (Task 5) ===
@@ -750,16 +856,16 @@ func _update_ability_cooldowns():
 
 func _create_cooldown_badge(seconds: float) -> Control:
 	var badge = Panel.new()
-	badge.custom_minimum_size = Vector2(14, 14)
+	badge.custom_minimum_size = Vector2(12, 12)  # Smaller for compact cards
 
 	var style = StyleBoxFlat.new()
 	style.bg_color = Color(0.2, 0.2, 0.3, 0.8)
-	style.set_corner_radius_all(7)  # Circular
+	style.set_corner_radius_all(6)  # Circular
 	badge.add_theme_stylebox_override("panel", style)
 
 	var lbl = Label.new()
 	lbl.text = "%.0f" % seconds
-	lbl.add_theme_font_size_override("font_size", 8)
+	lbl.add_theme_font_size_override("font_size", 7)
 	lbl.add_theme_color_override("font_color", Color.WHITE)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -846,6 +952,27 @@ func _update_display():
 	_update_display_throttled()
 
 
+func _update_card_tooltip():
+	## Build the main card tooltip including hatred info for enemy units.
+	if not regiment or not regiment.data:
+		return
+
+	var tooltip_lines: PackedStringArray = []
+	tooltip_lines.append(regiment.data.regiment_name)
+
+	# Add unit type (convert enum to string)
+	var unit_type_name: String = UnitType.Type.keys()[regiment.data.unit_type]
+	tooltip_lines.append("Type: %s" % unit_type_name.capitalize())
+
+	# Add hatred tooltip for enemy regiments (player looking at enemy unit)
+	if not regiment.is_player_controlled and CombatManager and CombatManager.hatred_calculator:
+		var hatred_tip: String = CombatManager.hatred_calculator.get_hatred_tooltip(true, regiment)
+		if not hatred_tip.is_empty():
+			tooltip_lines.append(hatred_tip)
+
+	tooltip_text = "\n".join(tooltip_lines)
+
+
 func _update_ammo_warning(delta: float):
 	if not _ammo_warning_active or not regiment or regiment.data.max_ammo <= 0:
 		ammo_bar.modulate = Color.WHITE
@@ -914,9 +1041,16 @@ func _gui_input(event: InputEvent):
 	if event is InputEventMouseButton:
 		if event.pressed:
 			if event.button_index == MOUSE_BUTTON_LEFT:
-				card_clicked.emit(regiment)
-				# Center camera on the regiment when card is clicked
-				_center_camera_on_regiment()
+				# Ctrl+click for toggle selection
+				if Input.is_key_pressed(KEY_CTRL):
+					card_ctrl_clicked.emit(regiment)
+				# Shift+click for add to selection
+				elif Input.is_key_pressed(KEY_SHIFT):
+					card_shift_clicked.emit(regiment)
+				else:
+					card_clicked.emit(regiment)
+					# Center camera on the regiment when card is clicked
+					_center_camera_on_regiment()
 			elif event.button_index == MOUSE_BUTTON_RIGHT:
 				card_right_clicked.emit(regiment)
 

@@ -87,3 +87,25 @@ signal spawn_reinforcement(spawn_info: Dictionary)
 signal unit_resupplied(regiment: Regiment, resource_type: String, amount: int)
 signal entered_supply_range(regiment: Regiment, wagon: Node)
 signal left_supply_range(regiment: Regiment, wagon: Node)
+
+# Casualty Tracker Thresholds
+signal unit_entered_caution(regiment: Regiment)
+signal unit_withdrawing(regiment: Regiment)
+signal unit_disengage_success(regiment: Regiment)
+signal unit_disengage_failed(regiment: Regiment)
+
+# Rally System
+signal rally_used(general: Node, units_rallied: int)
+
+# Ammo Type
+signal round_type_changed(regiment: Regiment, old_type: int, new_type: int)
+
+# Movement Mode
+signal move_mode_changed(new_mode: int)  # RegimentLeader.MoveMode
+
+# Pause (QOL Phase 2)
+signal battle_paused(is_paused: bool)
+
+# Hover Preview (QOL Phase 5)
+signal regiment_hover_entered(regiment: Regiment)
+signal regiment_hover_exited(regiment: Regiment)

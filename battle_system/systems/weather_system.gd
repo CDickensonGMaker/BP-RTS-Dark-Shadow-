@@ -54,6 +54,18 @@ const WEATHER_TRANSITIONS := {
 		WeatherType.Type.FOG: 10,
 		WeatherType.Type.STORM: 20,
 	},
+	WeatherType.Type.SNOW: {
+		WeatherType.Type.CLEAR: 25,
+		WeatherType.Type.SNOW: 45,
+		WeatherType.Type.BLIZZARD: 20,
+		WeatherType.Type.FOG: 10,
+	},
+	WeatherType.Type.BLIZZARD: {
+		WeatherType.Type.SNOW: 50,
+		WeatherType.Type.BLIZZARD: 30,
+		WeatherType.Type.CLEAR: 15,
+		WeatherType.Type.FOG: 5,
+	},
 }
 
 
@@ -129,6 +141,11 @@ func get_charge_bonus_modifier() -> float:
 ## Get routing morale damage multiplier for current weather (1.0+)
 func get_routing_morale_modifier() -> float:
 	return WeatherType.get_routing_morale_modifier(current_weather)
+
+
+## Get movement speed multiplier for current weather (0.0 - 1.0)
+func get_movement_speed_modifier() -> float:
+	return WeatherType.get_movement_speed_modifier(current_weather)
 
 
 ## Get maximum LOS distance for current weather (-1 = unlimited)
@@ -222,9 +239,19 @@ func _roll_random_weather() -> void:
 # DEBUG FUNCTIONS
 # =====================
 
-## Force weather for testing
-func debug_set_weather(weather_name: String) -> void:
-	match weather_name.to_lower():
+## Force weather for testing - accepts string name or int type
+func debug_set_weather(weather_input) -> void:
+	# Handle int input (from BattleManager campaign weather)
+	if weather_input is int:
+		if weather_input >= 0 and weather_input <= 5:
+			set_weather(weather_input as WeatherType.Type)
+		else:
+			push_warning("WeatherSystem: Invalid weather type int: %d" % weather_input)
+		return
+
+	# Handle string input (for debug console)
+	var weather_name: String = str(weather_input).to_lower()
+	match weather_name:
 		"clear":
 			set_weather(WeatherType.Type.CLEAR)
 		"rain":
@@ -233,6 +260,10 @@ func debug_set_weather(weather_name: String) -> void:
 			set_weather(WeatherType.Type.FOG)
 		"storm":
 			set_weather(WeatherType.Type.STORM)
+		"snow":
+			set_weather(WeatherType.Type.SNOW)
+		"blizzard":
+			set_weather(WeatherType.Type.BLIZZARD)
 		_:
 			push_warning("WeatherSystem: Unknown weather type '%s'" % weather_name)
 
@@ -243,6 +274,7 @@ func get_debug_info() -> String:
 	info += "  Ranged Accuracy: %.0f%%\n" % (get_ranged_accuracy_modifier() * 100.0)
 	info += "  Ranged Range: %.0f%%\n" % (get_ranged_range_modifier() * 100.0)
 	info += "  Charge Bonus: %.0f%%\n" % (get_charge_bonus_modifier() * 100.0)
+	info += "  Movement Speed: %.0f%%\n" % (get_movement_speed_modifier() * 100.0)
 	info += "  Routing Morale: %.0f%%\n" % (get_routing_morale_modifier() * 100.0)
 
 	var los: float = get_los_distance()

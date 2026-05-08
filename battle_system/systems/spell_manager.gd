@@ -192,7 +192,7 @@ func reset_cooldowns() -> void:
 
 # === SIGNAL HANDLERS ===
 
-func _on_spell_cast_completed(spell: SpellData, caster: Regiment, target: Vector3) -> void:
+func _on_spell_cast_completed(spell: SpellData, caster: Regiment, _target: Vector3) -> void:
 	# Emit signal for UI/logging
 	if caster == regiment:
 		var total: float = spell.cooldown
@@ -200,7 +200,7 @@ func _on_spell_cast_completed(spell: SpellData, caster: Regiment, target: Vector
 		cooldown_updated.emit(spell.id, remaining, total)
 
 
-func _on_spell_hit(spell: SpellData, target: Regiment, damage: int) -> void:
+func _on_spell_hit(_spell: SpellData, _target: Regiment, _damage: int) -> void:
 	# Could track statistics here
 	pass
 

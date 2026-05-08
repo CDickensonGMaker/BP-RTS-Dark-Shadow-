@@ -127,7 +127,7 @@ func _on_regiment_dead(regiment) -> void:
 		_check_casualty_trigger()
 
 
-func _on_regiment_routing(regiment) -> void:
+func _on_regiment_routing(_regiment) -> void:
 	# Routing units count as 50% strength loss for trigger calculation
 	_check_casualty_trigger()
 

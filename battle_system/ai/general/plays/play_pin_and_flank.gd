@@ -30,6 +30,7 @@ var _flank_direction: int = 1  # 1 = right, -1 = left
 
 func _init(p_general_ai: GeneralAI = null) -> void:
 	super._init(p_general_ai, "Pin and Flank")
+	intent = "Pin enemy frontally with infantry while cavalry flanks around to strike from the side"
 
 
 func evaluate(analysis: BattlefieldAnalysis) -> float:
@@ -244,7 +245,7 @@ func _calculate_wide_arc_path(regiment: Node, analysis: BattlefieldAnalysis) -> 
 
 	# Calculate enemy center to know which way is "behind" enemy lines
 	var enemy_center: Vector3 = analysis.enemy_center
-	var to_enemy_center: Vector3 = (enemy_center - start_pos).normalized()
+	var _to_enemy_center: Vector3 = (enemy_center - start_pos).normalized()  # Reserved for arc calculation
 
 	# WAYPOINT 1: Move away from center to start wide swing
 	# Go perpendicular to engagement direction

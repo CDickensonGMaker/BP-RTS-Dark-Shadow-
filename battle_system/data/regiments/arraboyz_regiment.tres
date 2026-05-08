@@ -7,6 +7,8 @@
 script = ExtResource("1")
 regiment_name = "Arraboyz"
 unit_type = 2
+faction = "empire"
+weapon_class = 1
 attack = 6
 defense = 6
 weapon_skill = 6

@@ -7,6 +7,7 @@
 script = ExtResource("1")
 regiment_name = "Seer"
 unit_type = 4
+faction = "skaven"
 attack = 16
 defense = 14
 weapon_skill = 16
@@ -24,5 +25,5 @@ charge_bonus = 10
 max_ammo = 0
 current_ammo = 0
 range_distance = 0.0
-faction_color = Color(0.4, 0.3, 0.2, 1)
+faction_color = Color(0.3, 0.1, 0.4, 1)
 sprite_atlas = ExtResource("2")

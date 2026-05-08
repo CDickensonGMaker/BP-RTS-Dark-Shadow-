@@ -8,7 +8,7 @@ extends Control
 ## - Click to move camera
 
 @export var map_size: Vector2 = Vector2(200, 200)  # World units
-@export var minimap_size: Vector2 = Vector2(170, 150)  # Pixels
+@export var minimap_size: Vector2 = Vector2(180, 160)  # Pixels - slightly larger for better clicking
 
 var _terrain: Node3D = null
 var _camera: Camera3D = null
@@ -31,6 +31,8 @@ var _needs_terrain_update: bool = true
 
 func _ready():
 	custom_minimum_size = minimap_size
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_default_cursor_shape = Control.CURSOR_CROSS  # Crosshair for tactical map
 	call_deferred("_find_references")
 	call_deferred("_generate_terrain_texture")
 
@@ -124,7 +126,9 @@ func _draw_units():
 	for regiment in get_tree().get_nodes_in_group("enemy_regiments"):
 		if regiment is Regiment and regiment.state != Regiment.State.DEAD:
 			var pos: Vector2 = _world_to_minimap(regiment.global_position)
-			draw_circle(pos, 4.0, COLOR_ENEMY)
+			# Draw with outline for visibility
+			draw_circle(pos, 6.0, Color(0.0, 0.0, 0.0, 0.5))  # Shadow
+			draw_circle(pos, 5.0, COLOR_ENEMY)
 
 	# Draw player units on top
 	var selected: Array = []
@@ -135,7 +139,9 @@ func _draw_units():
 		if regiment is Regiment and regiment.state != Regiment.State.DEAD:
 			var pos: Vector2 = _world_to_minimap(regiment.global_position)
 			var color: Color = COLOR_SELECTED if regiment in selected else COLOR_PLAYER
-			draw_circle(pos, 4.0, color)
+			# Draw with outline for visibility
+			draw_circle(pos, 6.0, Color(0.0, 0.0, 0.0, 0.5))  # Shadow
+			draw_circle(pos, 5.0, color)
 
 
 func _draw_viewport():

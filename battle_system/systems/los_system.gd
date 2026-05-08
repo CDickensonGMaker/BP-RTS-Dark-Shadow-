@@ -1,8 +1,11 @@
 # LOSSystem - Line of Sight and Detection Radius System
 # Inspired by Spring 1944's visibility mechanics
-# Manages unit detection ranges based on type, movement state, and terrain
+# Manages unit detection ranges based on type, movement state, terrain, and weather
 
 extends Node
+
+# Weather system reference
+var _weather_system: Node
 
 
 ## Default detection ranges by unit type (in world units)
@@ -37,6 +40,8 @@ var _cover_zones: Array[Dictionary] = []  # [{center: Vector3, radius: float}]
 func _ready() -> void:
 	if BattleSignals:
 		BattleSignals.regiment_dead.connect(_on_regiment_dead)
+	# Cache weather system reference
+	_weather_system = get_node_or_null("/root/WeatherSystem")
 
 
 func _process(delta: float) -> void:
@@ -64,6 +69,7 @@ func get_detection_radius(regiment: Regiment) -> float:
 func can_see(observer: Regiment, target: Regiment) -> bool:
 	## Check if observer can see target.
 	## Returns true if target is within observer's sight range.
+	## Weather (fog) can block LOS beyond a certain distance.
 	if not is_instance_valid(observer) or not is_instance_valid(target):
 		return false
 
@@ -71,17 +77,28 @@ func can_see(observer: Regiment, target: Regiment) -> bool:
 	if observer.is_player_controlled == target.is_player_controlled:
 		return true
 
+	# Distance between units
+	var distance := observer.global_position.distance_to(target.global_position)
+
+	# Check weather LOS blocking first (fog blocks beyond threshold)
+	if _weather_blocks_los(distance):
+		return false
+
 	# Get target's detection radius (how visible they are)
 	var target_detection := get_detection_radius(target)
 
 	# Get observer's sight range (how far they can see)
 	var observer_sight := _get_sight_range(observer)
 
-	# Distance between units
-	var distance := observer.global_position.distance_to(target.global_position)
-
 	# Can see if within the lesser of sight range and detection radius
 	return distance <= minf(observer_sight, target_detection)
+
+
+func _weather_blocks_los(distance: float) -> bool:
+	## Check if weather blocks LOS at the given distance.
+	if _weather_system and _weather_system.has_method("blocks_los"):
+		return _weather_system.blocks_los(distance)
+	return false
 
 
 func is_visible_to_team(regiment: Regiment, player_team: bool) -> bool:
@@ -157,6 +174,7 @@ func _calculate_detection_radius(regiment: Regiment) -> float:
 func _get_sight_range(regiment: Regiment) -> float:
 	## Get how far this unit can see.
 	## Scouts/rangers get bonus range.
+	## Weather (fog) limits maximum sight range.
 	var base_range: float = 100.0  # Base sight range
 
 	# Check if unit has scout ability (via custom params or data)
@@ -167,7 +185,19 @@ func _get_sight_range(regiment: Regiment) -> float:
 	if regiment.data and regiment.data.range_distance > 0:
 		base_range = maxf(base_range, regiment.data.range_distance * 1.2)
 
+	# Apply weather LOS restriction (fog limits visibility)
+	var weather_los := _get_weather_los_distance()
+	if weather_los > 0:
+		base_range = minf(base_range, weather_los)
+
 	return base_range
+
+
+func _get_weather_los_distance() -> float:
+	## Get weather LOS limit (-1 = unlimited, >0 = max distance).
+	if _weather_system and _weather_system.has_method("get_los_distance"):
+		return _weather_system.get_los_distance()
+	return -1.0
 
 
 func _get_unit_type_category(regiment: Regiment) -> String:

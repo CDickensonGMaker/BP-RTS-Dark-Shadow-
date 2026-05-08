@@ -18,18 +18,21 @@ const POOL_SIZE_MELEE: int = 20
 const POOL_SIZE_RANGED: int = 20
 const POOL_SIZE_DEATH: int = 10
 const POOL_SIZE_BLOCK: int = 10
+const POOL_SIZE_BLOOD: int = 50  # Blood pools persist longer
 
 # Effect durations
 const DURATION_MELEE: float = 0.3
 const DURATION_RANGED: float = 0.2
 const DURATION_DEATH: float = 0.5
 const DURATION_BLOCK: float = 0.2
+const DURATION_BLOOD: float = 30.0  # Blood pools last 30 seconds
 
 # Particle counts
 const PARTICLES_MELEE: int = 8
 const PARTICLES_RANGED: int = 4
 const PARTICLES_DEATH: int = 12
 const PARTICLES_BLOCK: int = 6
+const PARTICLES_BLOOD: int = 3  # Simple blood splatter
 
 # Colors
 const COLOR_MELEE_START: Color = Color(1.0, 0.6, 0.1, 1.0)   # Bright orange
@@ -44,6 +47,9 @@ const COLOR_DEATH_END: Color = Color(0.4, 0.0, 0.0, 0.0)     # Fade dark red
 const COLOR_BLOCK_START: Color = Color(0.3, 0.6, 1.0, 1.0)   # Bright blue
 const COLOR_BLOCK_END: Color = Color(0.1, 0.3, 0.8, 0.0)     # Fade blue
 
+const COLOR_BLOOD_START: Color = Color(0.5, 0.05, 0.05, 0.9)  # Dark red blood
+const COLOR_BLOOD_END: Color = Color(0.3, 0.02, 0.02, 0.6)    # Darker, stays visible
+
 # =============================================================================
 # EFFECT POOLS
 # =============================================================================
@@ -52,7 +58,8 @@ enum EffectType {
 	MELEE_HIT,
 	RANGED_HIT,
 	DEATH,
-	BLOCK
+	BLOCK,
+	BLOOD_POOL
 }
 
 # Pools organized by effect type
@@ -60,7 +67,8 @@ var _pools: Dictionary = {
 	EffectType.MELEE_HIT: [],
 	EffectType.RANGED_HIT: [],
 	EffectType.DEATH: [],
-	EffectType.BLOCK: []
+	EffectType.BLOCK: [],
+	EffectType.BLOOD_POOL: []
 }
 
 # Container node for pooled particles (keeps scene tree clean)
@@ -82,6 +90,7 @@ func _ready() -> void:
 	_init_pool(EffectType.RANGED_HIT, POOL_SIZE_RANGED)
 	_init_pool(EffectType.DEATH, POOL_SIZE_DEATH)
 	_init_pool(EffectType.BLOCK, POOL_SIZE_BLOCK)
+	_init_pool(EffectType.BLOOD_POOL, POOL_SIZE_BLOOD)
 
 
 # =============================================================================
@@ -111,6 +120,8 @@ func _create_particles(effect_type: EffectType) -> GPUParticles3D:
 			_configure_death_particles(particles)
 		EffectType.BLOCK:
 			_configure_block_particles(particles)
+		EffectType.BLOOD_POOL:
+			_configure_blood_particles(particles)
 
 	return particles
 
@@ -314,6 +325,58 @@ func _configure_block_particles(particles: GPUParticles3D) -> void:
 	particles.draw_pass_1 = mesh
 
 
+func _configure_blood_particles(particles: GPUParticles3D) -> void:
+	## Dark red blood pool that spreads on the ground.
+	particles.name = "BloodPoolParticles"
+	particles.amount = PARTICLES_BLOOD
+	particles.lifetime = DURATION_BLOOD
+	particles.one_shot = true
+	particles.explosiveness = 0.8
+
+	var material := ParticleProcessMaterial.new()
+
+	# Blood spreads outward on ground plane
+	material.direction = Vector3(0, 0, 0)
+	material.spread = 180.0
+	material.initial_velocity_min = 0.3
+	material.initial_velocity_max = 0.8
+
+	# No gravity - stays on ground
+	material.gravity = Vector3(0, -0.1, 0)
+
+	# Blood pools grow as they spread
+	material.scale_min = 0.8
+	material.scale_max = 1.5
+
+	# Emission from small area at ground level
+	material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	material.emission_sphere_radius = 0.3
+
+	# Color gradient: dark red, stays visible for long time
+	var gradient := Gradient.new()
+	gradient.set_color(0, COLOR_BLOOD_START)
+	gradient.add_point(0.1, COLOR_BLOOD_START)  # Stay bright initially
+	gradient.add_point(0.7, COLOR_BLOOD_END)    # Start fading late
+	gradient.set_color(1, Color(0.2, 0.01, 0.01, 0.0))  # Fade out
+	var gradient_texture := GradientTexture1D.new()
+	gradient_texture.gradient = gradient
+	material.color_ramp = gradient_texture
+
+	particles.process_material = material
+
+	# Flat disk mesh for blood pool on ground
+	var mesh := QuadMesh.new()
+	mesh.size = Vector2(1.0, 1.0)
+	mesh.orientation = PlaneMesh.FACE_Y  # Horizontal on ground
+	var mesh_material := StandardMaterial3D.new()
+	mesh_material.albedo_color = COLOR_BLOOD_START
+	mesh_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh_material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Visible from both sides
+	mesh.material = mesh_material
+	particles.draw_pass_1 = mesh
+
+
 # =============================================================================
 # POOL MANAGEMENT
 # =============================================================================
@@ -360,6 +423,8 @@ func _spawn_effect(effect_type: EffectType, position: Vector3) -> void:
 			duration = DURATION_DEATH
 		EffectType.BLOCK:
 			duration = DURATION_BLOCK
+		EffectType.BLOOD_POOL:
+			duration = DURATION_BLOOD
 
 	# Hide after emission completes (add small buffer)
 	get_tree().create_timer(duration + 0.1).timeout.connect(
@@ -398,6 +463,14 @@ func spawn_block(position: Vector3) -> void:
 	_spawn_effect(EffectType.BLOCK, position)
 
 
+func spawn_blood_pool(position: Vector3) -> void:
+	## Spawn dark red blood pool at corpse location.
+	## Blood spreads on ground and persists for 30 seconds.
+	## Position should be at ground level (y near 0).
+	var ground_pos := Vector3(position.x, 0.05, position.z)  # Slightly above ground to avoid z-fighting
+	_spawn_effect(EffectType.BLOOD_POOL, ground_pos)
+
+
 # =============================================================================
 # UTILITY
 # =============================================================================
@@ -426,3 +499,26 @@ func get_pool_stats() -> Dictionary:
 			"active": active
 		}
 	return stats
+
+
+# =============================================================================
+# EXPLOSION EFFECTS (Sprite-based via SpriteEffectPool)
+# =============================================================================
+
+func spawn_explosion(position: Vector3, radius: float = 3.0, context_node: Node = null) -> void:
+	## Spawn explosion effect at position.
+	## Uses sprite-based effect if SpriteEffectPool is available,
+	## otherwise falls back to particle-based DEATH effect.
+	## Large explosions (radius >= 4) use artillery explosion with fire and smoke.
+	## @param context_node: Source unit for viewport detection (SubViewport support)
+	var sprite_pool := get_node_or_null("/root/SpriteEffectPool")
+	if sprite_pool:
+		if radius >= 4.0 and sprite_pool.has_method("spawn_artillery_explosion"):
+			sprite_pool.spawn_artillery_explosion(position, radius, context_node)
+		elif sprite_pool.has_method("spawn_explosion"):
+			sprite_pool.spawn_explosion(position, radius, context_node)
+		else:
+			_spawn_effect(EffectType.DEATH, position)
+	else:
+		# Fallback to particle effect
+		_spawn_effect(EffectType.DEATH, position)

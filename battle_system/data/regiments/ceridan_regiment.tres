@@ -7,6 +7,7 @@
 script = ExtResource("1")
 regiment_name = "Ceridan"
 unit_type = 4
+faction = "empire"
 attack = 16
 defense = 14
 weapon_skill = 16

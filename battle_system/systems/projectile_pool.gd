@@ -60,7 +60,7 @@ func _create_projectile() -> Node:
 ## Spawn a projectile from the pool
 ## Returns null if max active reached or pool exhausted
 func spawn(
-	scene: PackedScene,
+	_scene: PackedScene,
 	source: Node,
 	pos: Vector3,
 	dir: Vector3,
@@ -84,13 +84,34 @@ func spawn(
 			return null
 
 	# Add to scene tree if not already
+	# IMPORTANT: Add projectile to same tree branch as source unit
+	# This ensures visibility in SubViewports (like Unit Zoo)
 	if not projectile.is_inside_tree():
-		var tree := get_tree()
-		if tree and tree.current_scene:
-			tree.current_scene.add_child(projectile)
-		else:
-			# Fallback - add as sibling
-			add_child(projectile)
+		var parent_node: Node = null
+
+		# Find a suitable parent - prefer the source's parent or a Units container
+		if source and is_instance_valid(source):
+			# Look for a "Units" container in the source's ancestry
+			var check_node: Node = source.get_parent()
+			while check_node:
+				if check_node.name == "Units" or check_node.name == "BattleWorld":
+					parent_node = check_node
+					break
+				check_node = check_node.get_parent()
+
+			# Fallback to source's direct parent
+			if not parent_node and source.get_parent():
+				parent_node = source.get_parent()
+
+		# Final fallback to current scene
+		if not parent_node:
+			var tree := get_tree()
+			if tree and tree.current_scene:
+				parent_node = tree.current_scene
+			else:
+				parent_node = self
+
+		parent_node.add_child(projectile)
 
 	# Configure projectile
 	projectile.global_position = pos
@@ -124,6 +145,7 @@ func spawn(
 
 
 ## Spawn with full configuration for different projectile types
+## Handles both WeaponClassData and SpellData config formats for unified projectiles.
 func spawn_configured(
 	source: Node,
 	pos: Vector3,
@@ -135,27 +157,59 @@ func spawn_configured(
 	if not projectile:
 		return null
 
-	# Apply configuration
+	# === BASIC MOVEMENT ===
 	if "speed" in config:
 		projectile.speed = config["speed"]
-	if "is_homing" in config:
-		projectile.is_homing = config["is_homing"]
-	if "homing_strength" in config:
-		projectile.homing_strength = config["homing_strength"]
-	if "max_pierces" in config:
-		projectile.max_pierces = config["max_pierces"]
-	if "pierce_damage_falloff" in config:
-		projectile.pierce_damage_falloff = config["pierce_damage_falloff"]
-	if "aoe_radius" in config:
-		projectile.aoe_radius = config["aoe_radius"]
-	if "aoe_damage_falloff" in config:
-		projectile.aoe_damage_falloff = config["aoe_damage_falloff"]
-	if "collision_mask" in config:
-		projectile.collision_mask = config["collision_mask"]
 	if "arc_height" in config:
 		projectile.arc_height = config["arc_height"]
 	if "lifetime" in config:
 		projectile.lifetime = config["lifetime"]
+
+	# === HOMING (spells and MAGIC_MISSILE) ===
+	if "is_homing" in config:
+		projectile.is_homing = config["is_homing"]
+	if "homing_strength" in config:
+		projectile.homing_strength = config["homing_strength"]
+	if "homing_turn_rate" in config:
+		projectile.homing_turn_rate = config["homing_turn_rate"]
+
+	# === PIERCING ===
+	if "max_pierces" in config:
+		projectile.max_pierces = config["max_pierces"]
+	if "pierce_damage_falloff" in config:
+		projectile.pierce_damage_falloff = config["pierce_damage_falloff"]
+
+	# === AOE ===
+	if "aoe_radius" in config:
+		projectile.aoe_radius = config["aoe_radius"]
+	if "aoe_damage_falloff" in config:
+		projectile.aoe_damage_falloff = config["aoe_damage_falloff"]
+	if "aoe_min_damage_mult" in config:
+		projectile.aoe_min_damage_mult = config["aoe_min_damage_mult"]
+
+	# === AIRBURST (shrapnel rounds) ===
+	if "airburst_height" in config and config["airburst_height"] > 0.0:
+		projectile.airburst_height = config["airburst_height"]
+		projectile.is_airburst = true
+
+	# === COLLISION ===
+	if "collision_mask" in config:
+		projectile.collision_mask = config["collision_mask"]
+
+	# === PROJECTILE TYPE (visual shape) ===
+	# Set projectile_type for shape/trail style (ARROW, CROSSBOW, MAGIC, SHELL, FLAME, etc.)
+	if "projectile_type" in config and projectile.has_method("set_projectile_type"):
+		projectile.set_projectile_type(config["projectile_type"])
+
+	# === DAMAGE TYPE (visual color + effects) ===
+	# damage_type controls trail color and impact effects based on SpellData.DamageType
+	if "damage_type" in config and "damage_type" in projectile:
+		projectile.damage_type = config["damage_type"]
+
+	# === VISUAL CONFIG (trail, impact effects) ===
+	# apply_config handles trail_color, trail_particles, trail_lifetime, impact_effect
+	if projectile.has_method("apply_config"):
+		projectile.apply_config(config)
 
 	return projectile
 

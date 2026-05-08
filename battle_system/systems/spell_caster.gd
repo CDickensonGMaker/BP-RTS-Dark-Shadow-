@@ -13,6 +13,16 @@ const SpellProjectileClass = preload("res://battle_system/effects/spell_projecti
 const SpellBeamClass = preload("res://battle_system/effects/spell_beam.gd")
 const HazardZoneClass = preload("res://battle_system/effects/hazard_zone.gd")
 
+# Projectile type mapping from spell damage type to Projectile.ProjectileType enum
+const SPELL_DAMAGE_TO_PROJECTILE_TYPE: Dictionary = {
+	SpellData.DamageType.FIRE: 4,      # FLAME
+	SpellData.DamageType.ICE: 2,       # MAGIC
+	SpellData.DamageType.LIGHTNING: 2, # MAGIC
+	SpellData.DamageType.HOLY: 2,      # MAGIC
+	SpellData.DamageType.DARK: 2,      # MAGIC
+	SpellData.DamageType.PHYSICAL: 3,  # SHELL
+}
+
 # === SIGNALS ===
 
 signal spell_cast_started(spell: SpellData, caster: Regiment)
@@ -40,6 +50,9 @@ var _active_projectiles: Array[Node3D] = []
 
 ## Active beam effects
 var _active_beams: Dictionary = {}  # Regiment -> { beam_node, target, spell, timer }
+
+## Reference to shared projectile pool (from CombatManager)
+var _projectile_pool: ProjectilePool = null
 
 ## Cached autoload references
 var _spell_effects: Node = null
@@ -80,6 +93,17 @@ func _get_audio_manager(caster: Regiment) -> Node:
 	return _audio_manager
 
 
+func _get_projectile_pool(_caster: Regiment) -> ProjectilePool:
+	## Get reference to shared ProjectilePool from CombatManager.
+	## Caches the reference for subsequent calls.
+	if _projectile_pool and is_instance_valid(_projectile_pool):
+		return _projectile_pool
+	# Try to get from CombatManager autoload
+	if CombatManager and CombatManager._projectile_pool:
+		_projectile_pool = CombatManager._projectile_pool
+	return _projectile_pool
+
+
 # === MAIN CAST FUNCTION ===
 
 ## Cast a spell from a regiment at a target position.
@@ -93,6 +117,9 @@ func cast_spell(spell: SpellData, caster: Regiment, target_pos: Vector3) -> bool
 
 	# Emit start signal
 	spell_cast_started.emit(spell, caster)
+
+	# Spawn cast visual effect
+	_spawn_cast_effect(spell, caster)
 
 	# Execute based on target type
 	match spell.target_type:
@@ -112,6 +139,21 @@ func cast_spell(spell: SpellData, caster: Regiment, target_pos: Vector3) -> bool
 
 	spell_cast_completed.emit(spell, caster, target_pos)
 	return true
+
+
+func _spawn_cast_effect(spell: SpellData, caster: Regiment) -> void:
+	## Spawn visual effect at caster when casting spell.
+	var sfx = _get_spell_effects(caster)
+	if not sfx:
+		return
+
+	var cast_pos: Vector3 = caster.global_position + Vector3(0, 1.5, 0)
+
+	# Try sprite-based cast effect first
+	if sfx.has_method("spawn_sprite_cast"):
+		sfx.spawn_sprite_cast(cast_pos, spell.damage_type)
+	else:
+		sfx.spawn_cast_flash(cast_pos, spell.damage_type)
 
 
 ## Validate that the cast can proceed.
@@ -152,8 +194,115 @@ func _consume_resources(spell: SpellData, caster: Regiment) -> void:
 
 # === PROJECTILE SPELL ===
 
+func _spell_to_projectile_config(spell: SpellData) -> Dictionary:
+	## Maps SpellData properties to the projectile config format used by ProjectilePool.
+	## Similar to WeaponClassData.get_projectile_config() but for spells.
+	## Ensures all fields needed by projectile.apply_config() are present.
+	var config: Dictionary = {
+		# === MOVEMENT ===
+		"speed": spell.projectile_speed,
+		"arc_height": spell.projectile_arc,
+		"lifetime": spell.range_distance / spell.projectile_speed + 2.0,  # Estimate from range
+
+		# === HOMING ===
+		"is_homing": spell.is_homing,
+		"homing_strength": spell.homing_turn_rate / 60.0,  # Convert degrees/sec to lerp rate
+		"homing_turn_rate": spell.homing_turn_rate,  # Direct pass for projectile
+
+		# === PIERCING ===
+		"max_pierces": 0,  # Spells don't pierce by default
+		"pierce_damage_falloff": 0.25,
+
+		# === AOE ===
+		"aoe_radius": spell.aoe_radius,
+		"aoe_damage_falloff": true,
+		"aoe_min_damage_mult": spell.edge_damage_mult,
+
+		# === COLLISION ===
+		"collision_mask": 2,  # Units layer
+
+		# === VISUAL TYPE ===
+		"projectile_type": SPELL_DAMAGE_TO_PROJECTILE_TYPE.get(spell.damage_type, 2),  # Default MAGIC
+
+		# === DAMAGE TYPE (for trail/impact coloring) ===
+		"damage_type": spell.damage_type,
+
+		# === TRAIL VISUALS ===
+		"trail_color": spell.effect_color,
+		"trail_particles": 30,
+		"trail_lifetime": 0.35,
+
+		# === IMPACT EFFECT ===
+		"impact_effect": _get_impact_effect_for_damage_type(spell.damage_type),
+	}
+
+	# Add hazard info if spell creates one
+	if spell.creates_hazard:
+		config["leaves_hazard"] = true
+		config["hazard_duration"] = spell.hazard_duration
+		config["hazard_damage_per_sec"] = float(spell.hazard_tick_damage) / spell.hazard_tick_interval
+		config["hazard_radius"] = spell.get_hazard_radius()
+
+	return config
+
+
+func _get_impact_effect_for_damage_type(damage_type: int) -> String:
+	## Returns the impact effect name for the given damage type.
+	match damage_type:
+		SpellData.DamageType.FIRE:
+			return "fire_burst"
+		SpellData.DamageType.ICE:
+			return "ice_shatter"
+		SpellData.DamageType.LIGHTNING:
+			return "lightning_strike"
+		SpellData.DamageType.HOLY:
+			return "magic_burst"
+		SpellData.DamageType.DARK:
+			return "magic_burst"
+		_:
+			return "explosion"
+
+
 func _cast_projectile(spell: SpellData, caster: Regiment, target_pos: Vector3) -> void:
 	## Cast a projectile spell toward target.
+	## Uses shared ProjectilePool if available, falls back to SpellProjectile.
+
+	var pool := _get_projectile_pool(caster)
+
+	if pool:
+		# Use shared ProjectilePool for better performance
+		var config := _spell_to_projectile_config(spell)
+		var spawn_pos: Vector3 = caster.global_position + Vector3(0, 1.5, 0)
+		var direction: Vector3 = (target_pos - spawn_pos).normalized()
+
+		var projectile = pool.spawn_configured(
+			caster,
+			spawn_pos,
+			direction,
+			null,  # No Regiment target, using position
+			config
+		)
+
+		if projectile:
+			# Store spell data on projectile for impact handling
+			projectile.set_meta("spell_data", spell)
+			projectile.set_meta("caster", caster)
+			projectile.set_meta("target_pos", target_pos)
+
+			# Connect signals for impact handling
+			if projectile.has_signal("hit_target") and not projectile.hit_target.is_connected(_on_pool_projectile_hit):
+				projectile.hit_target.connect(_on_pool_projectile_hit.bind(projectile))
+			if projectile.has_signal("aoe_triggered") and not projectile.aoe_triggered.is_connected(_on_pool_projectile_aoe):
+				projectile.aoe_triggered.connect(_on_pool_projectile_aoe.bind(projectile))
+
+			if projectile.has_method("start_flight"):
+				projectile.start_flight()
+
+			_active_projectiles.append(projectile)
+			spell_projectile_spawned.emit(projectile)
+			return
+
+	# Fallback to SpellProjectile if pool unavailable or exhausted
 	var projectile := SpellProjectileClass.new()
 	projectile.setup(spell, caster, target_pos)
 
@@ -173,7 +322,7 @@ func _cast_projectile(spell: SpellData, caster: Regiment, target_pos: Vector3) -
 
 
 func _on_projectile_hit(hit_pos: Vector3, hit_regiment: Regiment, spell: SpellData, caster: Regiment) -> void:
-	## Handle projectile impact.
+	## Handle projectile impact (SpellProjectile fallback).
 	# Apply damage to hit target
 	if hit_regiment:
 		_apply_spell_damage(spell, caster, hit_regiment)
@@ -189,6 +338,64 @@ func _on_projectile_hit(hit_pos: Vector3, hit_regiment: Regiment, spell: SpellDa
 	# Play impact sound and visual
 	_play_impact_sound(spell, hit_pos, caster)
 	_spawn_impact_effect(spell, hit_pos, caster)
+
+
+func _on_pool_projectile_hit(target: Node, damage_multiplier: float, projectile: Node) -> void:
+	## Handle hit from ProjectilePool projectile.
+	## Retrieves spell data from projectile metadata.
+	if not is_instance_valid(projectile):
+		return
+
+	var spell: SpellData = projectile.get_meta("spell_data", null)
+	var caster: Regiment = projectile.get_meta("caster", null)
+
+	if not spell or not caster:
+		return
+
+	# Apply damage to hit target if it's a Regiment
+	if target is Regiment and is_instance_valid(target):
+		var hit_regiment: Regiment = target
+		# Apply damage scaled by multiplier (for piercing falloff)
+		var scaled_damage: int = maxi(1, int(float(spell.base_damage) * damage_multiplier))
+		_apply_spell_damage_amount(spell, caster, hit_regiment, scaled_damage)
+
+	# Get hit position from projectile
+	var hit_pos: Vector3 = projectile.global_position
+
+	# Create hazard if configured (mark as spawned to prevent double-spawn in AOE handler)
+	if spell.creates_hazard and not projectile.get_meta("hazard_spawned", false):
+		projectile.set_meta("hazard_spawned", true)
+		_spawn_hazard_zone(spell, caster, hit_pos)
+
+	# Play impact sound and visual
+	_play_impact_sound(spell, hit_pos, caster)
+	_spawn_impact_effect(spell, hit_pos, caster)
+
+
+func _on_pool_projectile_aoe(impact_pos: Vector3, _radius: float, projectile: Node) -> void:
+	## Handle AOE trigger from ProjectilePool projectile.
+	## Applies area damage using spell data from projectile metadata.
+	## Also spawns hazard zones for fire spells, incendiary rounds, etc.
+	if not is_instance_valid(projectile):
+		return
+
+	var spell: SpellData = projectile.get_meta("spell_data", null)
+	var caster: Regiment = projectile.get_meta("caster", null)
+
+	if not spell or not caster:
+		return
+
+	# Apply AOE damage using spell's radius (may differ from projectile's)
+	_apply_aoe_damage(spell, caster, impact_pos)
+
+	# Spawn AOE visual effect
+	_spawn_aoe_effect(spell, impact_pos, caster)
+
+	# Create hazard if spell creates one (for AOE-only hits that bypass _on_pool_projectile_hit)
+	# Check projectile meta flag to avoid double-spawning if hit was also called
+	if spell.creates_hazard and not projectile.get_meta("hazard_spawned", false):
+		projectile.set_meta("hazard_spawned", true)
+		_spawn_hazard_zone(spell, caster, impact_pos)
 
 
 # === AOE POINT SPELL ===
@@ -508,6 +715,13 @@ func _spawn_cone_effect(spell: SpellData, origin: Vector3, direction: Vector3, c
 
 func _spawn_impact_effect(spell: SpellData, position: Vector3, caster: Regiment) -> void:
 	## Spawn impact visual at position.
+	# Try sprite-based impact first
+	var sfx = _get_spell_effects(caster)
+	if sfx and sfx.has_method("spawn_sprite_impact"):
+		sfx.spawn_sprite_impact(position, spell.damage_type, max(spell.aoe_radius, 3.0))
+		return
+
+	# Fallback to particle effects
 	var cfx = _get_combat_effects(caster)
 	if cfx:
 		match spell.damage_type:
@@ -522,9 +736,18 @@ func _spawn_impact_effect(spell: SpellData, position: Vector3, caster: Regiment)
 
 
 func _spawn_hazard_zone(spell: SpellData, caster: Regiment, position: Vector3) -> void:
-	## Create persistent hazard zone at position.
-	var hazard := HazardZoneClass.new()
-	hazard.setup(spell, position, caster)
+	## Create persistent hazard zone at position using unified factory method.
+	var config: Dictionary = {
+		"radius": spell.get_hazard_radius(),
+		"damage_per_tick": spell.hazard_tick_damage,
+		"tick_interval": spell.hazard_tick_interval,
+		"duration": spell.hazard_duration,
+		"damage_type": spell.damage_type,
+		"color": spell.effect_color,
+		"secondary_color": spell.secondary_color,
+	}
+
+	var hazard := HazardZoneClass.create_from_config(config, position, caster)
 
 	var tree := caster.get_tree()
 	if tree and tree.current_scene:

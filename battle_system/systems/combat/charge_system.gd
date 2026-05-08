@@ -2,10 +2,14 @@ class_name ChargeSystem
 extends RefCounted
 
 ## Handles charge impact, bracing, and charge bonus decay.
+## Includes weather modifiers for charge effectiveness.
 ## Extracted from CombatManager for single responsibility.
 
 # Preload FlankingCalculator to avoid class_name parse order issues
 const FlankingCalculatorScript = preload("res://battle_system/systems/combat/flanking_calculator.gd")
+
+# Weather system reference (autoload)
+var _weather_system: Node
 
 # Charge constants
 const CHARGE_BONUS_DURATION: float = 3.0
@@ -13,12 +17,36 @@ const CHARGE_DECAY_DURATION: float = 10.0  # Charge bonus decays linearly over 1
 const CHARGE_KNOCKBACK_FORCE: float = 2.0  # Units pushed back on charge impact
 const CHARGE_AP_RATIO: float = 0.7  # 70% of impact damage is armor-piercing
 
+# Large unit knockback constants (rock-paper-scissors Part 2)
+const KNOCKBACK_MASS_THRESHOLD: float = 1.5
+const KNOCKBACK_BASE_DISTANCE: float = 5.0
+const KNOCKBACK_CASUALTY_THRESHOLD: int = 3
+const KNOCKBACK_SCATTER_MULTIPLIER: float = 1.5
+
 # Reference to flanking calculator for frontal attack check
 var flanking  # FlankingCalculator
 
 
 func _init() -> void:
 	flanking = FlankingCalculatorScript.new()
+
+
+## Get weather system reference (cached).
+func _get_weather_system() -> Node:
+	if not _weather_system:
+		if Engine.has_singleton("WeatherSystem"):
+			_weather_system = Engine.get_singleton("WeatherSystem")
+		elif Engine.get_main_loop().root.has_node("/root/WeatherSystem"):
+			_weather_system = Engine.get_main_loop().root.get_node("/root/WeatherSystem")
+	return _weather_system
+
+
+## Get weather charge bonus modifier (1.0 = no change, <1.0 = reduced in rain).
+func _get_weather_charge_mod() -> float:
+	var ws := _get_weather_system()
+	if ws and ws.has_method("get_charge_bonus_modifier"):
+		return ws.get_charge_bonus_modifier()
+	return 1.0
 
 
 ## Process charge impact when melee begins.
@@ -34,7 +62,11 @@ func process_charge_impact(attacker: Node, defender: Node) -> Dictionary:
 		"impact_damage": 0,
 		"impact_casualties": 0,
 		"was_braced": false,
-		"is_frontal": false
+		"is_frontal": false,
+		"knockback_distance": 0.0,
+		"knockback_direction": Vector3.ZERO,
+		"triggered_knockback": false,
+		"is_monster_impact": false
 	}
 
 	# Check if this is actually a charge order
@@ -62,6 +94,16 @@ func process_charge_impact(attacker: Node, defender: Node) -> Dictionary:
 		# Impact causes instant casualties (1 per 3 damage, min 1)
 		result.impact_casualties = maxi(1, impact_damage / 3)
 
+	# Check for large unit knockback (rock-paper-scissors Part 2)
+	var mass_ratio: float = attacker.data.mass / defender.data.mass
+	if mass_ratio >= KNOCKBACK_MASS_THRESHOLD and result.impact_casualties >= KNOCKBACK_CASUALTY_THRESHOLD:
+		result.knockback_distance = KNOCKBACK_BASE_DISTANCE * mass_ratio
+		result.knockback_direction = (defender.global_position - attacker.global_position).normalized()
+		result.triggered_knockback = true
+		if attacker.data.unit_type == UnitType.Type.MONSTER:
+			result.knockback_distance *= 1.5
+			result.is_monster_impact = true
+
 	return result
 
 
@@ -86,13 +128,15 @@ func get_charge_bonus_decay(time_since_charge: float) -> float:
 
 
 ## Calculate total charge bonus for damage.
+## Includes weather modifier (rain reduces charge effectiveness due to slippery ground).
 func get_charge_damage_bonus(attacker: Node, time_since_charge: float) -> int:
 	if not attacker.data:
 		return 0
 
 	var base_bonus: int = attacker.data.charge_bonus if "charge_bonus" in attacker.data else 0
 	var decay: float = get_charge_bonus_decay(time_since_charge)
-	return int(float(base_bonus) * decay)
+	var weather_mod: float = _get_weather_charge_mod()
+	return int(float(base_bonus) * decay * weather_mod)
 
 
 ## Check if a unit can brace against a charge.

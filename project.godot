@@ -21,11 +21,14 @@ config/icon="res://icon.svg"
 
 [autoload]
 
+DebugFlags="*res://battle_system/debug/debug_flags.gd"
 CombatEffects="*res://battle_system/effects/combat_effects.gd"
 AudioManager="*res://battle_system/systems/audio_manager.gd"
 WeatherSystem="*res://battle_system/systems/weather_system.gd"
 CampaignSignals="*res://campaign_system/signals/campaign_signals.gd"
 CampaignManager="*res://campaign_system/systems/campaign_manager.gd"
+CampaignCalendar="*res://campaign_system/systems/campaign_calendar.gd"
+WeatherScheduler="*res://campaign_system/systems/weather_scheduler.gd"
 BattleTransition="*res://campaign_system/systems/battle_transition.gd"
 BuildingManager="*res://campaign_system/systems/building_manager.gd"
 ContractManager="*res://campaign_system/systems/contract_manager.gd"
@@ -33,6 +36,7 @@ BattleSignals="*res://battle_system/signals/battle_signals.gd"
 AIAutoload="*res://battle_system/ai/ai_autoload.gd"
 SelectionManager="*res://battle_system/systems/selection_manager.gd"
 MoraleSystem="*res://battle_system/systems/morale_system.gd"
+BattleTide="*res://battle_system/systems/battle_tide.gd"
 CombatState="*res://battle_system/systems/combat_state.gd"
 CombatManager="*res://battle_system/systems/combat_manager.gd"
 BattleManager="*res://battle_system/systems/battle_manager.gd"
@@ -41,10 +45,14 @@ FormationDragHandler="*res://battle_system/systems/formation_drag_handler.gd"
 UnitCatalog="*res://battle_system/data/unit_catalog.gd"
 AbilityEffects="*res://battle_system/effects/ability_effects.gd"
 SpellEffects="*res://battle_system/effects/spell_effects.gd"
+SpriteEffectPool="*res://battle_system/effects/sprite_effect_pool.gd"
+AmbientBattlefield="*res://battle_system/effects/ambient_battlefield.gd"
 ReinforcementManager="*res://battle_system/systems/reinforcement_manager.gd"
-SupplySystem="*res://battle_system/systems/supply_system.gd"
 LOSSystem="*res://battle_system/systems/los_system.gd"
 CorpseField="*res://battle_system/systems/corpse_field.gd"
+BoneDropManager="*res://battle_system/systems/bone_drop_manager.gd"
+BattleModifiers="*res://battle_system/systems/battle_modifiers.gd"
+WeatherController="*uid://digyle6aickly"
 
 [display]
 
@@ -55,7 +63,7 @@ window/stretch/scale="1.0"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/battle_scene_editor/plugin.cfg", "res://addons/campaign_map_editor/plugin.cfg")
+enabled=PackedStringArray("res://addons/battle_map_viewer/plugin.cfg", "res://addons/battle_scene_editor/plugin.cfg", "res://addons/campaign_map_editor/plugin.cfg", "res://addons/dynamic_weather/plugin.cfg", "res://addons/sky_3d/plugin.cfg")
 
 [input]
 

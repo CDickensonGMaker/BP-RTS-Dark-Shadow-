@@ -51,6 +51,10 @@ func add_corpse(world_pos: Vector3, atlas: SpriteUnitAtlas, direction: int) -> v
 
 	batch.corpse_count += 1
 
+	# Spawn blood pool under the corpse
+	if CombatEffects:
+		CombatEffects.spawn_blood_pool(world_pos)
+
 
 func clear_all_corpses() -> void:
 	"""Remove all corpses from the battlefield."""

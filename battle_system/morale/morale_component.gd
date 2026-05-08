@@ -70,7 +70,7 @@ func apply_event(event: MoraleEvent) -> void:
 	if not _is_alive:
 		return
 
-	var old_morale: float = current_morale
+	var _old_morale: float = current_morale  # Reserved for delta tracking
 	current_morale = clampf(current_morale + event.magnitude, 0.0, 100.0)
 
 	# Reset safety timer on negative events
@@ -86,7 +86,7 @@ func apply_damage(amount: float) -> void:
 	if not _is_alive:
 		return
 
-	var old_morale: float = current_morale
+	var _old_morale: float = current_morale  # Reserved for delta tracking
 	current_morale = clampf(current_morale - absf(amount), 0.0, 100.0)
 	_time_since_last_hit = 0.0
 
@@ -99,10 +99,25 @@ func apply_bonus(amount: float) -> void:
 	if not _is_alive:
 		return
 
-	var old_morale: float = current_morale
+	var _old_morale: float = current_morale  # Reserved for delta tracking
 	current_morale = clampf(current_morale + absf(amount), 0.0, 100.0)
 
 	morale_changed.emit(current_morale, absf(amount))
+	_update_state()
+
+
+func apply_direct_modifier(amount: float) -> void:
+	## Apply a direct morale change (positive or negative).
+	if not _is_alive:
+		return
+
+	var _old_morale: float = current_morale  # Reserved for delta tracking
+	current_morale = clampf(current_morale + amount, 0.0, 100.0)
+
+	if amount < 0:
+		_time_since_last_hit = 0.0
+
+	morale_changed.emit(current_morale, amount)
 	_update_state()
 
 # =============================================================================
@@ -161,7 +176,7 @@ func tick(delta: float) -> void:
 	# Apply total change
 	if total_per_second != 0.0:
 		var change: float = total_per_second * delta
-		var old_morale: float = current_morale
+		var _old_morale: float = current_morale  # Reserved for delta tracking
 		current_morale = clampf(current_morale + change, 0.0, 100.0)
 
 		if change < 0.0:

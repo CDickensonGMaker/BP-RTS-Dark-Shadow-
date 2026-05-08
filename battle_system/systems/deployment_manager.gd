@@ -1,6 +1,11 @@
 # DeploymentManager - handles pre-battle unit positioning
 # Players can place units anywhere on their side of the map
 # Supports free repositioning and rotation during deployment phase
+#
+# ORIENTATION: X-axis based deployment
+# - Player deploys on NEGATIVE X side (west/left), facing EAST toward enemy
+# - Enemy deploys on POSITIVE X side (east/right), facing WEST toward player
+# - This matches battle_scene.tscn and unit_zoo layouts
 extends Node
 
 # Preload to avoid parse-order issues with class_name
@@ -9,7 +14,7 @@ const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.
 enum Phase { DEPLOYMENT, COMBAT }
 
 var current_phase: Phase = Phase.DEPLOYMENT
-var deployment_zone_z: float = 0.0  # Center line - player deploys on positive Z side
+var deployment_zone_x: float = 0.0  # Center line - player deploys on negative X side
 var map_bounds: Rect2 = Rect2(-75, -75, 150, 150)  # Default, updated from terrain
 
 # Drag state for repositioning units during deployment
@@ -29,7 +34,7 @@ func _init_deployment():
 	if terrain:
 		var size = terrain.terrain_size
 		map_bounds = Rect2(-size.x / 2, -size.y / 2, size.x, size.y)
-		deployment_zone_z = 0.0  # Center line
+		deployment_zone_x = 0.0  # Center line (X-axis)
 
 	BattleSignals.deployment_started.emit()
 
@@ -69,7 +74,7 @@ func _update_drag(screen_pos: Vector2):
 
 	var new_pos = ground_pos + drag_offset
 
-	# Constrain to player's deployment zone (positive Z half)
+	# Constrain to player's deployment zone (negative X half - west side)
 	new_pos = _constrain_to_deployment_zone(new_pos)
 
 	dragging_regiment.global_position = new_pos
@@ -86,20 +91,24 @@ func _end_drag(_screen_pos: Vector2):
 
 
 func _constrain_to_deployment_zone(pos: Vector3) -> Vector3:
-	# Player deploys on positive Z side (their half of the map)
+	# Player deploys on negative X side (west half of the map)
 	# Clamp within map bounds and deployment zone
 	var constrained = pos
-	constrained.x = clamp(pos.x, map_bounds.position.x + 5, map_bounds.end.x - 5)
-	constrained.z = clamp(pos.z, deployment_zone_z + 5, map_bounds.end.y - 5)  # Only positive Z
+	# X: player can only go from left edge to center line (negative X)
+	constrained.x = clamp(pos.x, map_bounds.position.x + 5, deployment_zone_x - 5)
+	# Z: full range within map bounds
+	constrained.z = clamp(pos.z, map_bounds.position.y + 5, map_bounds.end.y - 5)
 	return constrained
 
 
 func is_in_player_deployment_zone(pos: Vector3) -> bool:
-	return pos.z > deployment_zone_z and map_bounds.has_point(Vector2(pos.x, pos.z))
+	# Player zone is negative X (west/left side)
+	return pos.x < deployment_zone_x and map_bounds.has_point(Vector2(pos.x, pos.z))
 
 
 func is_in_enemy_deployment_zone(pos: Vector3) -> bool:
-	return pos.z < deployment_zone_z and map_bounds.has_point(Vector2(pos.x, pos.z))
+	# Enemy zone is positive X (east/right side)
+	return pos.x > deployment_zone_x and map_bounds.has_point(Vector2(pos.x, pos.z))
 
 
 func start_battle():

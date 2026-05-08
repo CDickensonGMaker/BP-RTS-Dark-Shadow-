@@ -77,15 +77,17 @@ func _get_destination() -> Vector3:
 
 func _get_engagement_distance() -> float:
 	## Get optimal engagement distance based on unit type and stance.
+	## Ranged units prioritize firing from max range ASAP.
 	var regiment: Node = commander.regiment
 
-	# Ranged units stay at range
+	# Ranged/Artillery units stay at max range (fire ASAP, don't close distance)
 	if regiment.data.ballistic_skill > 0 and regiment.current_ammo > 0:
-		match commander.current_stance:
-			CommanderAI.Stance.SKIRMISH:
-				return regiment.data.range_distance * 0.8
-			_:
-				return regiment.data.range_distance * 0.6
+		var is_ranged_type: bool = regiment.data.unit_type == UnitType.Type.RANGED
+		var is_artillery_type: bool = regiment.data.unit_type == UnitType.Type.ARTILLERY
+		if is_ranged_type or is_artillery_type:
+			return regiment.data.range_distance * 0.95  # Fire from near max range
+		else:
+			return regiment.data.range_distance * 0.8  # Hybrid units slightly closer
 
 	# Melee units close in
 	return 2.0  # Melee range

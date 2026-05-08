@@ -47,7 +47,9 @@ func _setup_ui():
 
 func _create_group_panel(group_id: int) -> Panel:
 	var panel: Panel = Panel.new()
-	panel.custom_minimum_size = Vector2(60, 50)
+	panel.custom_minimum_size = Vector2(70, 55)  # Larger click target
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 	var style: StyleBoxFlat = StyleBoxFlat.new()
 	style.bg_color = COLOR_PANEL_BG
@@ -56,6 +58,10 @@ func _create_group_panel(group_id: int) -> Panel:
 	style.set_corner_radius_all(4)
 	panel.add_theme_stylebox_override("panel", style)
 
+	# Add hover effect
+	panel.mouse_entered.connect(func(): _on_panel_hover(panel, true))
+	panel.mouse_exited.connect(func(): _on_panel_hover(panel, false))
+
 	# Group number (top left)
 	var number_label: Label = Label.new()
 	number_label.text = str((group_id + 1) % 10)  # 1-9, 0
@@ -63,29 +69,32 @@ func _create_group_panel(group_id: int) -> Panel:
 	number_label.offset_top = 2
 	number_label.add_theme_font_size_override("font_size", 14)
 	number_label.add_theme_color_override("font_color", COLOR_GOLD)
+	number_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(number_label)
 	group_labels.append(number_label)
 
 	# Composition indicator (top right)
 	var comp_label: Label = Label.new()
 	comp_label.text = ""
-	comp_label.offset_left = 35
+	comp_label.offset_left = 40
 	comp_label.offset_top = 2
 	comp_label.add_theme_font_size_override("font_size", 10)
 	comp_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.55, 1.0))
+	comp_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(comp_label)
 	group_composition_labels.append(comp_label)
 
 	# Health bar (middle)
 	var health_bar: ProgressBar = ProgressBar.new()
 	health_bar.offset_left = 4
-	health_bar.offset_top = 20
-	health_bar.offset_right = 56
-	health_bar.offset_bottom = 28
+	health_bar.offset_top = 22
+	health_bar.offset_right = 66
+	health_bar.offset_bottom = 32
 	health_bar.min_value = 0.0
 	health_bar.max_value = 1.0
 	health_bar.value = 1.0
 	health_bar.show_percentage = false
+	health_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(health_bar)
 	group_health_bars.append(health_bar)
 
@@ -93,9 +102,10 @@ func _create_group_panel(group_id: int) -> Panel:
 	var status_label: Label = Label.new()
 	status_label.text = "Idle"
 	status_label.offset_left = 4
-	status_label.offset_top = 32
-	status_label.add_theme_font_size_override("font_size", 9)
+	status_label.offset_top = 36
+	status_label.add_theme_font_size_override("font_size", 10)
 	status_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.55, 1.0))
+	status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(status_label)
 	group_status_labels.append(status_label)
 
@@ -226,3 +236,14 @@ func _process(_delta):
 					group_panels[i].visible = false
 				else:
 					_update_group_display(i, regiments)
+
+
+func _on_panel_hover(panel: Panel, is_hovered: bool):
+	var style: StyleBoxFlat = panel.get_theme_stylebox("panel").duplicate()
+	if is_hovered:
+		style.border_color = COLOR_GOLD
+		style.bg_color = Color(0.12, 0.10, 0.08, 0.95)
+	else:
+		style.border_color = COLOR_PANEL_BORDER
+		style.bg_color = COLOR_PANEL_BG
+	panel.add_theme_stylebox_override("panel", style)

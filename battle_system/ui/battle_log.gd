@@ -25,6 +25,8 @@ const COLOR_FLANKED = "ff9944"      # Orange
 const COLOR_CHARGE = "ffdd44"       # Yellow
 const COLOR_ABILITY = "4499ff"      # Blue
 const COLOR_TIMESTAMP = "888877"    # Dim gold
+const COLOR_CAUTION = "ffaa44"      # Amber - wavering/caution
+const COLOR_WITHDRAW = "ff7744"     # Red-orange - withdrawing
 
 # UI elements
 var panel: Panel
@@ -109,6 +111,14 @@ func _connect_signals():
 	# Morale events
 	BattleSignals.regiment_routing.connect(_on_regiment_routing)
 	BattleSignals.regiment_rallied.connect(_on_regiment_rallied)
+
+	# Casualty threshold events
+	BattleSignals.unit_entered_caution.connect(_on_unit_entered_caution)
+	BattleSignals.unit_withdrawing.connect(_on_unit_withdrawing)
+
+	# Disengage events
+	BattleSignals.unit_disengage_success.connect(_on_unit_disengage_success)
+	BattleSignals.unit_disengage_failed.connect(_on_unit_disengage_failed)
 
 	# Combat events
 	BattleSignals.regiment_attacked.connect(_on_regiment_attacked)
@@ -245,3 +255,23 @@ func _on_general_died(general):
 	elif general and "name" in general:
 		general_name = general.name
 	_add_log_entry("[color=#%s]%s has fallen![/color]" % [COLOR_ROUTING, general_name])
+
+
+func _on_unit_entered_caution(regiment: Regiment):
+	var name: String = _get_regiment_name(regiment)
+	_add_log_entry("[color=#%s]⚠ %s is wavering[/color]" % [COLOR_CAUTION, name])
+
+
+func _on_unit_withdrawing(regiment: Regiment):
+	var name: String = _get_regiment_name(regiment)
+	_add_log_entry("[color=#%s]✗ %s breaking off![/color]" % [COLOR_WITHDRAW, name])
+
+
+func _on_unit_disengage_success(regiment: Regiment):
+	var name: String = _get_regiment_name(regiment)
+	_add_log_entry("[color=#%s]%s broke off from combat[/color]" % [COLOR_RALLIED, name])
+
+
+func _on_unit_disengage_failed(regiment: Regiment):
+	var name: String = _get_regiment_name(regiment)
+	_add_log_entry("[color=#%s]%s locked in combat![/color]" % [COLOR_CAUTION, name])

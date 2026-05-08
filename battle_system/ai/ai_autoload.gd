@@ -34,6 +34,7 @@ var map_bounds: float = 90.0  # Configurable, default for 200x200 map
 var spatial_hash: SpatialHash
 var threat_heatmap: ThreatHeatmap  # spring1944-style threat assessment
 var is_ai_enabled: bool = true
+var strategic_ai_enabled: bool = true  # Enable GeneralAI strategic play system
 
 # General AI instances (one per faction)
 var _general_ais: Dictionary = {}  # faction_id -> GeneralAI
@@ -270,6 +271,20 @@ func pause_ai() -> void:
 func resume_ai() -> void:
 	## Resume AI processing.
 	is_ai_enabled = true
+
+
+func set_strategic_ai_enabled(enabled: bool) -> void:
+	## Enable or disable strategic AI (GeneralAI play system).
+	strategic_ai_enabled = enabled
+	if enabled:
+		print("[AI] Strategic AI enabled")
+	else:
+		print("[AI] Strategic AI disabled")
+
+
+func has_general(faction: int) -> bool:
+	## Check if a faction has a registered GeneralAI.
+	return _general_ais.has(faction)
 
 # =============================================================================
 # UTILITY

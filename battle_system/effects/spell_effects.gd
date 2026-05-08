@@ -181,8 +181,9 @@ func _configure_flash_mesh(mesh: MeshInstance3D, colors: Dictionary) -> void:
 # IMPACT BURST - Explosion at target
 # =============================================================================
 
-func spawn_impact_burst(position: Vector3, damage_type: SpellData.DamageType, radius: float = 5.0) -> void:
+func spawn_impact_burst(position: Vector3, damage_type: SpellData.DamageType, radius: float = 5.0, _context_node: Node = null) -> void:
 	## Create impact explosion particles.
+	## @param _context_node: Reserved for SubViewport support (not yet implemented for particles)
 	var type_key: String = _damage_type_to_key(damage_type)
 	var colors: Dictionary = COLORS.get(type_key, COLORS["physical"])
 
@@ -380,3 +381,40 @@ func clear_all_effects() -> void:
 	for mesh in _mesh_pool:
 		if is_instance_valid(mesh):
 			mesh.visible = false
+
+	# Also clear sprite-based effects
+	var sprite_pool := get_node_or_null("/root/SpriteEffectPool")
+	if sprite_pool and sprite_pool.has_method("clear_all_effects"):
+		sprite_pool.clear_all_effects()
+
+
+# =============================================================================
+# SPRITE-BASED SPELL EFFECTS (via SpriteEffectPool)
+# =============================================================================
+
+func spawn_sprite_cast(position: Vector3, damage_type: SpellData.DamageType) -> void:
+	## Spawn a sprite-based cast effect at caster position.
+	var sprite_pool := get_node_or_null("/root/SpriteEffectPool")
+	if sprite_pool and sprite_pool.has_method("spawn_cast_effect"):
+		sprite_pool.spawn_cast_effect(position, damage_type)
+	else:
+		# Fallback to particle effect
+		spawn_cast_flash(position, damage_type)
+
+
+func spawn_sprite_impact(position: Vector3, damage_type: SpellData.DamageType, radius: float = 5.0) -> void:
+	## Spawn a sprite-based spell impact effect.
+	var sprite_pool := get_node_or_null("/root/SpriteEffectPool")
+	if sprite_pool and sprite_pool.has_method("spawn_spell_impact"):
+		sprite_pool.spawn_spell_impact(position, damage_type, radius)
+	else:
+		# Fallback to particle effect
+		spawn_impact_burst(position, damage_type, radius)
+
+
+func spawn_sprite_projectile(position: Vector3, direction: int, damage_type: SpellData.DamageType) -> int:
+	## Spawn a sprite-based spell projectile effect. Returns effect index or -1.
+	var sprite_pool := get_node_or_null("/root/SpriteEffectPool")
+	if sprite_pool and sprite_pool.has_method("spawn_spell_projectile"):
+		return sprite_pool.spawn_spell_projectile(position, direction, damage_type)
+	return -1

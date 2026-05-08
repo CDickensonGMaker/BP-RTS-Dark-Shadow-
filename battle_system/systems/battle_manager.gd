@@ -1,11 +1,20 @@
 extends Node
 
+# Preload BattleObjective to ensure class is available
+const BattleObjectiveClass = preload("res://battle_system/ai/data/battle_objective.gd")
 
 var battle_start_time: float = 0.0
 var is_battle_active: bool = false
 
 # Reference to CombatManager for signal connections
 var combat_manager: Node = null
+
+# Reference to enemy GeneralAI instance
+var _enemy_general_ai = null
+
+# Player's rally ability (requires a general unit)
+var player_rally: RallyAbility = null
+var _player_general: Node = null
 
 ## BattleStats - Tracks combat metrics for balance analysis
 class BattleStats:
@@ -75,6 +84,8 @@ class BattleStats:
 		}
 
 	func print_summary() -> void:
+		if not DebugFlags.battle_setup:
+			return
 		print("\n========== BATTLE STATS SUMMARY ==========")
 		print("Duration: %.1f seconds" % duration)
 		print("Winner: %s" % winner)
@@ -117,13 +128,131 @@ func _find_combat_manager() -> void:
 			combat_manager = get_node_or_null("/root/CombatManager")
 
 
+func _setup_enemy_general() -> void:
+	## Setup GeneralAI for enemy faction (faction 1).
+	## Links all enemy regiments to the GeneralAI.
+
+	# Get enemy regiments
+	var enemy_regiments := get_tree().get_nodes_in_group("enemy_regiments")
+
+	if enemy_regiments.is_empty():
+		if DebugFlags.battle_setup:
+			print("[AI] No enemy regiments found, skipping GeneralAI setup")
+		return
+
+	# Create GeneralAI for enemy faction (1)
+	_enemy_general_ai = GeneralAI.new(1)  # faction 1 = enemy
+
+	# Read objective from battle_data; default to defender for skirmish.
+	var enemy_obj_type: int = BattleObjectiveClass.Type.HOLD_GROUND
+	var time_limit: float = -1.0
+	if BattleTransition and BattleTransition.battle_data.has("enemy_objective_type"):
+		enemy_obj_type = BattleTransition.battle_data["enemy_objective_type"]
+		time_limit = BattleTransition.battle_data.get("battle_time_limit_sec", -1.0)
+
+	var enemy_obj := BattleObjectiveClass.new()
+	enemy_obj.type = enemy_obj_type
+	enemy_obj.time_limit_sec = time_limit
+	enemy_obj.start_time_sec = Time.get_ticks_msec() / 1000.0
+
+	# Set hold_position to enemy center of mass at battle start
+	if not enemy_regiments.is_empty():
+		var center := Vector3.ZERO
+		var valid_count: int = 0
+		for r in enemy_regiments:
+			if is_instance_valid(r):
+				center += r.global_position
+				valid_count += 1
+		if valid_count > 0:
+			center /= float(valid_count)
+			enemy_obj.hold_position = center
+			enemy_obj.hold_position.y = 0.0
+
+	_enemy_general_ai.objective = enemy_obj
+
+	if DebugFlags and DebugFlags.battle_setup:
+		print("[AI] Enemy objective: %s (time_limit=%.0fs, hold=%s)" % [
+			BattleObjectiveClass.Type.keys()[enemy_obj_type],
+			time_limit,
+			str(enemy_obj.hold_position)
+		])
+
+	# Register with AIAutoload
+	AIAutoload.register_general_ai(_enemy_general_ai, 1)
+
+	# Link all enemy regiments to the GeneralAI
+	var linked_count: int = 0
+	var no_ai_count: int = 0
+	for regiment in enemy_regiments:
+		# Regiment uses ai_controller property (not commander_ai)
+		if regiment and "ai_controller" in regiment and regiment.ai_controller:
+			_enemy_general_ai.register_commander(regiment, regiment.ai_controller)
+			linked_count += 1
+		else:
+			no_ai_count += 1
+
+	if DebugFlags.battle_setup:
+		print("[AI] Enemy GeneralAI activated: %d/%d regiments linked" % [linked_count, enemy_regiments.size()])
+		if no_ai_count > 0:
+			print("[AI] Warning: %d regiments missing ai_controller" % no_ai_count)
+
+	# Force immediate AI tick to start acting right away
+	if linked_count > 0:
+		_enemy_general_ai.tick()
+
+
+func _setup_player_rally() -> void:
+	## Setup Rally ability for player's general (if one exists).
+	## Looks for a player-controlled regiment with has_aura (typically a general/hero).
+
+	var player_regiments := get_tree().get_nodes_in_group("player_regiments")
+
+	for regiment in player_regiments:
+		if not is_instance_valid(regiment):
+			continue
+		if not regiment.data:
+			continue
+
+		# Find a general/hero (has_aura indicates a leadership unit)
+		if regiment.data.has_aura:
+			_player_general = regiment
+			player_rally = RallyAbility.new(regiment)
+			if DebugFlags.battle_setup:
+				print("[RALLY] Player rally initialized: %s" % regiment.name)
+
+			# Connect to general death signal
+			if regiment.has_signal("state_changed"):
+				regiment.state_changed.connect(_on_player_general_state_changed)
+			return
+
+
+func _on_player_general_state_changed(_old_state: int, new_state: int) -> void:
+	## Handle player general death - disable rally.
+	if new_state == Regiment.State.DEAD:
+		if player_rally:
+			player_rally.deactivate()
+
+
 func start_battle():
+	if DebugFlags.battle_setup:
+		print("[BattleManager] ===== BATTLE STARTING =====")
 	is_battle_active = true
 	battle_start_time = Time.get_unix_time_from_system()
 
 	# Initialize battle stats tracking
 	battle_stats = BattleStats.new()
 	_connect_stat_signals()
+
+	# Apply weather from campaign (if coming from campaign)
+	_apply_campaign_weather()
+
+	# Setup enemy GeneralAI if strategic AI is enabled
+	# Delay to allow regiments time to initialize their AI controllers (after terrain snap)
+	if AIAutoload and AIAutoload.strategic_ai_enabled:
+		get_tree().create_timer(1.0).timeout.connect(_setup_enemy_general)
+
+	# Setup player rally ability (also delayed to wait for regiment init)
+	get_tree().create_timer(1.0).timeout.connect(_setup_player_rally)
 
 	BattleSignals.battle_started.emit()
 	# Only connect if not already connected (prevents duplicate connections across battles)
@@ -182,7 +311,7 @@ func _on_damage_dealt(target: Regiment, amount: int, source: Regiment, _damage_t
 
 
 ## Handle regiment_attacked signal (backup if damage_dealt not available)
-func _on_regiment_attacked(attacker: Regiment, defender: Regiment, damage: int) -> void:
+func _on_regiment_attacked(_attacker: Regiment, _defender: Regiment, _damage: int) -> void:
 	# Only use this if we didn't get the damage_dealt signal
 	if not battle_stats or not is_battle_active:
 		return
@@ -221,7 +350,10 @@ func _on_morale_changed(regiment: Regiment, new_value: float, _delta: float) -> 
 func _process(delta):
 	# Handle battle speed via Engine.time_scale
 	# This is managed separately via input
-	pass
+
+	# Tick player rally ability cooldown
+	if player_rally:
+		player_rally.tick(delta)
 
 
 func _check_battle_end():
@@ -248,19 +380,56 @@ func _end_battle(winner: String):
 		battle_stats.print_summary()
 		_export_battle_stats_to_json()
 
+	# Cleanup enemy GeneralAI
+	if _enemy_general_ai:
+		_enemy_general_ai.destroy()
+		_enemy_general_ai = null
+
+	# Persist morale caps to RegimentData for surviving player regiments
+	# This allows campaign to track battle fatigue across multiple engagements
+	_persist_morale_caps()
+
 	# Disconnect stat signals
 	_disconnect_stat_signals()
+
+	# Get contract and battalion info from BattleTransition for campaign integration
+	var transition = get_node_or_null("/root/BattleTransition")
+	var contract_ref = null
+	var battalion_id := ""
+	if transition and transition.has_battle_data():
+		contract_ref = transition.battle_data.get("contract_data", null)
+		battalion_id = transition.battle_data.get("battalion_id", "")
 
 	var result = {
 		"winner": winner,
 		"duration": duration,
 		"casualties": _gather_casualty_report(),
-		"stats": battle_stats.to_dict() if battle_stats else {}
+		"stats": battle_stats.to_dict() if battle_stats else {},
+		"contract": contract_ref,       # Carry contract back to campaign
+		"battalion_id": battalion_id,   # Identify which battalion fought
 	}
 	BattleSignals.battle_ended.emit(result)
 
 	# Note: Return to campaign is now handled by BattleOverScreen's Continue button
 	# This allows the player to view battle results before transitioning
+
+
+func _persist_morale_caps() -> void:
+	## Save morale caps to RegimentData for surviving player regiments.
+	## This persists battle fatigue to campaign for multi-battle continuity.
+	for regiment in get_tree().get_nodes_in_group("player_regiments"):
+		if not regiment or not regiment.data:
+			continue
+		if regiment.state == Regiment.State.DEAD:
+			continue
+		if not regiment.unit_morale:
+			continue
+
+		var cap: float = regiment.unit_morale.get_morale_cap()
+		regiment.data.set_meta("battle_morale_cap", cap)
+
+		if DebugFlags and DebugFlags.battle_setup:
+			print("[BattleManager] Persisted morale cap %.1f for %s" % [cap, regiment.name])
 
 
 func _gather_casualty_report() -> Dictionary:
@@ -273,7 +442,8 @@ func _gather_casualty_report() -> Dictionary:
 	for regiment in get_tree().get_nodes_in_group("player_regiments"):
 		if regiment and regiment.data:
 			var unit_name: String = regiment.data.regiment_name
-			var starting: int = regiment.data.max_soldiers
+			# Use meta for starting count (set by battle_scene.gd from campaign data)
+			var starting: int = regiment.get_meta("starting_soldiers", regiment.data.max_soldiers)
 			var survived: int = regiment.current_soldiers
 			var losses: int = starting - survived
 			var kills: int = battle_stats.damage_dealt.get(unit_name, 0) if battle_stats else 0
@@ -281,6 +451,7 @@ func _gather_casualty_report() -> Dictionary:
 			report["player_unit_stats"][unit_name] = {
 				"display_name": unit_name,
 				"starting": starting,
+				"survived": survived,  # Campaign needs this to set current_soldiers
 				"losses": losses,
 				"kills": kills
 			}
@@ -289,7 +460,7 @@ func _gather_casualty_report() -> Dictionary:
 	for regiment in get_tree().get_nodes_in_group("enemy_regiments"):
 		if regiment and regiment.data:
 			var unit_name: String = regiment.data.regiment_name
-			var starting: int = regiment.data.max_soldiers
+			var starting: int = regiment.get_meta("starting_soldiers", regiment.data.max_soldiers)
 			var survived: int = regiment.current_soldiers
 			var losses: int = starting - survived
 			var kills: int = battle_stats.damage_dealt.get(unit_name, 0) if battle_stats else 0
@@ -297,6 +468,7 @@ func _gather_casualty_report() -> Dictionary:
 			report["enemy_unit_stats"][unit_name] = {
 				"display_name": unit_name,
 				"starting": starting,
+				"survived": survived,
 				"losses": losses,
 				"kills": kills
 			}
@@ -353,6 +525,60 @@ func _export_battle_stats_to_json() -> void:
 		var json_string := JSON.stringify(battle_stats.to_dict(), "\t")
 		file.store_string(json_string)
 		file.close()
-		print("BattleManager: Stats exported to %s" % filepath)
+		if DebugFlags.battle_setup:
+			print("BattleManager: Stats exported to %s" % filepath)
 	else:
 		push_warning("BattleManager: Failed to export stats to %s" % filepath)
+
+
+## Apply weather from campaign to the battle.
+## Reads weather from BattleTransition.battle_data and syncs to WeatherSystem/WeatherController.
+func _apply_campaign_weather() -> void:
+	var transition = get_node_or_null("/root/BattleTransition")
+	if not transition or not transition.has_battle_data():
+		return
+
+	var weather: int = transition.battle_data.get("weather", -1)
+	var weather_name: String = transition.battle_data.get("weather_name", "")
+	var region_id: String = transition.battle_data.get("region_id", "")
+
+	if weather < 0:
+		# No weather specified - let WeatherController do its thing
+		return
+
+	if DebugFlags.battle_setup:
+		print("[BattleManager] Campaign weather: %s (region: %s)" % [weather_name, region_id])
+
+	# Apply to WeatherSystem (combat modifiers)
+	if WeatherSystem:
+		WeatherSystem.debug_set_weather(weather)
+
+	# Apply to WeatherController (visual effects)
+	var weather_controller = get_node_or_null("/root/WeatherController")
+	if weather_controller:
+		# Disable auto weather cycling during campaign battles
+		if "auto_weather_enabled" in weather_controller:
+			weather_controller.auto_weather_enabled = false
+
+		# Map weather type to visual preset name
+		var preset_name: String = _get_weather_preset_name(weather)
+		if weather_controller.has_method("set_weather"):
+			weather_controller.set_weather(preset_name, true)  # instant = true
+
+
+## Map weather type int to WeatherController preset name.
+func _get_weather_preset_name(weather_type: int) -> String:
+	match weather_type:
+		0:  # CLEAR
+			return "clear"
+		1:  # RAIN
+			return "rain"
+		2:  # FOG
+			return "fog"
+		3:  # STORM
+			return "storm"
+		4:  # SNOW
+			return "snow"
+		5:  # BLIZZARD
+			return "blizzard"
+	return "clear"

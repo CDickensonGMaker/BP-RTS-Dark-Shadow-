@@ -7,6 +7,7 @@
 script = ExtResource("1")
 regiment_name = "Ironbreakers"
 unit_type = 0
+faction = "dwarf"
 attack = 14
 defense = 18
 weapon_skill = 14

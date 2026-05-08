@@ -23,7 +23,10 @@ const ChargeSystemScript = preload("res://battle_system/systems/combat/charge_sy
 const MeleeResolverScript = preload("res://battle_system/systems/combat/melee_resolver.gd")
 const RangedResolverScript = preload("res://battle_system/systems/combat/ranged_resolver.gd")
 const CasualtyProcessorScript = preload("res://battle_system/systems/combat/casualty_processor.gd")
+const HatredCalculatorScript = preload("res://battle_system/systems/combat/hatred_calculator.gd")
+const CombatAudioScript = preload("res://battle_system/systems/combat/combat_audio.gd")
 const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.gd")
+const SpriteUnitAtlasScript = preload("res://battle_system/data/sprite_unit_atlas.gd")
 
 var flanking  # FlankingCalculator
 var statistics  # BattleStatistics
@@ -31,42 +34,74 @@ var charge_system  # ChargeSystem
 var melee_resolver  # MeleeResolver
 var ranged_resolver  # RangedResolver
 var casualty_processor  # CasualtyProcessor
+var hatred_calculator  # HatredCalculator
+var combat_audio  # CombatAudio
 
 # === AUDIO INTEGRATION ===
-# Helper functions to safely call AudioManager methods
-# Handles case where audio files don't exist yet or AudioManager is unavailable
+# Delegates to CombatAudio system for all audio playback.
 
 func _cache_audio_manager() -> void:
-	## Cache AudioManager reference to avoid per-call lookups.
-	if Engine.has_singleton("AudioManager"):
-		_audio_manager = Engine.get_singleton("AudioManager")
-	elif has_node("/root/AudioManager"):
-		_audio_manager = get_node("/root/AudioManager")
-	# Also cache for CasualtyProcessor
+	## Initialize audio systems.
+	if combat_audio:
+		combat_audio.debug_combat = debug_combat
+		combat_audio.cache_audio_manager(get_tree())
 	if casualty_processor:
 		casualty_processor.cache_audio_manager(get_tree())
 
 
-func _play_combat_sfx(sfx_name: String, position: Vector3 = Vector3.ZERO) -> void:
-	if _audio_manager and _audio_manager.has_method("play_sfx"):
-		_audio_manager.play_sfx(sfx_name, position)
+func _update_melee_ambience(delta: float) -> void:
+	## Update melee ambience system with current combat state.
+	if not combat_audio:
+		return
+	# Gather melee positions
+	var positions: Array = []
+	for m in active_melees:
+		var att = m.get("attacker")
+		var def = m.get("defender")
+		if is_instance_valid(att):
+			positions.append(att.global_position)
+		if is_instance_valid(def):
+			positions.append(def.global_position)
+	combat_audio.update_melee_ambience(delta, active_melees.size(), positions)
 
 
-func _play_combat_sfx_random(base_name: String, variant_count: int, position: Vector3 = Vector3.ZERO) -> void:
-	if _audio_manager and _audio_manager.has_method("play_sfx_random"):
-		_audio_manager.play_sfx_random(base_name, variant_count, position)
+## Play weapon-class-appropriate ranged fire audio.
+func _play_ranged_fire_audio(attacker: Regiment) -> void:
+	if not is_instance_valid(attacker) or not attacker.data:
+		return
+	var weapon_class: int = attacker.data.weapon_class
+	if combat_audio:
+		combat_audio.play_ranged_fire_audio(attacker, weapon_class)
+	# Spawn muzzle flash visual effect for artillery
+	_spawn_muzzle_flash(attacker, weapon_class)
 
 
-func _play_morale_sfx(event_name: String) -> void:
-	if _audio_manager and _audio_manager.has_method("play_morale_event"):
-		_audio_manager.play_morale_event(event_name)
+## Spawn muzzle flash visual effect for artillery weapons.
+func _spawn_muzzle_flash(attacker: Regiment, weapon_class: int) -> void:
+	if weapon_class not in [RegimentData.WeaponClass.CANNON, RegimentData.WeaponClass.MORTAR,
+			RegimentData.WeaponClass.WAR_MACHINE, RegimentData.WeaponClass.HANDGUN]:
+		return
+
+	var sprite_pool := get_node_or_null("/root/SpriteEffectPool")
+	if sprite_pool and sprite_pool.has_method("spawn_cannon_muzzle"):
+		# Get direction from attacker facing
+		var facing := attacker.get_facing_direction()
+		var dir_idx := _facing_to_direction_index(facing)
+
+		# Spawn at front of regiment (barrel position)
+		var muzzle_pos := attacker.global_position + facing * 1.5 + Vector3(0, 0.8, 0)
+		sprite_pool.spawn_cannon_muzzle(muzzle_pos, dir_idx)
+
+		if debug_combat:
+			print("[CombatManager] Spawned cannon muzzle flash at %s" % muzzle_pos)
 
 
-func _play_death_cry(position: Vector3, casualty_count: int = 1) -> void:
-	# Play death cry sounds based on casualty count (limit to avoid spam)
-	var cries_to_play: int = mini(casualty_count, 2)
-	for i in cries_to_play:
-		_play_combat_sfx_random("death", 5, position)
+## Convert facing vector to 8-direction index matching sprite atlas convention.
+## Direction mapping: 0=North, 1=NE, 2=East, 3=SE, 4=South, 5=SW, 6=West, 7=NW (clockwise from North)
+func _facing_to_direction_index(facing: Vector3) -> int:
+	return SpriteUnitAtlasScript.direction_from_vector(facing)
+
+
 
 
 ## Play ranged attack animation on the firing regiment
@@ -92,13 +127,20 @@ func _play_ranged_attack_animation(regiment: Regiment) -> void:
 				regiment.formation.play_animation_all("Idle")
 		)
 
+	# Play fire animation with recoil on 3D artillery pieces
+	if regiment.artillery_formation:
+		regiment.artillery_formation.play_fire_animation()
+
 
 # Active melee combat pairs
 # Each entry: { attacker: Regiment, defender: Regiment, charge_applied: bool, charge_timer: float, charge_time: float }
 var active_melees: Array[Dictionary] = []
 
 # Combat timing - ADJUSTED FOR BETTER PACING
-const MELEE_TICK_RATE: float = 1.875  # resolve combat every 1.875 seconds (25% slower than 1.5)
+# BUG #5 FIX: Reduced from 0.5s to 0.2s for smoother damage distribution.
+# This spreads the same total DPS across more ticks, preventing "chunky" casualties.
+const MELEE_TICK_RATE: float = 0.2  # resolve combat every 0.2 seconds for smooth damage
+const MELEE_DAMAGE_SCALE: float = 0.4  # Scale factor: 0.2/0.5 = 0.4 to maintain same DPS
 const COMBAT_DAMAGE_MULTIPLIER: float = 0.50  # 50% of base damage (was 36%)
 const FRIENDLY_FIRE_CHANCE: float = 0.15  # 15% chance to hit friendly when shooting into melee
 
@@ -114,13 +156,27 @@ const RANGED_HIGH_GROUND_BONUS: float = 1.15  # +15% damage from high ground
 const RANGED_LOW_GROUND_PENALTY: float = 0.85  # -15% damage from low ground
 const RANGED_MORALE_RATIO: float = 0.3  # Morale damage ratio for ranged hits
 
+# Damage type effect constants
+const FIRE_PANIC_CHANCE: float = 0.15          # 15% chance for fire to cause morale panic
+const FIRE_PANIC_MORALE_DAMAGE: float = 8.0    # Extra morale damage on panic proc
+const POISON_HAZARD_DURATION: float = 4.0      # Poison hazard lasts 4 seconds
+const POISON_HAZARD_DPS: float = 2.0           # Poison does 2 damage per second
+const POISON_HAZARD_RADIUS: float = 2.0        # Small localized poison cloud
+
 # Hit chance constants - use melee_resolver.calculate_hit_chance() for calculations
 
-# Debug mode - set to false for production
-var debug_combat: bool = false
+# Debug mode - reads from DebugFlags autoload
+var debug_combat: bool:
+	get: return DebugFlags.combat if DebugFlags else false
+var _debug_state_timer: float = 0.0
+const DEBUG_STATE_INTERVAL: float = 2.0  # Print combat states every 2 seconds
 
 # Battle statistics tracking - synced from BattleStatistics system
 var battle_stats: Dictionary = {}
+
+# Difficulty profile for damage multipliers (BattleDebug agent calibration)
+const DifficultyProfileScript = preload("res://battle_system/ai/data/difficulty_profile.gd")
+var difficulty_profile: Resource = null  # DifficultyProfile
 
 var melee_timer: float = 0.0
 # Phase 6.4: Terrain access via TerrainHelper (removed _terrain variable)
@@ -133,64 +189,11 @@ const BUCKET_COUNT: int = 4  # Reduced from 16 for more responsive combat
 var _projectile_pool: ProjectilePool = null
 var _projectile_scene: PackedScene = null
 
-# Cached AudioManager reference (optimization - avoid per-call lookups)
-var _audio_manager: Node = null
 
-# Projectile configurations per unit type
-const PROJECTILE_CONFIG_ARROW: Dictionary = {
-	"speed": 35.0,
-	"arc_height": 8.0,
-	"is_homing": false,
-	"max_pierces": 0,
-	"aoe_radius": 0.0,
-	"lifetime": 4.0,
-	"collision_mask": 2
-}
-
-const PROJECTILE_CONFIG_CROSSBOW: Dictionary = {
-	"speed": 50.0,
-	"arc_height": 3.0,
-	"is_homing": false,
-	"max_pierces": 1,  # Can pierce one target
-	"pierce_damage_falloff": 0.3,
-	"aoe_radius": 0.0,
-	"lifetime": 3.0,
-	"collision_mask": 2
-}
-
-const PROJECTILE_CONFIG_ARTILLERY: Dictionary = {
-	"speed": 20.0,
-	"arc_height": 20.0,
-	"is_homing": false,
-	"max_pierces": 0,
-	"aoe_radius": 5.0,  # AOE explosion
-	"aoe_damage_falloff": true,
-	"lifetime": 6.0,
-	"collision_mask": 2
-}
-
-const PROJECTILE_CONFIG_MAGIC: Dictionary = {
-	"speed": 25.0,
-	"arc_height": 2.0,
-	"is_homing": true,  # Homing projectile
-	"homing_strength": 4.0,
-	"max_pierces": 2,  # Can pierce two targets
-	"pierce_damage_falloff": 0.2,
-	"aoe_radius": 3.0,
-	"aoe_damage_falloff": true,
-	"lifetime": 5.0,
-	"collision_mask": 2
-}
-
-const PROJECTILE_CONFIG_JAVELIN: Dictionary = {
-	"speed": 28.0,
-	"arc_height": 6.0,
-	"is_homing": false,
-	"max_pierces": 0,
-	"aoe_radius": 0.0,
-	"lifetime": 3.5,
-	"collision_mask": 2
-}
+# Preload WeaponClassData for projectile configs
+const WeaponClassDataScript = preload("res://battle_system/data/weapon_class_data.gd")
+# Preload SpellData for DamageType enum (unified damage type system)
+const SpellDataScript = preload("res://battle_system/data/spell_data.gd")
 
 func _ready() -> void:
 	# Initialize extracted combat systems using preloaded scripts
@@ -200,6 +203,8 @@ func _ready() -> void:
 	melee_resolver = MeleeResolverScript.new()
 	ranged_resolver = RangedResolverScript.new()
 	casualty_processor = CasualtyProcessorScript.new()
+	hatred_calculator = HatredCalculatorScript.new()
+	combat_audio = CombatAudioScript.new()
 
 	# Create projectile pool
 	_projectile_pool = ProjectilePool.new()
@@ -227,6 +232,28 @@ func _init_battle_stats() -> void:
 	statistics.setup(get_tree())
 	# Keep local reference synced for backwards compatibility
 	battle_stats = statistics.get_stats()
+
+
+## Set the difficulty profile for damage multipliers
+## Used by BattleDebug agent for calibration testing
+func set_difficulty_profile(profile: Resource) -> void:
+	difficulty_profile = profile
+	if debug_combat and profile:
+		print("[CombatManager] Difficulty profile set: %s" % profile.display_name)
+
+
+## Apply difficulty multipliers to damage based on attacker ownership
+func _apply_difficulty_damage(base_damage: int, is_player_attacker: bool) -> int:
+	if not difficulty_profile:
+		return base_damage
+
+	var mult: float = 1.0
+	if is_player_attacker:
+		mult = difficulty_profile.player_damage_dealt_mult
+	else:
+		mult = difficulty_profile.ai_damage_dealt_mult
+
+	return maxi(1, int(round(float(base_damage) * mult)))
 
 
 ## Track a kill for statistics and WINNING morale modifier
@@ -274,6 +301,15 @@ func _get_ai_stat_multiplier(regiment: Regiment) -> float:
 	return 1.0
 
 
+## Get hatred attack bonus for attacker against target based on general traits.
+## Delegates to HatredCalculator for race/faction keyword matching.
+## Returns 0.0 if no hatred applies, or the bonus multiplier (e.g. 0.25 for +25%).
+func _get_hatred_bonus(is_player: bool, target: Regiment) -> float:
+	if hatred_calculator:
+		return hatred_calculator.get_hatred_bonus(is_player, target)
+	return 0.0
+
+
 ## Get height modifier for melee combat (higher ground = bonus)
 func _get_height_modifier(attacker: Regiment, defender: Regiment) -> float:
 	return melee_resolver.get_height_modifier(attacker, defender)
@@ -307,29 +343,82 @@ func is_flank_attack(attacker: Regiment, defender: Regiment) -> bool:
 func is_rear_attack(attacker: Regiment, defender: Regiment) -> bool:
 	return flanking.is_rear_attack(attacker, defender)
 
-## Get projectile configuration based on unit type
+## Get projectile configuration based on regiment's weapon class and round type
 func _get_projectile_config(regiment: Regiment) -> Dictionary:
+	## Returns the projectile configuration for this regiment's weapon class.
+	## For artillery with non-STANDARD rounds, applies round modifiers.
+	## Falls back to BOW config if no weapon class declared (backward compat).
 	if not regiment.data:
-		return PROJECTILE_CONFIG_ARROW
+		return _config_for_weapon_class(RegimentData.WeaponClass.BOW)
 
-	# Determine config based on unit type and ranged characteristics
-	match regiment.data.unit_type:
-		UnitType.Type.ARTILLERY:
-			return PROJECTILE_CONFIG_ARTILLERY
-		_:
-			# Check for specific weapon types via unit name or tags
+	var wc: int = regiment.data.weapon_class
+	if wc == RegimentData.WeaponClass.NONE:
+		# Legacy fallback: detect from unit_type for unmigrated regiments
+		if regiment.data.unit_type == UnitType.Type.ARTILLERY:
+			wc = RegimentData.WeaponClass.MORTAR  # Best guess
+		elif regiment.data.ballistic_skill > 0:
+			# Check unit name for weapon hints
 			var unit_name: String = regiment.data.regiment_name.to_lower() if regiment.data.regiment_name else ""
-
-			if "crossbow" in unit_name:
-				return PROJECTILE_CONFIG_CROSSBOW
-			elif "javelin" in unit_name or "skirmish" in unit_name:
-				return PROJECTILE_CONFIG_JAVELIN
-			elif "magic" in unit_name or "wizard" in unit_name or "mage" in unit_name:
-				return PROJECTILE_CONFIG_MAGIC
-			elif "cannon" in unit_name or "catapult" in unit_name or "trebuchet" in unit_name:
-				return PROJECTILE_CONFIG_ARTILLERY
+			if "crossbow" in unit_name or "xbow" in unit_name:
+				wc = RegimentData.WeaponClass.CROSSBOW
+			elif "handgun" in unit_name or "thunder" in unit_name or "engr" in unit_name:
+				wc = RegimentData.WeaponClass.HANDGUN
+			elif "dragon" in unit_name or "wyvern" in unit_name:
+				wc = RegimentData.WeaponClass.BREATH_FIRE
+			elif "wizard" in unit_name or "mage" in unit_name or "wiz" in unit_name:
+				wc = RegimentData.WeaponClass.MAGIC_MISSILE
 			else:
-				return PROJECTILE_CONFIG_ARROW
+				wc = RegimentData.WeaponClass.BOW
+		else:
+			wc = RegimentData.WeaponClass.BOW
+
+	# Check if regiment has non-STANDARD round type (artillery only)
+	var round_type: int = regiment.current_round_type if regiment else 0
+	if round_type != WeaponClassDataScript.RoundType.STANDARD and WeaponClassDataScript.is_artillery_weapon(wc):
+		return _config_for_weapon_class_with_round(wc, round_type)
+
+	return _config_for_weapon_class(wc)
+
+
+func _config_for_weapon_class(weapon_class: int) -> Dictionary:
+	## Returns projectile config dictionary from WeaponClassData.
+	var config: Dictionary = WeaponClassDataScript.get_projectile_config(weapon_class)
+	if config.is_empty():
+		push_warning("CombatManager: No WeaponDef for weapon_class %d" % weapon_class)
+		# Fallback to BOW
+		config = WeaponClassDataScript.get_projectile_config(RegimentData.WeaponClass.BOW)
+
+	# Map visual_type to ProjectileType enum
+	config["projectile_type"] = _visual_type_to_enum(config.get("visual_type", "arrow"))
+
+	return config
+
+
+func _config_for_weapon_class_with_round(weapon_class: int, round_type: int) -> Dictionary:
+	## Returns projectile config with round type modifiers applied.
+	## Used for artillery with non-STANDARD ammo types.
+	var config: Dictionary = WeaponClassDataScript.get_projectile_config_with_round(weapon_class, round_type)
+	if config.is_empty():
+		push_warning("CombatManager: No config for weapon_class %d round_type %d" % [weapon_class, round_type])
+		return _config_for_weapon_class(weapon_class)
+
+	# Map visual_type to ProjectileType enum
+	config["projectile_type"] = _visual_type_to_enum(config.get("visual_type", "shell"))
+
+	return config
+
+
+func _visual_type_to_enum(visual_type: String) -> int:
+	## Maps weapon visual_type strings to Projectile.ProjectileType enum values.
+	match visual_type:
+		"arrow": return 0    # ARROW
+		"bolt": return 1     # CROSSBOW
+		"magic": return 2    # MAGIC
+		"shell", "bullet": return 3  # SHELL
+		"flame": return 4    # FLAME
+		"pellet": return 5   # PELLET (grapeshot)
+		"chain": return 6    # CHAIN (chain shot)
+		_: return 0
 
 ## Start a melee combat between two regiments
 func begin_melee(attacker: Regiment, defender: Regiment) -> void:
@@ -368,9 +457,11 @@ func begin_melee(attacker: Regiment, defender: Regiment) -> void:
 				if impact_damage > 0:
 					# Apply impact damage (partially armor-piercing per TotalWarSimulator)
 					var ap_damage: int = int(float(impact_damage) * CHARGE_AP_RATIO)
-					var normal_damage: int = impact_damage - ap_damage
+					var _normal_damage: int = impact_damage - ap_damage  # Reserved for future damage split
 					# Impact causes instant casualties
 					var total_impact_casualties: int = max(1, impact_damage / 3)
+					# Apply difficulty profile damage multiplier (BattleDebug agent calibration)
+					total_impact_casualties = _apply_difficulty_damage(total_impact_casualties, attacker.is_player_controlled)
 					defender.take_casualties(total_impact_casualties)
 					defender.take_morale_damage(float(impact_damage) * CHARGE_MORALE_RATIO)
 
@@ -378,10 +469,21 @@ func begin_melee(attacker: Regiment, defender: Regiment) -> void:
 			BattleSignals.charge_impact.emit(attacker, defender, was_braced and is_frontal_charge)
 
 			# Play charge impact audio
-			_play_combat_sfx("cavalry_charge_01", defender.global_position)
+			if combat_audio:
+				combat_audio.play_charge_impact(defender.global_position)
 
 		# Mark attacker as having charged via CombatState
 		CombatState.set_charged(attacker, true, "charge_impact")
+
+		# Check for large unit knockback (rock-paper-scissors Part 2)
+		var charge_result: Dictionary = charge_system.process_charge_impact(attacker, defender)
+		if charge_result.get("triggered_knockback", false):
+			_apply_dramatic_knockback(defender, charge_result)
+
+	# BUG #1 FIX: Track whether impact damage was applied at contact.
+	# If true, skip the first combat tick to avoid double-counting charge damage.
+	# Impact casualties (crash damage) and charge bonus stats should not stack on the same tick.
+	var impact_damage_applied: bool = valid_charge and not charge_negated
 
 	active_melees.append({
 		"attacker": attacker,
@@ -389,11 +491,20 @@ func begin_melee(attacker: Regiment, defender: Regiment) -> void:
 		"charge_applied": false,
 		"charge_negated": charge_negated,
 		"charge_timer": 0.0,
-		"charge_time": 0.0  # Time since charge impact - for decaying charge bonus
+		"charge_time": 0.0,  # Time since charge impact - for decaying charge bonus
+		"skip_first_tick": impact_damage_applied,  # BUG #1: Skip first tick if impact damage was dealt
+		# BUG #5: Damage accumulators for fractional damage (carry over between ticks)
+		"attacker_damage_acc": 0.0,
+		"defender_damage_acc": 0.0
 	})
 
 	# Emit signal
 	combat_started.emit(attacker, defender, "melee")
+
+	# Play immediate clash sound for responsive feedback (before first damage tick)
+	if combat_audio:
+		var clash_pos: Vector3 = (attacker.global_position + defender.global_position) * 0.5
+		combat_audio.play_melee_clash(clash_pos)
 
 ## End a melee combat pair
 func end_melee(regiment_a: Regiment, regiment_b: Regiment) -> void:
@@ -403,10 +514,64 @@ func end_melee(regiment_a: Regiment, regiment_b: Regiment) -> void:
 	)
 
 
+## Apply dramatic knockback to a regiment hit by a large unit charge (rock-paper-scissors Part 2)
+func _apply_dramatic_knockback(regiment: Node, charge_result: Dictionary) -> void:
+	var direction: Vector3 = charge_result.knockback_direction
+	var distance: float = charge_result.knockback_distance
+
+	# Move regiment backwards
+	var new_pos: Vector3 = regiment.global_position + direction * distance * 0.5
+	if regiment.has_method("force_reposition"):
+		regiment.force_reposition(new_pos)
+	else:
+		regiment.global_position = new_pos
+
+	# Apply scatter to formation if available
+	if regiment.formation and regiment.formation.has_method("apply_dramatic_scatter"):
+		var scatter_amount: float = distance * ChargeSystemScript.KNOCKBACK_SCATTER_MULTIPLIER
+		regiment.formation.apply_dramatic_scatter(direction, scatter_amount, charge_result.is_monster_impact)
+
+	# Morale damage from being thrown around
+	var morale_damage: float = charge_result.impact_casualties * 3.0
+	if charge_result.is_monster_impact:
+		morale_damage *= 1.5
+	MoraleSystem.apply_morale_damage(regiment, morale_damage, "knockback_terror")
+
+
+## Get the first enemy regiment engaged in melee with the given regiment.
+## Returns null if no engagement found.
+func get_engaged_enemy(regiment: Regiment) -> Regiment:
+	for melee in active_melees:
+		if melee.get("attacker") == regiment:
+			var defender = melee.get("defender")
+			if is_instance_valid(defender):
+				return defender
+		elif melee.get("defender") == regiment:
+			var attacker = melee.get("attacker")
+			if is_instance_valid(attacker):
+				return attacker
+	return null
+
+
 ## Disengage a regiment from any melee combat (called when player orders retreat)
 func disengage_regiment(regiment: Regiment) -> void:
 	if not is_instance_valid(regiment):
 		return
+
+	# BUG #7 FIX: Set state to IDLE FIRST to prevent re-engagement race condition.
+	# The old code removed melee entries first, leaving a window where the regiment
+	# was still ENGAGING but had no active melee, allowing _on_melee_area_contact
+	# to re-trigger a new melee.
+	regiment.set_state(Regiment.State.IDLE)
+	CombatState.set_charged(regiment, false, "melee_disengage")
+
+	# FLANKING FIX: clear continuous flank penalties on explicit disengage
+	if regiment.unit_morale:
+		regiment.unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.FLANK_ATTACK)
+		regiment.unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.REAR_ATTACK)
+
+	# Mark regiment as recently disengaged to prevent immediate re-engagement
+	regiment.set_meta("disengage_cooldown", Time.get_ticks_msec())
 
 	# Find and remove all melees involving this regiment
 	var melees_to_end: Array[Dictionary] = []
@@ -419,7 +584,7 @@ func disengage_regiment(regiment: Regiment) -> void:
 			if is_instance_valid(other) and other not in opponents_to_check:
 				opponents_to_check.append(other)
 
-	# Remove all melees involving this regiment first
+	# Remove all melees involving this regiment
 	for melee in melees_to_end:
 		var att = melee.get("attacker")
 		var def = melee.get("defender")
@@ -435,12 +600,12 @@ func disengage_regiment(regiment: Regiment) -> void:
 				still_in_combat = true
 				break
 		if not still_in_combat and opponent.state == Regiment.State.ENGAGING:
+			# FLANKING FIX: clear continuous flank penalties for opponent too
+			if opponent.unit_morale:
+				opponent.unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.FLANK_ATTACK)
+				opponent.unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.REAR_ATTACK)
 			opponent.set_state(Regiment.State.IDLE)
 			CombatState.set_charged(opponent, false, "melee_disengage")
-
-	# The disengaging regiment returns to IDLE (caller will set MARCHING)
-	regiment.set_state(Regiment.State.IDLE)
-	CombatState.set_charged(regiment, false, "melee_disengage")
 
 
 ## Resolve active melee combats for the current bucket (staggered updates)
@@ -506,6 +671,12 @@ func _resolve_all_melees() -> void:
 					still_in_combat = true
 					break
 			if not still_in_combat:
+				# FLANKING FIX: clear flank/rear morale penalties when leaving combat.
+				# These are set by _apply_flank_morale_events as continuous modifiers
+				# and would persist forever without explicit cleanup.
+				if regiment.unit_morale:
+					regiment.unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.FLANK_ATTACK)
+					regiment.unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.REAR_ATTACK)
 				regiment.set_state(Regiment.State.IDLE)
 				regiment.reset_charge_state()
 
@@ -513,6 +684,13 @@ func _resolve_all_melees() -> void:
 func _resolve_melee_tick(melee: Dictionary) -> void:
 	var att: Regiment = melee["attacker"]
 	var def: Regiment = melee["defender"]
+
+	# BUG #1 FIX: Skip first combat tick if charge impact damage was already applied.
+	# This prevents double-counting: impact casualties + charge-boosted stat damage.
+	if melee.get("skip_first_tick", false):
+		melee["skip_first_tick"] = false  # Clear flag, subsequent ticks resolve normally
+		melee["charge_applied"] = true    # Mark that charge was used
+		return
 
 	# Update charge time for decay calculation
 	melee["charge_time"] += MELEE_TICK_RATE
@@ -522,11 +700,19 @@ func _resolve_melee_tick(melee: Dictionary) -> void:
 	var had_valid_charge: bool = melee.get("charge_applied", false) or att.has_valid_charge()
 	var weather_charge_mod: float = 1.0
 	var formation_charge_mod: float = 1.0
+	var tide_charge_mod: float = 1.0
 
 	if att.data.charge_bonus > 0 and not charge_negated:
 		if (att.current_order == OrderType.Type.CHARGE or melee.get("charge_applied", false)) and had_valid_charge:
-			weather_charge_mod = float(WeatherSystem.apply_charge_modifier(att.data.charge_bonus)) / float(att.data.charge_bonus) if att.data.charge_bonus > 0 else 1.0
+			weather_charge_mod = WeatherSystem.get_charge_bonus_modifier()
 			formation_charge_mod = att.get_charge_modifier()
+			# Apply battle tide modifier to charge
+			if BattleTide:
+				tide_charge_mod = BattleTide.get_charge_modifier(att.is_player_controlled)
+			formation_charge_mod *= tide_charge_mod
+			# Apply general trait charge bonus
+			if BattleModifiers and BattleModifiers.is_active():
+				formation_charge_mod *= (1.0 + BattleModifiers.get_charge_bonus_mod(att.is_player_controlled))
 
 	# Delegate ALL combat math to MeleeResolver
 	var result: Dictionary = melee_resolver.resolve_bidirectional_melee(
@@ -544,40 +730,77 @@ func _resolve_melee_tick(melee: Dictionary) -> void:
 
 	# === ATTACKER'S ATTACK ===
 	if result.attacker.hit:
+		# BUG #5 FIX: Use damage accumulator to handle fractional damage properly.
+		# Scaled damage is accumulated, and only the integer part is applied as casualties.
+		var raw_casualties: float = float(result.attacker.casualties) * MELEE_DAMAGE_SCALE
+		melee["attacker_damage_acc"] = melee.get("attacker_damage_acc", 0.0) + raw_casualties
+		var final_casualties: int = int(melee["attacker_damage_acc"])
+		melee["attacker_damage_acc"] -= float(final_casualties)  # Keep fractional part
+
+		# Apply general trait combat modifiers
+		if BattleModifiers and BattleModifiers.is_active():
+			var trait_mods: Dictionary = BattleModifiers.get_combat_modifiers(att.is_player_controlled)
+			final_casualties = int(float(final_casualties) * (1.0 + trait_mods.melee_attack))
+
+			# Apply hatred bonus if applicable (check regiment_name for race/faction keywords)
+			var hatred_bonus: float = _get_hatred_bonus(att.is_player_controlled, def)
+			if hatred_bonus > 0.0:
+				final_casualties = int(float(final_casualties) * (1.0 + hatred_bonus))
+
+		# Apply difficulty profile damage multiplier (BattleDebug agent calibration)
+		final_casualties = _apply_difficulty_damage(final_casualties, att.is_player_controlled)
+
 		# Apply damage
-		def.take_casualties(result.attacker.casualties)
+		def.take_casualties(final_casualties)
 
 		# Debug output
 		if debug_combat:
 			print("[COMBAT] %s(%d) attacks %s(%d) = %d casualties" % [
 				att.name, att.current_soldiers, def.name, def.current_soldiers,
-				result.attacker.casualties
+				final_casualties
 			])
 
 		# Track statistics
-		_track_kill(att, def, result.attacker.casualties)
+		_track_kill(att, def, final_casualties)
 
 		# Process side effects (audio, visuals, morale, veterancy)
-		_play_combat_sfx_random("sword_hit", 5, def.global_position)
+		if combat_audio:
+			combat_audio.play_layered_melee_hit(def.global_position)
 		if CombatEffects:
 			CombatEffects.spawn_melee_hit(def.global_position + Vector3(0, 1.0, 0))
-		if result.attacker.casualties > 0:
-			_play_death_cry(def.global_position, result.attacker.casualties)
+		if final_casualties > 0 and combat_audio:
+			combat_audio.play_death_cry(def.global_position, final_casualties)
 
 		# Morale damage
-		var morale_damage: float = float(result.attacker.casualties) * MELEE_MORALE_PER_CASUALTY * result.attacker.flank_morale_mod
+		var morale_damage: float = float(final_casualties) * MELEE_MORALE_PER_CASUALTY * result.attacker.flank_morale_mod
 		MoraleSystem.apply_morale_damage(def, morale_damage, "melee_casualties")
-		damage_dealt.emit(def, result.attacker.casualties, att, "melee")
-		BattleSignals.regiment_attacked.emit(att, def, result.attacker.casualties)
+
+		# Apply intimidation penalty from Bloodied commanders (only once per melee engagement)
+		# Both sides can intimidate each other on first contact
+		if BattleModifiers and BattleModifiers.is_active() and not melee.get("intimidation_applied", false):
+			# Attacker's intimidation affects defender
+			var att_intimidation: float = BattleModifiers.get_intimidation_penalty(att.is_player_controlled)
+			if att_intimidation < 0.0:
+				MoraleSystem.apply_morale_damage(def, -att_intimidation, "intimidation")
+
+			# Defender's intimidation affects attacker (bidirectional)
+			var def_intimidation: float = BattleModifiers.get_intimidation_penalty(def.is_player_controlled)
+			if def_intimidation < 0.0:
+				MoraleSystem.apply_morale_damage(att, -def_intimidation, "intimidation")
+
+			melee["intimidation_applied"] = true
+
+		damage_dealt.emit(def, final_casualties, att, "melee")
+		BattleSignals.regiment_attacked.emit(att, def, final_casualties)
 
 		# Morale events
-		_push_casualty_morale_events(def, result.attacker.casualties, att)
+		_push_casualty_morale_events(def, final_casualties, att)
 		if result.attacker.flank_mod > 1.0:
 			_apply_flank_morale_events(def, att, result.attacker.is_rear)
 
 		# Veterancy
-		if att.veterancy and result.attacker.casualties > 0:
-			for i in result.attacker.casualties:
+		if att.veterancy and final_casualties > 0:
+			for i in final_casualties:
 				att.veterancy.add_kill()
 	else:
 		if debug_combat:
@@ -587,39 +810,66 @@ func _resolve_melee_tick(melee: Dictionary) -> void:
 
 	# === DEFENDER'S COUNTER-ATTACK ===
 	if result.defender_counter.hit and def.state != Regiment.State.ROUTING and def.current_soldiers > 0:
+		# BUG #5 FIX: Use damage accumulator for defender's counter-attack
+		var raw_counter: float = float(result.defender_counter.casualties) * MELEE_DAMAGE_SCALE
+		melee["defender_damage_acc"] = melee.get("defender_damage_acc", 0.0) + raw_counter
+		var counter_casualties: int = int(melee["defender_damage_acc"])
+		melee["defender_damage_acc"] -= float(counter_casualties)  # Keep fractional part
+
+		# Apply general trait combat modifiers for defender
+		if BattleModifiers and BattleModifiers.is_active():
+			var def_trait_mods: Dictionary = BattleModifiers.get_combat_modifiers(def.is_player_controlled)
+			counter_casualties = int(float(counter_casualties) * (1.0 + def_trait_mods.melee_attack))
+
+			# Apply trait defense modifier to reduce incoming damage
+			var att_defense_mod: float = BattleModifiers.get_melee_defense_mod(att.is_player_controlled)
+			if att_defense_mod > 0.0:
+				counter_casualties = int(float(counter_casualties) * (1.0 - att_defense_mod * 0.5))
+
+			# Apply hatred bonus if applicable (check regiment_name for race/faction keywords)
+			var def_hatred_bonus: float = _get_hatred_bonus(def.is_player_controlled, att)
+			if def_hatred_bonus > 0.0:
+				counter_casualties = int(float(counter_casualties) * (1.0 + def_hatred_bonus))
+
+		counter_casualties = maxi(0, counter_casualties)
+
+		# Apply difficulty profile damage multiplier (BattleDebug agent calibration)
+		counter_casualties = _apply_difficulty_damage(counter_casualties, def.is_player_controlled)
+
 		# Apply damage
-		att.take_casualties(result.defender_counter.casualties)
+		att.take_casualties(counter_casualties)
 
 		# Debug output
 		if debug_combat:
 			print("[COMBAT] %s(%d) counter-attacks %s(%d) = %d casualties" % [
 				def.name, def.current_soldiers, att.name, att.current_soldiers,
-				result.defender_counter.casualties
+				counter_casualties
 			])
 
 		# Track statistics
-		_track_kill(def, att, result.defender_counter.casualties)
+		_track_kill(def, att, counter_casualties)
 
 		# Process side effects
-		_play_combat_sfx_random("sword_hit", 5, att.global_position)
+		if combat_audio:
+			combat_audio.play_layered_melee_hit(att.global_position)
 		if CombatEffects:
 			CombatEffects.spawn_melee_hit(att.global_position + Vector3(0, 1.0, 0))
-		if result.defender_counter.casualties > 0:
-			_play_death_cry(att.global_position, result.defender_counter.casualties)
+		if counter_casualties > 0 and combat_audio:
+			combat_audio.play_death_cry(att.global_position, counter_casualties)
 
 		# Morale damage
-		var counter_morale_damage: float = float(result.defender_counter.casualties) * MELEE_MORALE_PER_CASUALTY * result.defender_counter.flank_morale_mod
+		var counter_morale_damage: float = float(counter_casualties) * MELEE_MORALE_PER_CASUALTY * result.defender_counter.flank_morale_mod
 		MoraleSystem.apply_morale_damage(att, counter_morale_damage, "melee_counter")
-		damage_dealt.emit(att, result.defender_counter.casualties, def, "melee")
+		damage_dealt.emit(att, counter_casualties, def, "melee")
 
 		# Morale events
-		_push_casualty_morale_events(att, result.defender_counter.casualties, def)
+		_push_casualty_morale_events(att, counter_casualties, def)
 		if result.defender_counter.flank_mod > 1.0:
 			_apply_flank_morale_events(att, def, result.defender_counter.is_rear)
 
 		# Veterancy
-		if def.veterancy and result.defender_counter.casualties > 0:
-			for i in result.defender_counter.casualties:
+		if def.veterancy and counter_casualties > 0:
+			for i in counter_casualties:
 				def.veterancy.add_kill()
 
 	melee["charge_applied"] = true
@@ -662,13 +912,31 @@ func _get_friendly_in_melee_with(target: Regiment, attacker_is_player: bool) -> 
 
 ## Fire ranged attack
 func fire_ranged(attacker: Regiment, target: Regiment) -> void:
+	if debug_combat:
+		print("[CombatManager] fire_ranged called: %s -> %s (ammo=%d, BS=%d)" % [
+			attacker.data.regiment_name, target.data.regiment_name,
+			attacker.current_ammo, attacker.data.ballistic_skill
+		])
+
 	if attacker.current_ammo <= 0:
+		if debug_combat:
+			print("[CombatManager] fire_ranged SKIPPED: no ammo")
 		return
 	if attacker.data.ballistic_skill == 0:
+		if debug_combat:
+			print("[CombatManager] fire_ranged SKIPPED: no ballistic skill")
+		return
+
+	# Check for breath weapons - handled by dedicated function
+	var weapon_class: int = attacker.data.weapon_class
+	if weapon_class in [RegimentData.WeaponClass.BREATH_FIRE, RegimentData.WeaponClass.BREATH_POISON]:
+		_fire_breath_weapon(attacker, target)
 		return
 
 	# Weather LOS check - weather may block ranged attacks at distance
 	if WeatherSystem.blocks_los(attacker.global_position.distance_to(target.global_position)):
+		if debug_combat:
+			print("[CombatManager] fire_ranged SKIPPED: weather blocks LOS")
 		return
 
 	# LoS check
@@ -682,8 +950,8 @@ func fire_ranged(attacker: Regiment, target: Regiment) -> void:
 
 	attacker.current_ammo -= 1
 
-	# Play bow release audio
-	_play_combat_sfx("bow_release_01", attacker.global_position)
+	# Play weapon-appropriate ranged fire audio
+	_play_ranged_fire_audio(attacker)
 
 	# Play shooting animation on the attacker
 	_play_ranged_attack_animation(attacker)
@@ -714,6 +982,287 @@ func fire_ranged(attacker: Regiment, target: Regiment) -> void:
 			attacker.global_position
 		)
 		actual_target.unit_morale.apply_event_to_all(ff_event)
+
+
+## Fire multiple projectiles at once (per-soldier firing).
+## Each soldier fires independently, creating N projectiles with slight position offsets.
+## Uses weapon class data for projectile configuration.
+func fire_ranged_multi(attacker: Regiment, target: Regiment, shot_count: int) -> void:
+	if shot_count <= 0:
+		return
+	if attacker.current_ammo <= 0:
+		return
+	if attacker.data.ballistic_skill == 0:
+		return
+
+	# Check for breath weapons - handled by dedicated function (no multi-shot)
+	var weapon_class: int = attacker.data.weapon_class
+	if weapon_class in [RegimentData.WeaponClass.BREATH_FIRE, RegimentData.WeaponClass.BREATH_POISON]:
+		_fire_breath_weapon(attacker, target)
+		return
+
+	# Weather LOS check
+	if WeatherSystem.blocks_los(attacker.global_position.distance_to(target.global_position)):
+		return
+
+	# LoS check
+	if not _has_line_of_sight(attacker, target):
+		return
+
+	# Range check
+	var dist: float = attacker.global_position.distance_to(target.global_position)
+	if dist > attacker.data.range_distance:
+		return
+
+	# Consume ammo (1 per shot, but cap to available ammo)
+	var actual_shots: int = mini(shot_count, attacker.current_ammo)
+	attacker.current_ammo -= actual_shots
+
+	# Play weapon-appropriate ranged fire audio (rate limited for volleys)
+	_play_ranged_fire_audio(attacker)
+
+	# Play shooting animation
+	_play_ranged_attack_animation(attacker)
+
+	# Check friendly fire risk
+	var actual_target: Regiment = target
+	var friendly_hit: bool = false
+	if _is_target_in_melee(target):
+		if randf() < FRIENDLY_FIRE_CHANCE:
+			var friendly: Regiment = _get_friendly_in_melee_with(target, attacker.is_player_controlled)
+			if friendly and is_instance_valid(friendly):
+				actual_target = friendly
+				friendly_hit = true
+
+	# Spawn projectiles with staggered offsets for visual variety
+	var formation_width: float = 2.0 * sqrt(float(attacker.current_soldiers))
+	for i in actual_shots:
+		# Offset spawn position slightly per projectile (across formation width)
+		var lateral_offset: float = randf_range(-formation_width * 0.5, formation_width * 0.5)
+		var spawn_offset: Vector3 = attacker.get_facing_direction().cross(Vector3.UP).normalized() * lateral_offset
+		_spawn_projectile_at_offset(attacker, actual_target, spawn_offset)
+
+	BattleSignals.projectile_fired.emit(attacker, actual_target)
+
+	# Apply morale effects
+	if actual_target.unit_morale:
+		actual_target.unit_morale.set_continuous_modifier_all(
+			MoraleEvent.Source.UNDER_FIRE,
+			MoraleConstants.CONTINUOUS_UNDER_FIRE
+		)
+
+	if friendly_hit and actual_target.unit_morale:
+		var ff_event: MoraleEvent = MoraleEvent.create(
+			MoraleEvent.Source.FRIENDLY_FIRE,
+			-10.0,
+			attacker.global_position
+		)
+		actual_target.unit_morale.apply_event_to_all(ff_event)
+
+
+## Spawn projectile with position offset (for multi-shot volleys).
+## For artillery with special round types, spawns appropriate projectile pattern.
+func _spawn_projectile_at_offset(from: Regiment, to: Regiment, offset: Vector3) -> void:
+	if not _projectile_pool:
+		push_error("CombatManager: ProjectilePool not initialized")
+		return
+
+	var config: Dictionary = _get_projectile_config(from)
+	var round_type: int = config.get("round_type", WeaponClassDataScript.RoundType.STANDARD)
+
+	# Handle special round types
+	match round_type:
+		WeaponClassDataScript.RoundType.GRAPESHOT:
+			_spawn_grapeshot_projectiles(from, to, offset, config)
+			return
+		WeaponClassDataScript.RoundType.SHRAPNEL:
+			_spawn_shrapnel_projectile(from, to, offset, config)
+			return
+		WeaponClassDataScript.RoundType.INCENDIARY:
+			_spawn_incendiary_projectile(from, to, offset, config)
+			return
+
+	# Standard/other round types - spawn single projectile
+	_spawn_single_projectile(from, to, offset, config)
+
+
+## Spawn a single standard projectile.
+func _spawn_single_projectile(from: Regiment, to: Regiment, offset: Vector3, config: Dictionary) -> void:
+	# Calculate spawn position with offset
+	var spawn_pos: Vector3 = from.global_position + Vector3(0, 2, 0) + offset
+	var target_pos: Vector3 = to.global_position + Vector3(0, 1, 0)
+	# Add slight randomness to target position for volley spread
+	target_pos += Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
+	var direction: Vector3 = (target_pos - spawn_pos).normalized()
+
+	var projectile = _projectile_pool.spawn_configured(
+		from,
+		spawn_pos,
+		direction,
+		to,
+		config
+	)
+
+	if not projectile:
+		push_warning("CombatManager: Projectile pool exhausted (active: %d)" % _projectile_pool.get_active_count())
+		return
+
+	if projectile.has_method("start_flight"):
+		projectile.start_flight()
+
+
+## Spawn grapeshot projectiles - multiple pellets in a spread pattern.
+## Creates sub_projectile_count projectiles with random spread within spread_angle.
+func _spawn_grapeshot_projectiles(from: Regiment, to: Regiment, offset: Vector3, config: Dictionary) -> void:
+	var sub_count: int = config.get("sub_projectile_count", 12)
+	var spread_angle: float = deg_to_rad(config.get("spread_angle", 30.0))
+	var spread_random: bool = config.get("spread_random", true)
+
+	var spawn_pos: Vector3 = from.global_position + Vector3(0, 2, 0) + offset
+	var base_target_pos: Vector3 = to.global_position + Vector3(0, 1, 0)
+	var base_direction: Vector3 = (base_target_pos - spawn_pos).normalized()
+
+	# Get perpendicular vectors for spread
+	var right: Vector3 = base_direction.cross(Vector3.UP).normalized()
+	var up: Vector3 = right.cross(base_direction).normalized()
+
+	for i in sub_count:
+		var spread_dir: Vector3 = base_direction
+
+		if spread_random:
+			# Random spread within cone
+			var h_angle: float = randf_range(-spread_angle * 0.5, spread_angle * 0.5)
+			var v_angle: float = randf_range(-spread_angle * 0.3, spread_angle * 0.3)
+			spread_dir = base_direction.rotated(up, h_angle).rotated(right, v_angle)
+		else:
+			# Uniform spread pattern
+			var angle_step: float = spread_angle / float(sub_count - 1) if sub_count > 1 else 0.0
+			var h_angle: float = -spread_angle * 0.5 + angle_step * float(i)
+			spread_dir = base_direction.rotated(up, h_angle)
+
+		spread_dir = spread_dir.normalized()
+
+		var projectile = _projectile_pool.spawn_configured(
+			from,
+			spawn_pos,
+			spread_dir,
+			to,
+			config
+		)
+
+		if not projectile:
+			push_warning("CombatManager: Projectile pool exhausted during grapeshot")
+			break
+
+		if projectile.has_method("start_flight"):
+			projectile.start_flight()
+
+
+## Spawn shrapnel projectile - single shell that airbursts above target.
+## Sets airburst_height on projectile to trigger explosion at specified height.
+func _spawn_shrapnel_projectile(from: Regiment, to: Regiment, offset: Vector3, config: Dictionary) -> void:
+	var spawn_pos: Vector3 = from.global_position + Vector3(0, 2, 0) + offset
+	var airburst_height: float = config.get("airburst_height", 6.0)
+
+	# Target the airburst point above the target
+	var target_pos: Vector3 = to.global_position + Vector3(0, airburst_height, 0)
+	var direction: Vector3 = (target_pos - spawn_pos).normalized()
+
+	var projectile = _projectile_pool.spawn_configured(
+		from,
+		spawn_pos,
+		direction,
+		to,
+		config
+	)
+
+	if not projectile:
+		push_warning("CombatManager: Projectile pool exhausted")
+		return
+
+	# Set airburst properties on projectile
+	if projectile.has_method("set"):
+		projectile.airburst_height = airburst_height
+		projectile.is_airburst = true
+
+	if projectile.has_method("start_flight"):
+		projectile.start_flight()
+
+
+## Spawn incendiary projectile - creates hazard zone on impact.
+## Config includes hazard_duration and hazard_damage_per_sec for HazardZone setup.
+func _spawn_incendiary_projectile(from: Regiment, to: Regiment, offset: Vector3, config: Dictionary) -> void:
+	var spawn_pos: Vector3 = from.global_position + Vector3(0, 2, 0) + offset
+	var target_pos: Vector3 = to.global_position + Vector3(0, 1, 0)
+	target_pos += Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
+	var direction: Vector3 = (target_pos - spawn_pos).normalized()
+
+	var projectile = _projectile_pool.spawn_configured(
+		from,
+		spawn_pos,
+		direction,
+		to,
+		config
+	)
+
+	if not projectile:
+		push_warning("CombatManager: Projectile pool exhausted")
+		return
+
+	# Connect to projectile's AOE signal to spawn hazard zone
+	# The projectile will emit aoe_triggered when it impacts
+	if projectile.has_signal("aoe_triggered"):
+		# Store hazard config on projectile for retrieval at impact
+		projectile.set_meta("leaves_hazard", config.get("leaves_hazard", true))
+		projectile.set_meta("hazard_duration", config.get("hazard_duration", 8.0))
+		projectile.set_meta("hazard_damage_per_sec", config.get("hazard_damage_per_sec", 3.0))
+		projectile.set_meta("hazard_radius", config.get("aoe_radius", 4.0))
+		projectile.set_meta("source_regiment", from)
+
+		# Connect to spawn hazard on impact
+		if not projectile.aoe_triggered.is_connected(_on_incendiary_impact):
+			projectile.aoe_triggered.connect(_on_incendiary_impact.bind(projectile))
+
+	if projectile.has_method("start_flight"):
+		projectile.start_flight()
+
+
+## Callback for incendiary projectile impact - spawns HazardZone using unified factory.
+func _on_incendiary_impact(impact_pos: Vector3, _radius: float, projectile: Node) -> void:
+	if not is_instance_valid(projectile):
+		return
+
+	var leaves_hazard: bool = projectile.get_meta("leaves_hazard", true)
+	if not leaves_hazard:
+		return
+
+	# Prevent double-spawning if another system (spell_caster) also handles this
+	if projectile.get_meta("hazard_spawned", false):
+		return
+	projectile.set_meta("hazard_spawned", true)
+
+	var duration: float = projectile.get_meta("hazard_duration", 8.0)
+	var dps: float = projectile.get_meta("hazard_damage_per_sec", 3.0)
+	var hazard_radius: float = projectile.get_meta("hazard_radius", 4.0)
+	var source: Regiment = projectile.get_meta("source_regiment", null)
+
+	# Build config for unified factory method
+	var config: Dictionary = {
+		"radius": hazard_radius,
+		"damage_per_tick": int(dps),
+		"tick_interval": 0.5,
+		"duration": duration,
+		"damage_type": SpellData.DamageType.FIRE,
+		# Colors are auto-derived from damage_type by the factory
+	}
+
+	# Create hazard zone using unified factory
+	var hazard := HazardZone.create_from_config(config, impact_pos, source)
+
+	# Add to scene tree
+	if get_tree():
+		get_tree().current_scene.add_child(hazard)
+
 
 ## Check line of sight between two units
 func _has_line_of_sight(from: Regiment, to: Regiment) -> bool:
@@ -775,6 +1324,7 @@ func _spawn_projectile(from: Regiment, to: Regiment) -> void:
 ## Resolve ranged hit with damage multiplier (for piercing/AOE)
 ## Total War style: arrows hit easily, armor saves block damage
 ## Includes terrain: height bonus, forest defense, concealment
+## Applies round-specific modifiers (damage_modifier, anti_large_bonus)
 func resolve_ranged_hit_with_multiplier(attacker: Regiment, defender: Regiment, damage_multiplier: float = 1.0) -> void:
 	# Use RangedResolver for Total War style hit + armor save + terrain
 	var result: Dictionary = ranged_resolver.resolve_ranged_attack(attacker, defender)
@@ -785,6 +1335,20 @@ func resolve_ranged_hit_with_multiplier(attacker: Regiment, defender: Regiment, 
 			print("[COMBAT] RANGED %s -> %s: CONCEALED (hidden in terrain)" % [
 				attacker.name, defender.name])
 		return
+
+	# Get round-specific modifiers for artillery
+	var round_damage_mod: float = 1.0
+	var round_accuracy_mod: float = 1.0
+	var anti_large_bonus: float = 0.0
+
+	if attacker and attacker.data:
+		var round_type: int = attacker.current_round_type
+		if round_type != WeaponClassDataScript.RoundType.STANDARD:
+			var round_def = WeaponClassDataScript.get_round_def(round_type)
+			if round_def:
+				round_damage_mod = round_def.damage_modifier
+				round_accuracy_mod = round_def.accuracy_modifier
+				anti_large_bonus = round_def.anti_large_bonus
 
 	# Apply weather accuracy modifier to the roll (pre-resolution)
 	# Note: This modifies the threshold, not re-rolling
@@ -799,8 +1363,8 @@ func resolve_ranged_hit_with_multiplier(attacker: Regiment, defender: Regiment, 
 	else:
 		fire_mode_mod = 0.95  # -5% (volley compensates with volume)
 
-	# Combine modifiers for effective accuracy check
-	var effective_accuracy: float = result.accuracy * weather_mod * fire_mode_mod
+	# Combine modifiers for effective accuracy check (including round type accuracy modifier)
+	var effective_accuracy: float = result.accuracy * weather_mod * fire_mode_mod * round_accuracy_mod
 
 	# Re-check with modifiers if original was a miss but modifiers help
 	if not result.hit and not result.blocked:
@@ -834,7 +1398,8 @@ func resolve_ranged_hit_with_multiplier(attacker: Regiment, defender: Regiment, 
 	var damage: int = result.damage
 
 	# Play arrow impact audio
-	_play_combat_sfx_random("arrow_hit", 3, defender.global_position)
+	if combat_audio:
+		combat_audio.play_arrow_hit(defender.global_position)
 
 	# Apply high ground bonus/penalty
 	var height_diff: float = attacker.global_position.y - defender.global_position.y
@@ -855,11 +1420,26 @@ func resolve_ranged_hit_with_multiplier(attacker: Regiment, defender: Regiment, 
 	# Apply damage multiplier (from piercing/AOE falloff)
 	damage = int(float(damage) * damage_multiplier)
 
+	# Apply round type damage modifier (grapeshot pellets do less per hit, solid shot does more)
+	damage = int(float(damage) * round_damage_mod)
+
+	# Apply anti-large bonus vs CAVALRY and MONSTER unit types (chain shot, solid shot)
+	if anti_large_bonus > 0.0 and defender.data:
+		var defender_type: int = defender.data.unit_type
+		if defender_type == UnitType.Type.CAVALRY or defender_type == UnitType.Type.MONSTER:
+			damage = int(float(damage) * (1.0 + anti_large_bonus))
+			if debug_combat:
+				print("[COMBAT] Anti-large bonus applied: +%.0f%% vs %s" % [
+					anti_large_bonus * 100.0, UnitType.Type.keys()[defender_type]])
+
 	# Apply global combat slowdown multiplier
 	damage = int(float(damage) * COMBAT_DAMAGE_MULTIPLIER)
 
 	# Minimum damage of 1
 	damage = max(1, damage)
+
+	# Apply difficulty profile damage multiplier (BattleDebug agent calibration)
+	damage = _apply_difficulty_damage(damage, attacker.is_player_controlled)
 
 	# Debug ranged combat output
 	if debug_combat:
@@ -870,6 +1450,10 @@ func resolve_ranged_hit_with_multiplier(attacker: Regiment, defender: Regiment, 
 	# Apply damage
 	defender.take_casualties(damage)
 
+	# Record ranged damage for UNDER_FIRE morale modifier
+	if defender.casualty_tracker:
+		defender.casualty_tracker.record_ranged_damage()
+
 	# Track statistics
 	_track_kill(attacker, defender, damage)
 
@@ -878,12 +1462,21 @@ func resolve_ranged_hit_with_multiplier(attacker: Regiment, defender: Regiment, 
 		CombatEffects.spawn_ranged_hit(defender.global_position + Vector3(0, 0.5, 0))
 
 	# Play death cries for ranged casualties
-	if damage > 0:
-		_play_death_cry(defender.global_position, damage)
+	if damage > 0 and combat_audio:
+		combat_audio.play_death_cry(defender.global_position, damage)
 
 	MoraleSystem.apply_morale_damage(defender, float(damage) * RANGED_MORALE_RATIO, "ranged_hit")
 	damage_dealt.emit(defender, damage, attacker, "ranged")
 	BattleSignals.regiment_attacked.emit(attacker, defender, damage)
+
+	# === DAMAGE TYPE SPECIAL EFFECTS ===
+	# Get damage type from projectile config or round type override
+	var damage_type: int = SpellDataScript.DamageType.PHYSICAL
+	if attacker and attacker.data:
+		var proj_config: Dictionary = _get_projectile_config(attacker)
+		damage_type = proj_config.get("damage_type", SpellDataScript.DamageType.PHYSICAL)
+
+	_apply_damage_type_effects(attacker, defender, damage_type, damage)
 
 	# Track kills for veterancy
 	if attacker.veterancy and damage > 0:
@@ -904,6 +1497,205 @@ func return_projectile(projectile) -> void:
 		projectile.process_mode = Node.PROCESS_MODE_DISABLED
 		if projectile.get_parent():
 			projectile.get_parent().remove_child(projectile)
+
+
+## Apply special effects based on damage type.
+## Called after ranged hit is confirmed.
+## - FIRE: Chance to cause morale panic
+## - POISON: Creates small damage-over-time hazard zone
+## - ICE: Slow effect (future implementation)
+func _apply_damage_type_effects(attacker: Regiment, defender: Regiment, damage_type: int, _damage: int) -> void:
+	if not is_instance_valid(defender):
+		return
+
+	match damage_type:
+		SpellDataScript.DamageType.FIRE:
+			# Fire has a chance to cause morale panic
+			if randf() < FIRE_PANIC_CHANCE:
+				MoraleSystem.apply_morale_damage(defender, FIRE_PANIC_MORALE_DAMAGE, "fire_panic")
+				if debug_combat:
+					print("[COMBAT] FIRE PANIC: %s suffers morale damage from flames!" % defender.name)
+				# Spawn fire visual effect
+				if CombatEffects and CombatEffects.has_method("spawn_fire_burst"):
+					CombatEffects.spawn_fire_burst(defender.global_position + Vector3(0, 1.0, 0))
+
+		SpellDataScript.DamageType.POISON:
+			# Poison creates a small lingering hazard zone
+			_spawn_poison_hazard(attacker, defender.global_position)
+			if debug_combat:
+				print("[COMBAT] POISON: Hazard zone created at %s position" % defender.name)
+
+		SpellDataScript.DamageType.ICE:
+			# ICE: Future implementation - apply slow effect
+			# TODO: When slow system is implemented, apply speed debuff here
+			pass
+
+		SpellDataScript.DamageType.LIGHTNING:
+			# LIGHTNING: Future implementation - chain to nearby targets
+			pass
+
+		SpellDataScript.DamageType.HOLY:
+			# HOLY: Extra damage vs undead (handled in damage calculation)
+			pass
+
+		SpellDataScript.DamageType.DARK:
+			# DARK: Extra morale drain (already handled)
+			pass
+
+
+## Spawn a small poison hazard zone at impact location.
+## Used by POISON damage type weapons (breath_poison).
+func _spawn_poison_hazard(source: Regiment, position: Vector3) -> void:
+	var hazard := HazardZone.new()
+	hazard.setup_raw(
+		POISON_HAZARD_RADIUS,
+		int(POISON_HAZARD_DPS),
+		0.5,  # tick_interval
+		POISON_HAZARD_DURATION,
+		SpellDataScript.DamageType.POISON,
+		Color(0.2, 0.8, 0.2, 0.6),  # Green poison color
+		0 if (source and source.is_player_controlled) else 1
+	)
+	hazard.caster = source
+	hazard.global_position = position
+
+	# Add to scene tree
+	if get_tree():
+		get_tree().current_scene.add_child(hazard)
+
+
+## Fire a breath weapon cone attack at target.
+## Breath weapons don't fire projectiles - they hit instantly in a cone area.
+## Damage falls off with distance from the cone origin.
+func _fire_breath_weapon(attacker: Regiment, target: Regiment) -> void:
+	if not is_instance_valid(attacker) or not is_instance_valid(target):
+		return
+
+	# Get weapon definition for cone parameters
+	var weapon_def = WeaponClassDataScript.get_def(attacker.data.weapon_class)
+	if not weapon_def:
+		push_warning("CombatManager: No WeaponDef for breath weapon class %d" % attacker.data.weapon_class)
+		return
+
+	var cone_angle: float = weapon_def.cone_angle
+	var cone_length: float = weapon_def.cone_length
+	var damage_type: int = weapon_def.damage_type
+
+	# Calculate cone direction toward target
+	var origin: Vector3 = attacker.global_position
+	var direction: Vector3 = (target.global_position - origin).normalized()
+	direction.y = 0  # Flatten to horizontal
+
+	# Consume ammo
+	attacker.current_ammo -= 1
+
+	# Play breath audio based on damage type
+	if combat_audio:
+		combat_audio.play_breath_weapon(origin, damage_type == SpellDataScript.DamageType.FIRE)
+
+	# Play ranged attack animation
+	_play_ranged_attack_animation(attacker)
+
+	# Spawn cone visual effect using SpellEffects if available
+	var spell_effects: Node = null
+	if attacker.is_inside_tree():
+		spell_effects = attacker.get_node_or_null("/root/SpellEffects")
+	if spell_effects and spell_effects.has_method("spawn_cone_effect"):
+		spell_effects.spawn_cone_effect(origin, direction, cone_angle, cone_length, damage_type)
+
+	# Query enemies in cone radius using spatial hash
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		push_warning("CombatManager: AIAutoload.spatial_hash unavailable for breath weapon")
+		return
+
+	var my_faction: int = 0 if attacker.is_player_controlled else 1
+	var enemy_faction: int = 1 if my_faction == 0 else 0
+
+	var regiments_in_radius: Array[Node] = AIAutoload.spatial_hash.query_regiments_in_radius(
+		origin,
+		cone_length,
+		enemy_faction
+	)
+
+	# Filter to enemies in cone (dot product check)
+	var half_angle_rad: float = deg_to_rad(cone_angle / 2.0)
+	var cos_half_angle: float = cos(half_angle_rad)
+	var targets_hit: int = 0
+	const MAX_BREATH_TARGETS: int = 20
+
+	for node in regiments_in_radius:
+		if targets_hit >= MAX_BREATH_TARGETS:
+			break
+		if not node is Regiment:
+			continue
+		var regiment: Regiment = node
+		if regiment.state == Regiment.State.DEAD:
+			continue
+
+		var to_target: Vector3 = regiment.global_position - origin
+		to_target.y = 0  # Flatten
+
+		var dist: float = to_target.length()
+		if dist > cone_length or dist < 0.1:
+			continue
+
+		# Dot product check for cone angle
+		var to_target_norm: Vector3 = to_target.normalized()
+		var dot: float = direction.dot(to_target_norm)
+		if dot < cos_half_angle:
+			continue  # Outside cone angle
+
+		# Target is in cone - calculate damage with distance falloff
+		var distance_factor: float = 1.0 - (dist / cone_length) * 0.5  # 50% falloff at max range
+		distance_factor = clampf(distance_factor, 0.5, 1.0)
+
+		# Calculate base damage from attacker's ranged stats
+		var base_damage: int = ranged_resolver.calculate_damage(attacker, regiment)
+		var final_damage: int = maxi(1, int(float(base_damage) * distance_factor * COMBAT_DAMAGE_MULTIPLIER))
+
+		# Apply AI stat modifier
+		final_damage = int(float(final_damage) * _get_ai_stat_multiplier(attacker))
+
+		# Apply damage
+		regiment.take_casualties(final_damage)
+		targets_hit += 1
+
+		# Track statistics
+		_track_kill(attacker, regiment, final_damage)
+
+		# Emit damage signal
+		damage_dealt.emit(regiment, final_damage, attacker, "breath")
+		BattleSignals.regiment_attacked.emit(attacker, regiment, final_damage)
+
+		# Apply damage type special effects (fire panic, poison DoT)
+		_apply_damage_type_effects(attacker, regiment, damage_type, final_damage)
+
+		# Morale damage
+		var morale_damage: float = float(final_damage) * RANGED_MORALE_RATIO * 1.5  # Extra morale damage from breath
+		MoraleSystem.apply_morale_damage(regiment, morale_damage, "breath_attack")
+
+		# Death cries
+		if final_damage > 0 and combat_audio:
+			combat_audio.play_death_cry(regiment.global_position, final_damage)
+
+		# Visual feedback
+		if CombatEffects:
+			if damage_type == SpellDataScript.DamageType.FIRE:
+				CombatEffects.spawn_melee_hit(regiment.global_position + Vector3(0, 1.0, 0))
+			else:
+				CombatEffects.spawn_ranged_hit(regiment.global_position + Vector3(0, 0.5, 0))
+
+		# Track veterancy
+		if attacker.veterancy and final_damage > 0:
+			for i in final_damage:
+				attacker.veterancy.add_kill()
+
+		# Push morale events
+		_push_casualty_morale_events(regiment, final_damage, attacker)
+
+	if debug_combat:
+		print("[COMBAT] BREATH %s hits %d targets in %.1f° cone (length %.1f)" % [
+			attacker.name, targets_hit, cone_angle, cone_length])
 
 
 ## Get projectile pool statistics for debugging
@@ -932,6 +1724,44 @@ func _process(delta: float) -> void:
 		if elapsed > 16.0:  # More than 16ms = frame drop
 			print("[PERF_WARN] Combat _resolve_all_melees took %.1fms (melees=%d)" % [elapsed, active_melees.size()])
 	_update_charge_timers(delta)
+
+	# Update melee ambience system for continuous combat sounds
+	_update_melee_ambience(delta)
+
+	# Periodic debug output for all unit combat states
+	if debug_combat:
+		_debug_state_timer += delta
+		if _debug_state_timer >= DEBUG_STATE_INTERVAL:
+			_debug_state_timer = 0.0
+			_print_all_unit_combat_states()
+
+
+## Debug: Print combat state of all regiments
+func _print_all_unit_combat_states() -> void:
+	var regiments: Array = get_tree().get_nodes_in_group("regiments")
+	if regiments.is_empty():
+		return
+
+	print("=== COMBAT STATES (active_melees=%d) ===" % active_melees.size())
+	for regiment in regiments:
+		if not is_instance_valid(regiment):
+			continue
+		var r: Regiment = regiment as Regiment
+		if not r or not r.data:
+			continue
+
+		var state_name: String = Regiment.State.keys()[r.state] if r.state < Regiment.State.size() else "UNKNOWN"
+		var side: String = "PLAYER" if r.is_player_controlled else "ENEMY"
+		var ammo_str: String = "ammo=%d/%d" % [r.current_ammo, r.data.max_ammo] if r.data.max_ammo > 0 else ""
+		var target_str: String = ""
+		if r.target_regiment and is_instance_valid(r.target_regiment):
+			target_str = " -> %s" % r.target_regiment.data.regiment_name
+
+		print("  [%s] %s: %s soldiers=%d morale=%.0f %s%s" % [
+			side, r.data.regiment_name, state_name, r.current_soldiers,
+			r.current_morale, ammo_str, target_str
+		])
+	print("=========================================")
 
 
 ## Push per-soldier morale events when casualties occur
@@ -967,13 +1797,12 @@ func _apply_flank_morale_events(flanked: Regiment, flanker: Regiment, is_rear: b
 
 	# Flanked units take a morale hit from the shock
 	var flank_penalty: float = -15.0 if is_rear else -8.0
+	var source = MoraleEvent.Source.REAR_ATTACK if is_rear else MoraleEvent.Source.FLANK_ATTACK
 
-	# Create a flanking event and apply to all soldiers
-	# Using ENEMY_NEARBY as base source since there's no specific FLANKED source
-	flanked.unit_morale.set_continuous_modifier_all(
-		MoraleEvent.Source.ENEMY_NEARBY,
-		flank_penalty
-	)
+	# FLANKING FIX: use dedicated FLANK_ATTACK/REAR_ATTACK sources so we can
+	# clear them precisely when the engagement ends, without affecting
+	# unrelated ENEMY_NEARBY pressure.
+	flanked.unit_morale.set_continuous_modifier_all(source, flank_penalty)
 
 	# Emit signal for UI/debug
 	BattleSignals.unit_flanked.emit(flanked, flanker, is_rear)

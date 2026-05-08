@@ -1,29 +1,33 @@
 [gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
-[ext_resource type="Resource" path="res://assets/sprites/units/grtcanon_atlas.tres" id="2"]
+[ext_resource type="PackedScene" path="res://assets/models/3d units/artillery_great_cannon.tscn" id="2_model"]
 
 [resource]
 script = ExtResource("1")
-regiment_name = "Grudge Thrower"
+regiment_name = "Great Cannon"
 unit_type = 3
+faction = "empire"
+weapon_class = 5
 attack = 4
 defense = 4
 weapon_skill = 4
-ballistic_skill = 14
-strength = 8
-max_soldiers = 8
-current_soldiers = 8
-armor = 4
-base_morale = 80.0
-morale_save = 3
+ballistic_skill = 16
+strength = 10
+max_soldiers = 2
+current_soldiers = 2
+armor = 2
+base_morale = 60.0
+morale_save = 4
 walk_speed = 0.6
 run_speed = 0.8
 charge_speed = 1.2
 charge_speed_distance = 5.0
 charge_bonus = 0
-max_ammo = 12
-current_ammo = 12
-range_distance = 85.0
-faction_color = Color(0.6, 0.4, 0.2, 1)
-sprite_atlas = ExtResource("2")
+max_ammo = 10
+current_ammo = 10
+range_distance = 100.0
+faction_color = Color(0.2, 0.4, 0.8, 1)
+artillery_model = ExtResource("2_model")
+artillery_model_scale = Vector3(0.5, 0.5, 0.5)
+artillery_pieces_count = 2

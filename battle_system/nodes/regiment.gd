@@ -3,6 +3,11 @@ extends Node3D
 
 # Preload to avoid parse-order issues with class_name
 const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.gd")
+const WorldCompassScript = preload("res://battle_system/data/world_compass.gd")
+const ArtilleryFormationScript = preload("res://battle_system/units/artillery_formation.gd")
+# TODO: Investigate parsing issue
+#const RegimentFiringScript = preload("res://battle_system/ai/commander/regiment_firing.gd")
+var RegimentFiringScript = null
 
 @export var data: RegimentData
 @export var use_3d_soldiers: bool = true  ## Use 3D animated soldiers (placeholder blocks)
@@ -14,6 +19,7 @@ const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.
 var current_morale: float
 var current_soldiers: int
 var current_ammo: int
+var current_round_type: int = 0  # Current ammo type (WeaponClassData.RoundType)
 var current_order: OrderType.Type = OrderType.Type.NONE
 var is_player_controlled: bool = true
 var group_id: int = -1          # -1 = no saved group
@@ -43,27 +49,50 @@ var is_reforming: bool = false      # Currently changing formation
 var reform_timer: float = 0.0       # Time remaining in transition
 var reform_target: FormationType.Type = FormationType.Type.LINE  # Target formation
 
-# Stamina, Veterancy, Abilities
+# Stamina, Veterancy, Abilities, Firing
 var stamina: StaminaSystem = null
 var veterancy: VeterancySystem = null
 var abilities: AbilityManager = null
+var firing: RefCounted = null  # RegimentFiring - tracks per-soldier reload timers
 
 # Combat state flags
 var is_braced: bool = false      # Braced against charge
 var hold_fire: bool = false      # Don't auto-fire
 var inspire_active: bool = false # Inspired by general
 var has_charged: bool = false    # Has applied charge bonus this engagement
+var is_position_locked: bool = false  # Unit can't move toward targets (debug/testing)
+
+# Order queue (QOL Phase 4) - shift+click to queue orders
+var order_queue: Array[Dictionary] = []  # Each entry: { "order": OrderType.Type, "target": Variant }
+const MAX_QUEUE_SIZE: int = 8
+
+# General-specific combat stats
+# Generals are single units that fight with strength of soldiers
+# They accumulate damage instead of dying from single hits
+# HP scales with veterancy level: 12 base -> 20 at Elite
+const GENERAL_BASE_HP: int = 15  # Base damage pool at Level 0 (Fresh)
+const GENERAL_MAX_HP: int = 20   # Maximum HP cap at Elite level
+const GENERAL_ARMOR_SAVE_PER_POINT: float = 0.04  # 4% save per armor point (12 armor = 48%)
+var _general_damage_accumulated: int = 0  # Tracks damage taken by general
+
+# Single-model monster HP pools (Giant, Dragon, Treeman)
+# These monsters show as 1 sprite but have massive HP pools
+const MONSTER_HP_PER_DEFENSE: float = 1.0  # HP scales with defense stat
+const MONSTER_BASE_HP: int = 20            # Base HP for monsters
+const MONSTER_ARMOR_SAVE_PER_POINT: float = 0.035  # 3.5% save per armor
+var _monster_damage_accumulated: int = 0   # Tracks damage taken by single-model monster
 
 # Charge tracking
 var charge_start_position: Vector3 = Vector3.ZERO  # Position when charge started
 var charge_distance_traveled: float = 0.0           # Distance traveled during charge
 const MIN_CHARGE_DISTANCE: float = 10.0             # Minimum distance to apply charge bonus
 
-# Engagement constants (Phase 1 fix)
-const ENGAGEMENT_DISTANCE: float = 3.0              # Desired center-to-center separation in melee
+# Engagement constants (Phase 1 fix + rank-to-rank stopping)
+const ENGAGEMENT_MIN_GAP: float = 0.8               # Minimum gap between front ranks (prevents clipping)
 const ENGAGEMENT_DEAD_ZONE: float = 0.5             # ±0.5 units from ideal = no correction (prevents oscillation)
 const ENGAGEMENT_DECEL_RATE: float = 8.0            # Units/sec of corrective movement toward ideal spacing
-const APPROACH_OFFSET: float = 4.0                  # Attack approach point offset (slightly beyond ENGAGEMENT_DISTANCE)
+const APPROACH_OFFSET: float = 6.0                  # Attack approach point offset (accounts for formation depth)
+const FORMATION_SPACING: float = 1.2                # Default soldier spacing in formation
 
 
 ## Static helper: Get approach position for attacking a target.
@@ -78,8 +107,52 @@ static func get_attack_approach_position(attacker_pos: Vector3, target_pos: Vect
 	return target_pos - approach_dir * APPROACH_OFFSET
 
 
+## Calculate front rank offset from formation center.
+## This is how far forward the front rank extends from the regiment's center point.
+func get_front_rank_offset() -> float:
+	var ranks: int = 3  # Default for LINE formation
+	var spacing: float = FORMATION_SPACING
+
+	# Get actual rank count from formation type
+	if current_formation in FormationType.RANKS:
+		ranks = FormationType.RANKS[current_formation]
+		if ranks == 0:
+			# Special formations (wedge, square, schiltron) - estimate based on soldier count
+			ranks = maxi(2, ceili(sqrt(float(current_soldiers)) / 2.0))
+
+	# Get actual spacing from sprite formation if available
+	if formation and "spacing" in formation:
+		spacing = formation.spacing
+
+	# Front rank is at: -(ranks/2 - 0.5) * spacing from center (negative Z is forward)
+	# Simplified: (ranks - 1) / 2.0 * spacing
+	return (float(ranks - 1) / 2.0) * spacing
+
+
+## Calculate ideal engagement distance between this regiment and another.
+## Uses front rank offsets so units stop rank-to-rank instead of overlapping.
+func get_engagement_distance(other: Node) -> float:
+	var my_offset: float = get_front_rank_offset()
+	var other_offset: float = FORMATION_SPACING  # Default fallback
+
+	if other.has_method("get_front_rank_offset"):
+		other_offset = other.get_front_rank_offset()
+	elif other is Regiment:
+		# Estimate from formation type
+		var other_ranks: int = 3
+		if other.current_formation in FormationType.RANKS:
+			other_ranks = FormationType.RANKS[other.current_formation]
+			if other_ranks == 0:
+				other_ranks = maxi(2, ceili(sqrt(float(other.current_soldiers)) / 2.0))
+		other_offset = (float(other_ranks - 1) / 2.0) * FORMATION_SPACING
+
+	# Total engagement distance = both front rank offsets + minimum gap
+	return my_offset + other_offset + ENGAGEMENT_MIN_GAP
+
+
 # Facing direction for flanking calculations
-var _facing_direction: Vector3 = Vector3.FORWARD
+# NOTE: Initialized to ZERO - must call set_initial_facing() after spawn to face toward enemy
+var _facing_direction: Vector3 = Vector3.ZERO
 
 # Spatial hash optimization - only update when position changes significantly
 var _last_hash_position: Vector3 = Vector3.ZERO
@@ -91,8 +164,8 @@ var _current_heading: float = 0.0  # Current actual heading
 var _combat_facing_locked: bool = false  # Hysteresis flag to prevent spinning
 const DEFAULT_TURN_SPEED: float = 3.0  # radians per second fallback
 const HEADING_THRESHOLD: float = 0.05  # ~3 degrees - prevents micro-adjustments
-const COMBAT_FACING_LOCK: float = 0.35  # ~20 degrees - stop rotating once aligned
-const COMBAT_FACING_UNLOCK: float = 0.7  # ~40 degrees - only resume rotating if enemy moves significantly
+const COMBAT_FACING_LOCK: float = 0.26  # ~15 degrees - stop rotating once aligned (Bug E fix)
+const COMBAT_FACING_UNLOCK: float = 0.44  # ~25 degrees - resume rotating if enemy moves (Bug E fix)
 
 # Internal refs
 @onready var sprite: Sprite3D = $Sprite3D
@@ -104,10 +177,21 @@ const COMBAT_FACING_UNLOCK: float = 0.7  # ~40 degrees - only resume rotating if
 var formation: Node3D = null
 # Sprite overlay (SpriteFormation rendered on top of 3D soldiers)
 var sprite_overlay: SpriteFormation = null
+# Artillery formation (3D models for cannons/mortars instead of sprites)
+# Type hint removed to avoid parse-order issues with class_name
+var artillery_formation: Node3D = null  # ArtilleryFormation
+# Floating war banner above the regiment
+var war_banner: Node3D = null
+# Range indicator (weapon range, aura radius)
+var range_indicator: Node3D = null
+# Selection ring (QOL Phase 3)
+var _selection_ring: Node3D = null
 
 # AI and Morale systems
 var ai_controller: CommanderAI = null
 var unit_morale: UnitMorale = null
+var casualty_tracker: CasualtyTracker = null
+var _casualty_sample_acc: float = 0.0
 
 enum State { IDLE, MARCHING, ENGAGING, ROUTING, RALLYING, DEAD }
 var state: State = State.IDLE
@@ -129,9 +213,20 @@ func _ready():
 		queue_free()
 		return
 
-	current_morale = data.base_morale
+	# All regiments start battles at 100 morale (regardless of base_morale)
+	# The morale cap determines recovery ceiling and may be lower if carried from campaign
+	current_morale = 100.0
 	current_soldiers = data.max_soldiers
 	current_ammo = data.max_ammo
+	current_round_type = data.default_round_type if data else 0
+
+	# BUG C FIX: set initial facing by reading deployment markers from the scene.
+	# Hardcoded axis directions are fragile because battle maps put deployments
+	# on diagonals — a hardcoded (1,0,0) is up to 45° off from the actual enemy
+	# bearing, which is exactly the flank/frontal threshold. Looking up the
+	# markers is map-agnostic and correct for any layout.
+	if _facing_direction.length_squared() < 0.001:
+		set_initial_facing(_compute_initial_facing_from_deployment())
 
 	# Set leader speeds from regiment data
 	if leader and data:
@@ -144,6 +239,7 @@ func _ready():
 	_setup_stamina()
 	_setup_veterancy()
 	_setup_abilities()
+	_setup_firing()
 
 	# Set up visuals based on mode
 	# 3D soldiers provide collision/selection, sprites render on top
@@ -159,6 +255,16 @@ func _ready():
 	# Add sprite overlay on top of 3D formation if enabled
 	if use_sprite_soldiers:
 		_setup_sprite_overlay()
+
+	# Add floating war banner above regiment
+	_setup_war_banner()
+
+	# Add range indicator for ranged units and generals
+	_setup_range_indicator()
+
+	# Add hero emblem for GENERAL (hero) units
+	if data.unit_type == UnitType.Type.GENERAL:
+		_setup_hero_emblem()
 
 	# Set MeleeArea to collision layer 2 for unit selection
 	melee_area.collision_layer = 2
@@ -206,6 +312,71 @@ func _setup_abilities():
 	abilities.ability_activated.connect(_on_ability_activated)
 	abilities.ability_ended.connect(_on_ability_ended)
 
+	# Generals get faction-specific spells automatically
+	if data and data.unit_type == UnitType.Type.GENERAL:
+		_assign_general_spells()
+
+
+func _setup_firing():
+	## Initialize per-soldier firing state for ranged units.
+	if not data:
+		return
+	# Only setup firing for units with a weapon class (ranged capability)
+	# TODO: RegimentFiringScript temporarily disabled due to parse issue
+	if RegimentFiringScript == null:
+		RegimentFiringScript = load("res://battle_system/ai/commander/regiment_firing.gd")
+	if RegimentFiringScript and data.weapon_class != RegimentData.WeaponClass.NONE:
+		firing = RegimentFiringScript.new(self)
+
+
+func _assign_general_spells():
+	## Assign spells to general based on faction color.
+	## Empire (blue): Hold the Line, Healing Light
+	## Dwarf (gold): Ancestral Might
+	## Orc (green): WAAAGH!
+	## Undead (purple): Dread Aura
+	var spells_to_add: Array[SpellData] = []
+
+	# Determine faction by color
+	var faction_color: Color = data.faction_color
+	var empire_color := Color(0.2, 0.4, 0.8, 1)
+	var dwarf_color := Color(0.6, 0.5, 0.2, 1)
+	var orc_color := Color(0.2, 0.5, 0.2, 1)
+	var undead_color := Color(0.3, 0.1, 0.4, 1)
+
+	if faction_color.is_equal_approx(empire_color):
+		# Empire General
+		var hold_line = load("res://battle_system/data/spells/hold_the_line.tres")
+		var healing = load("res://battle_system/data/spells/healing_light.tres")
+		if hold_line:
+			spells_to_add.append(hold_line)
+		if healing:
+			spells_to_add.append(healing)
+	elif faction_color.is_equal_approx(dwarf_color):
+		# Dwarf Thane
+		var ancestral = load("res://battle_system/data/spells/ancestral_might.tres")
+		if ancestral:
+			spells_to_add.append(ancestral)
+	elif faction_color.is_equal_approx(orc_color):
+		# Orc Warboss
+		var waaagh = load("res://battle_system/data/spells/waaagh.tres")
+		if waaagh:
+			spells_to_add.append(waaagh)
+	elif faction_color.is_equal_approx(undead_color):
+		# Vampire Lord
+		var dread = load("res://battle_system/data/spells/dread_aura.tres")
+		if dread:
+			spells_to_add.append(dread)
+
+	# Add fireball to all generals as universal spell
+	var fireball = load("res://battle_system/data/spells/fireball.tres")
+	if fireball:
+		spells_to_add.append(fireball)
+
+	# Assign spells to ability manager
+	if abilities and spells_to_add.size() > 0:
+		abilities.setup_spells(spells_to_add)
+
 
 func _setup_3d_formation():
 	var soldier_formation := SoldierFormation.new()
@@ -227,6 +398,13 @@ func _setup_3d_formation():
 func _setup_sprite_overlay():
 	## Set up batched sprite overlay using MultiMesh for performance.
 	## Sprites render ON TOP of 3D soldiers for visual fidelity.
+	## For Artillery with 3D models, use ArtilleryFormation instead.
+
+	# Check if this is an artillery unit with a 3D model assigned
+	if data.unit_type == UnitType.Type.ARTILLERY and data.artillery_model:
+		_setup_artillery_formation()
+		return
+
 	var sprite_formation := SpriteFormation.new()
 
 	# Use provided atlas or try to get from data
@@ -239,8 +417,81 @@ func _setup_sprite_overlay():
 	sprite_formation.rows = ceili(sqrt(float(data.max_soldiers)))
 	sprite_formation.spacing = 1.2
 	sprite_formation.faction_color = data.faction_color
+
+	# Generals are rendered larger than normal units (but not 2x - 30% smaller than before)
+	if data.unit_type == UnitType.Type.GENERAL:
+		sprite_formation.sprite_scale = Vector2(3.5, 4.2)  # ~1.4x normal size (30% smaller than 2x)
+		sprite_formation.height_offset = 1.75  # Slightly lower to match smaller size
+	# Monsters (trolls, giants, etc.) are rendered 2x normal size - big and scary!
+	elif data.unit_type == UnitType.Type.MONSTER:
+		sprite_formation.sprite_scale = Vector2(5.0, 6.0)  # 2x normal size
+		sprite_formation.height_offset = 3.0  # Higher off ground for large units
+		sprite_formation.spacing = 2.5  # More spacing between large units
+	# Artillery (cannons, mortars) - large war machines with sprites (fallback if no 3D model)
+	elif data.unit_type == UnitType.Type.ARTILLERY:
+		sprite_formation.sprite_scale = Vector2(6.0, 7.5)  # 2.5x normal - cannons are BIG
+		sprite_formation.height_offset = -1.5  # Negative offset to ground the wheels
+		sprite_formation.spacing = 4.0  # Wide spacing between guns
+
 	add_child(sprite_formation)
 	sprite_overlay = sprite_formation
+
+
+func _setup_artillery_formation():
+	## Set up 3D artillery models (cannons, mortars) using ArtilleryFormation.
+	## This replaces sprite overlay for artillery units with 3D models.
+	var arty_formation: Node3D = ArtilleryFormationScript.new()
+
+	arty_formation.artillery_model = data.artillery_model
+	arty_formation.max_pieces = data.artillery_pieces_count
+	arty_formation.model_scale = data.artillery_model_scale
+	arty_formation.spacing = 5.0  # Wide spacing between guns
+	arty_formation.faction_color = data.faction_color
+	arty_formation.enable_collision = true
+	arty_formation.height_offset = 0.0
+
+	add_child(arty_formation)
+	artillery_formation = arty_formation
+
+	# Spawn the artillery pieces
+	arty_formation.spawn_formation(data.artillery_pieces_count)
+
+
+func _setup_war_banner():
+	## Set up floating war banner above the regiment.
+	var banner_script := load("res://battle_system/units/regiment_banner.gd")
+	if banner_script:
+		war_banner = Node3D.new()
+		war_banner.set_script(banner_script)
+		add_child(war_banner)
+		war_banner.setup_for_regiment(self)
+
+
+func _setup_range_indicator():
+	## Set up range indicator for ranged units and generals with auras.
+	# Only create for units with ranged capability or aura
+	if not data:
+		return
+	if data.weapon_class == RegimentData.WeaponClass.NONE and not (data.unit_type == UnitType.Type.GENERAL):
+		return
+	var RangeIndicatorScript = load("res://battle_system/ui/range_indicator.gd")
+	if RangeIndicatorScript:
+		range_indicator = RangeIndicatorScript.create_for_regiment(self)
+
+
+var hero_emblem: Node3D = null
+
+func _setup_hero_emblem():
+	## Set up floating emblem above hero units for battlefield identification.
+	var emblem_script: GDScript = load("res://battle_system/ui/hero_emblem.gd")
+	if emblem_script:
+		# Create instance directly from script (ensures proper initialization)
+		hero_emblem = emblem_script.new()
+		hero_emblem.name = "HeroEmblem"
+		add_child(hero_emblem)
+		# Use player/enemy emblem based on control, fallback to faction
+		var emblem_key: String = "player" if is_player_controlled else "enemy"
+		hero_emblem.set_emblem_texture(emblem_key)
 
 
 func _force_idle_animation():
@@ -297,11 +548,28 @@ func _setup_unit_morale():
 	## Initialize the per-soldier morale system.
 	unit_morale = UnitMorale.new(self)
 
-	# Register soldiers if formation exists
-	if formation and is_instance_valid(formation):
+	# Set morale cap from campaign data (if coming from campaign with persistent cap)
+	# Otherwise start at 100 (fresh regiment)
+	var initial_cap: float = 100.0
+	if data and data.has_meta("battle_morale_cap"):
+		initial_cap = data.get_meta("battle_morale_cap")
+	unit_morale.set_initial_cap(initial_cap)
+
+	# Initialize casualty tracker
+	var is_elite: bool = data.is_elite if data else false
+	casualty_tracker = CasualtyTracker.new(self, is_elite)
+	casualty_tracker.set_starting_soldiers(current_soldiers)
+	casualty_tracker.threshold_reached.connect(_on_casualty_threshold_reached)
+
+	# For sprite-based units, use virtual soldiers (no Node3D soldiers exist)
+	# All soldiers start at 100 morale (base_morale affects cap/recovery, not starting value)
+	if use_sprite_soldiers and current_soldiers > 0:
+		unit_morale.register_virtual_soldiers(current_soldiers, 100.0)
+	# Register soldiers if formation exists (3D soldier mode)
+	elif formation and is_instance_valid(formation):
 		# Check if formation is already ready (has soldiers)
 		if formation.soldiers.size() > 0:
-			unit_morale.register_soldiers(formation.soldiers, data.base_morale)
+			unit_morale.register_soldiers(formation.soldiers, 100.0)
 		else:
 			# Wait for formation to be ready with timeout
 			var waited := 0.0
@@ -313,7 +581,7 @@ func _setup_unit_morale():
 					break
 			# Register if valid and has soldiers
 			if is_instance_valid(self) and is_instance_valid(formation) and formation.soldiers.size() > 0:
-				unit_morale.register_soldiers(formation.soldiers, data.base_morale)
+				unit_morale.register_soldiers(formation.soldiers, 100.0)
 
 	# Safety check before connecting signals
 	if not is_instance_valid(self):
@@ -348,6 +616,10 @@ func _process(delta):
 			reform_timer = 0.0
 			BattleSignals.formation_reform_completed.emit(self)
 
+	# Update disengage cooldown
+	if _disengage_cooldown > 0:
+		_disengage_cooldown = maxf(_disengage_cooldown - delta, 0.0)
+
 	# Update per-soldier morale system
 	if unit_morale:
 		unit_morale.update(delta)
@@ -361,6 +633,14 @@ func _process(delta):
 		if in_melee != _last_in_melee_for_morale:
 			_apply_unit_type_morale_modifiers()
 			_last_in_melee_for_morale = in_melee
+
+	# Update casualty tracker (sample every 1 second)
+	if casualty_tracker:
+		_casualty_sample_acc += delta
+		if _casualty_sample_acc >= CasualtyTracker.SAMPLE_INTERVAL:
+			_casualty_sample_acc -= CasualtyTracker.SAMPLE_INTERVAL
+			casualty_tracker.sample(Time.get_ticks_msec() / 1000.0)
+		casualty_tracker.tick(delta)
 
 	# Update stamina system
 	if stamina:
@@ -411,8 +691,10 @@ func _physics_process(delta):
 
 
 func _update_combat_facing(delta: float) -> void:
-	## Smoothly rotate regiment toward enemy during combat (spring1944-style).
-	## Uses atan2 heading calculation with smooth interpolation and hysteresis.
+	## Smoothly rotate sprites toward enemy during combat.
+	## FLANKING FIX: _facing_direction is LOCKED to the first engaged enemy
+	## for the entire engagement. New attackers do NOT cause facing to track them,
+	## so flanking attacks register correctly as flank/rear.
 	if state != State.ENGAGING:
 		_combat_facing_locked = false  # Reset lock when not engaging
 		return
@@ -423,45 +705,51 @@ func _update_combat_facing(delta: float) -> void:
 		_combat_facing_locked = false
 		return
 
-	# Calculate desired heading toward enemy using atan2
+	# Calculate desired heading toward the LOCKED target
 	var dir := enemy.global_position - global_position
-	dir.y = 0  # Keep rotation horizontal
+	dir.y = 0
 	if dir.length_squared() < 0.1:
 		return  # Too close, don't spin
 
-	_target_heading = atan2(dir.x, dir.z)
+	# FLANKING FIX (key change): only update _facing_direction on the FIRST
+	# tick of engagement. After that, it stays locked even if new enemies appear.
+	# This is what makes flanking persist beyond the first tick.
+	if not _combat_facing_locked:
+		_facing_direction = dir.normalized()
 
-	# Smooth rotation toward target heading
+	# Snap heading for sprite display (8-way)
+	var target_dir_index := WorldCompassScript.direction_from_vector(dir)
+	_target_heading = WorldCompassScript.angle_from_direction(target_dir_index)
+
 	var angle_diff := _wrap_angle(_target_heading - _current_heading)
 
-	# Hysteresis to prevent spinning:
-	# - Once locked (facing within COMBAT_FACING_LOCK), stay locked
-	# - Only unlock if enemy moves significantly (beyond COMBAT_FACING_UNLOCK)
+	# Hysteresis for sprite rotation only (NOT for combat math anymore)
 	if _combat_facing_locked:
 		if absf(angle_diff) < COMBAT_FACING_UNLOCK:
-			return  # Stay locked, don't rotate
-		else:
-			_combat_facing_locked = false  # Enemy moved significantly, unlock
+			return  # Sprite stays where it is
+		# else: sprite catches up below, but _facing_direction does NOT change
 	else:
 		if absf(angle_diff) < COMBAT_FACING_LOCK:
-			_combat_facing_locked = true  # Now facing enemy, lock in place
+			_combat_facing_locked = true  # Lock both sprite and facing
 			return
 
 	if absf(angle_diff) > HEADING_THRESHOLD:
-		# Use data.turn_rate if available, otherwise fallback to default
 		var turn_speed := data.turn_rate if data else DEFAULT_TURN_SPEED
-		# Apply turn speed (spring1944-style frame-by-frame interpolation)
 		var turn_amount: float = signf(angle_diff) * minf(absf(angle_diff), turn_speed * delta)
 		_current_heading = _wrap_angle(_current_heading + turn_amount)
 
-		# Update facing direction for flanking calculations
-		_facing_direction = Vector3(sin(_current_heading), 0, cos(_current_heading))
+		# Sprite-only quantized direction
+		var sprite_dir_index := WorldCompassScript.direction_from_angle(_current_heading)
+		var sprite_dir := WorldCompassScript.vector_from_direction(sprite_dir_index)
 
-		# Update sprite overlay facing (smooth, not instant)
+		if range_indicator and range_indicator.has_method("update_facing"):
+			range_indicator.update_facing(sprite_dir)
 		if sprite_overlay:
 			sprite_overlay.set_facing_angle(_current_heading)
 		if formation and formation.has_method("set_facing_direction"):
-			formation.set_facing_direction(_facing_direction)
+			formation.set_facing_direction(sprite_dir)
+		if artillery_formation:
+			artillery_formation.set_facing_direction(sprite_dir)
 
 
 func _wrap_angle(angle: float) -> float:
@@ -511,6 +799,8 @@ func set_state(new_state: State):
 			# Reset to walk speed when idle
 			if leader:
 				leader.set_move_mode(RegimentLeader.MoveMode.WALK)
+			# QOL Phase 4: Advance to next queued order if any
+			_try_advance_to_next_queued_order()
 		State.DEAD:
 			BattleSignals.regiment_dead.emit(self)
 			# Clean up from combat systems before freeing
@@ -522,14 +812,79 @@ func set_state(new_state: State):
 			)
 
 
+# Disengage cooldown tracking
+var _disengage_cooldown: float = 0.0
+const DISENGAGE_COOLDOWN_DURATION: float = 3.0
+
+
+## Attempt to disengage from melee combat.
+## Roll: discipline + d10 vs enemy weapon_skill + d10
+## Returns true if disengage succeeds.
+func attempt_disengage() -> bool:
+	if state != State.ENGAGING:
+		return true  # Not in combat, auto-success
+
+	# Check cooldown
+	if _disengage_cooldown > 0:
+		print("[Combat] %s disengage on cooldown (%.1fs remaining)" % [name, _disengage_cooldown])
+		BattleSignals.unit_disengage_failed.emit(self)
+		return false
+
+	# Find engaged enemy
+	var enemy: Regiment = CombatManager.get_engaged_enemy(self)
+	if not enemy:
+		return true  # No enemy, auto-success
+
+	# Roll: discipline + d10 vs enemy weapon_skill + d10
+	var my_discipline: int = data.discipline if data else 10
+	var enemy_ws: int = enemy.data.weapon_skill if enemy.data else 10
+
+	var my_roll: int = my_discipline + randi_range(1, 10)
+	var enemy_roll: int = enemy_ws + randi_range(1, 10)
+
+	print("[Combat] %s disengage roll: %d (disc %d + d10) vs %d (ws %d + d10)" % [
+		name, my_roll, my_discipline, enemy_roll, enemy_ws
+	])
+
+	if my_roll >= enemy_roll:
+		# Success - disengage
+		CombatManager.disengage_regiment(self)
+		# Set WITHDRAWING stance via AI controller
+		if ai_controller:
+			ai_controller.set_stance(CommanderAI.Stance.WITHDRAWING)
+		BattleSignals.unit_disengage_success.emit(self)
+		print("[Combat] %s disengaged successfully!" % name)
+		return true
+	else:
+		# Fail - cooldown
+		_disengage_cooldown = DISENGAGE_COOLDOWN_DURATION
+		BattleSignals.unit_disengage_failed.emit(self)
+		print("[Combat] %s failed to disengage, cooldown started" % name)
+		return false
+
+
 # --- ORDER HANDLING ---
-func give_order(order: OrderType.Type, target: Variant = null):
-	# Player-controlled units CAN disengage from melee (with delay/straggling)
+func give_order(order: OrderType.Type, target: Variant = null, append: bool = false):
+	# QOL Phase 4: If append is true, queue the order instead of executing immediately
+	if append:
+		queue_order(order, target)
+		return
+
+	# Clear queue when receiving a fresh order (not queued)
+	clear_order_queue()
+
+	# Position-locked units can't receive movement orders (debug/testing feature)
+	# They can still route/flee via morale breaks and WITHDRAW orders
+	if is_position_locked and order in [OrderType.Type.MOVE, OrderType.Type.ATTACK_MOVE, OrderType.Type.CHARGE]:
+		return  # Ignore movement orders when locked
+
+	# Player-controlled units CAN disengage from melee (with roll)
 	# AI units stay locked in combat until it resolves
 	if state == State.ENGAGING and order in [OrderType.Type.MOVE, OrderType.Type.ATTACK_MOVE, OrderType.Type.CHARGE]:
 		if is_player_controlled:
-			# Player unit: allow disengagement - they will take some hits while withdrawing
-			CombatManager.disengage_regiment(self)
+			# Player unit: attempt disengage with roll
+			if not attempt_disengage():
+				return  # Disengage failed, ignore order
 			# Continue to process the order below
 		else:
 			# AI unit: stay locked in combat
@@ -541,7 +896,11 @@ func give_order(order: OrderType.Type, target: Variant = null):
 		OrderType.Type.MOVE, OrderType.Type.ATTACK_MOVE:
 			if target is Vector3:
 				leader.move_to(target)
-				leader.set_move_mode(RegimentLeader.MoveMode.RUN)  # Run to respond to orders
+				# Use current move mode (walk or run based on toggle)
+				if leader.move_mode == RegimentLeader.MoveMode.WALK:
+					leader.set_move_mode(RegimentLeader.MoveMode.WALK)
+				else:
+					leader.set_move_mode(RegimentLeader.MoveMode.RUN)
 				set_state(State.MARCHING)
 		OrderType.Type.CHARGE:
 			if target is Vector3:
@@ -568,9 +927,77 @@ func give_order(order: OrderType.Type, target: Variant = null):
 				sprite_overlay.play_animation_all("idle")
 
 
+# --- ORDER QUEUE (QOL Phase 4) ---
+func queue_order(order: OrderType.Type, target: Variant) -> void:
+	"""Append an order to the queue. Shift+click uses this."""
+	if order_queue.size() >= MAX_QUEUE_SIZE:
+		order_queue.pop_front()  # Drop oldest if queue full
+	order_queue.append({ "order": order, "target": target })
+
+
+func clear_order_queue() -> void:
+	"""Clear all queued orders."""
+	order_queue.clear()
+
+
+func _try_advance_to_next_queued_order() -> bool:
+	"""Called when regiment becomes IDLE. Pulls next order from queue if any."""
+	if order_queue.is_empty():
+		return false
+	var next: Dictionary = order_queue.pop_front()
+	give_order(next.order, next.target)
+	return true
+
+
 # --- DAMAGE ---
 func take_casualties(amount: int):
+	# Generals use damage pool with armor saves instead of dying from single hits
+	if data and data.unit_type == UnitType.Type.GENERAL:
+		var max_hp: int = _get_general_max_hp()
+		var armor_save_chance: float = float(data.armor) * GENERAL_ARMOR_SAVE_PER_POINT
+
+		# Roll armor save for each incoming damage point
+		var actual_damage: int = 0
+		for i in amount:
+			if randf() >= armor_save_chance:  # Failed save = take damage
+				actual_damage += 1
+
+		_general_damage_accumulated += actual_damage
+
+		# General only dies when accumulated damage exceeds their HP pool
+		if _general_damage_accumulated >= max_hp:
+			current_soldiers = 0
+			if sprite_overlay:
+				sprite_overlay.kill_soldiers(1)
+			set_state(State.DEAD)
+		return
+
+	# Single-model monsters (Giant, Dragon, Treeman) use HP pool like generals
+	if data and data.unit_type == UnitType.Type.MONSTER and data.max_soldiers == 1:
+		var max_hp: int = _get_monster_max_hp()
+		var armor_save_chance: float = float(data.armor) * MONSTER_ARMOR_SAVE_PER_POINT
+
+		# Roll armor save for each incoming damage point
+		var actual_damage: int = 0
+		for i in amount:
+			if randf() >= armor_save_chance:  # Failed save = take damage
+				actual_damage += 1
+
+		_monster_damage_accumulated += actual_damage
+
+		# Monster only dies when accumulated damage exceeds their HP pool
+		if _monster_damage_accumulated >= max_hp:
+			current_soldiers = 0
+			if sprite_overlay:
+				sprite_overlay.kill_soldiers(1)
+			set_state(State.DEAD)
+		return
+
 	current_soldiers = max(0, current_soldiers - amount)
+
+	# Resync firing timers when soldiers die (trim stagger arrays)
+	if firing and firing.has_method("resync_after_casualty"):
+		firing.resync_after_casualty()
 
 	# Update visuals
 	if formation:
@@ -584,6 +1011,36 @@ func take_casualties(amount: int):
 
 	if current_soldiers <= 0:
 		set_state(State.DEAD)
+
+
+## Get the general's maximum HP based on veterancy level.
+func _get_general_max_hp() -> int:
+	var base_hp: int = GENERAL_BASE_HP
+	if veterancy:
+		base_hp += veterancy.get_general_hp_bonus()
+	return mini(base_hp, GENERAL_MAX_HP)  # Cap at maximum
+
+
+## Get general's remaining health as a percentage (for UI display).
+func get_general_health_percent() -> float:
+	if data and data.unit_type == UnitType.Type.GENERAL:
+		var max_hp: int = _get_general_max_hp()
+		return 1.0 - (float(_general_damage_accumulated) / float(max_hp))
+	return float(current_soldiers) / float(data.max_soldiers)
+
+
+## Get the single-model monster's maximum HP based on defense stat.
+func _get_monster_max_hp() -> int:
+	var defense: int = data.defense if data else 10
+	return MONSTER_BASE_HP + int(float(defense) * MONSTER_HP_PER_DEFENSE)
+
+
+## Get single-model monster's remaining health as a percentage (for UI display).
+func get_monster_health_percent() -> float:
+	if data and data.unit_type == UnitType.Type.MONSTER and data.max_soldiers == 1:
+		var max_hp: int = _get_monster_max_hp()
+		return 1.0 - (float(_monster_damage_accumulated) / float(max_hp))
+	return float(current_soldiers) / float(data.max_soldiers)
 
 
 func take_morale_damage(amount: float):
@@ -658,35 +1115,39 @@ func _process_march(delta):
 
 	# Update soldier facing direction based on ACTUAL movement velocity (not target direction)
 	# This fixes sprites facing wrong direction when moving along curved paths
+	# Bug B fix: Use SAME direction for both sprite AND logical facing so flanking math matches visuals
 	var velocity_dir: Vector3 = leader.current_velocity
 	velocity_dir.y = 0
 
-	# Use velocity for sprite direction if moving fast enough, otherwise use target direction
-	var sprite_facing_dir: Vector3
+	# Use velocity for facing if moving fast enough, otherwise use target direction
+	var facing_dir: Vector3
 	if velocity_dir.length_squared() > 0.5:
-		sprite_facing_dir = velocity_dir.normalized()
+		facing_dir = velocity_dir.normalized()
 	else:
 		# Fallback to target direction when nearly stopped
-		sprite_facing_dir = (leader.target_position - global_position)
-		sprite_facing_dir.y = 0
-		if sprite_facing_dir.length_squared() < 0.1:
-			sprite_facing_dir = _facing_direction  # Keep current facing
+		facing_dir = (leader.target_position - global_position)
+		facing_dir.y = 0
+		if facing_dir.length_squared() < 0.1:
+			facing_dir = _facing_direction  # Keep current facing
 
-	# Track regiment-level facing for flanking calculations (use target direction)
-	var target_dir = leader.target_position - global_position
-	target_dir.y = 0
-	if target_dir.length_squared() > 0.1:
-		_facing_direction = target_dir.normalized()
-		# Sync heading so combat transition is smooth
-		_current_heading = atan2(target_dir.x, target_dir.z)
+	# Bug B fix: SYNC both logical facing AND sprite facing to same direction
+	# This ensures flanking calculations match what player sees
+	if facing_dir.length_squared() > 0.01:
+		_facing_direction = facing_dir.normalized()
+		# Sync heading so combat transition is smooth (use WorldCompass)
+		var march_dir_index := WorldCompassScript.direction_from_vector(_facing_direction)
+		_current_heading = WorldCompassScript.angle_from_direction(march_dir_index)
 		_target_heading = _current_heading
 
-	# Set sprite/formation direction based on actual movement
-	if sprite_facing_dir.length_squared() > 0.01:
+		# Update all visual components with same direction
 		if formation and formation.has_method("set_facing_direction"):
-			formation.set_facing_direction(sprite_facing_dir)
+			formation.set_facing_direction(_facing_direction)
 		if sprite_overlay:
-			sprite_overlay.set_facing_direction(sprite_facing_dir)
+			sprite_overlay.set_facing_direction(_facing_direction)
+		if artillery_formation:
+			artillery_formation.set_facing_direction(_facing_direction)
+		if range_indicator and range_indicator.has_method("update_facing"):
+			range_indicator.update_facing(_facing_direction)
 
 	if leader and leader.nav_agent and leader.nav_agent.is_navigation_finished():
 		clear_movement_group()  # Clear group sync when arrived
@@ -695,6 +1156,7 @@ func _process_march(delta):
 
 func _process_engage(delta: float) -> void:
 	## Soft-separation: glide units to ideal spacing over multiple frames.
+	## Uses dynamic engagement distance based on formation depth for rank-to-rank stopping.
 	## Only one of the pair applies correction (lower instance ID) to avoid oscillation.
 	## Uses dead zone to prevent constant micro-corrections (Shadow of the Horned Rat style).
 	var enemy := _find_current_combat_target()
@@ -708,7 +1170,10 @@ func _process_engage(delta: float) -> void:
 		return  # Stacked — let next frame resolve via facing logic
 
 	var dir: Vector3 = to_enemy / dist
-	var error: float = dist - ENGAGEMENT_DISTANCE  # +ve = too far, -ve = too close
+
+	# Calculate dynamic engagement distance based on both formations' front rank offsets
+	var ideal_distance: float = get_engagement_distance(enemy)
+	var error: float = dist - ideal_distance  # +ve = too far, -ve = too close (overlapping)
 
 	# DEAD ZONE: If within ±ENGAGEMENT_DEAD_ZONE of ideal distance, don't correct.
 	# This prevents constant oscillation and gives stable "locked in combat" feel.
@@ -730,22 +1195,114 @@ func _process_engage(delta: float) -> void:
 		# Moving the leader causes position fighting with nav agent and rubber-banding.
 
 
-func _process_route(_delta):
-	# Flee away from nearest enemy
+func _process_route(delta: float):
+	## Routing units flee away from enemies continuously.
+	## Shattered units (can't rally) flee to map edge and are destroyed.
+	## Non-shattered units flee until safe, then transition to RALLYING.
+
+	if not leader:
+		return
+
+	# Check if we've fled off the map
+	var map_bound: float = 80.0
+	if AIAutoload:
+		map_bound = AIAutoload.get_map_bounds()
+
+	var dist_from_center: float = Vector2(global_position.x, global_position.z).length()
+	if dist_from_center > map_bound + 5.0:
+		# Unit has fled off the battlefield - mark as destroyed
+		print("[Regiment] %s fled the battlefield!" % data.regiment_name)
+		set_state(State.DEAD)
+		return
+
+	# Check if unit is shattered (80%+ broken soldiers - can NEVER rally)
+	var is_shattered: bool = false
+	if unit_morale:
+		var broken_ratio: float = unit_morale.get_broken_ratio()
+		is_shattered = broken_ratio >= MoraleConstants.UNIT_SHATTERED_RATIO
+
+	# Find nearest enemy
 	var nearest_enemy = _find_nearest_enemy()
+	var enemy_distance: float = INF
 	if nearest_enemy:
-		var flee_dir = (global_position - nearest_enemy.global_position).normalized()
-		leader.move_to(global_position + flee_dir * 5.0)
-		# Position sync happens in _process_march via leader.global_position
+		enemy_distance = global_position.distance_to(nearest_enemy.global_position)
+
+	# Determine flee direction
+	var flee_dir: Vector3
+	if nearest_enemy:
+		# Flee away from nearest enemy
+		flee_dir = (global_position - nearest_enemy.global_position).normalized()
+	else:
+		# No enemies visible - flee toward nearest map edge (away from center)
+		flee_dir = Vector3(global_position.x, 0, global_position.z).normalized()
+		if flee_dir.length_squared() < 0.01:
+			flee_dir = Vector3(0, 0, 1)  # Default: flee south
+
+	# Shattered units flee to map edge and are destroyed
+	if is_shattered:
+		var flee_target: Vector3 = flee_dir * (map_bound + 20.0)
+		flee_target.y = global_position.y
+		leader.move_to(flee_target)
+		_apply_route_movement(delta, map_bound)
+		return
+
+	# Non-shattered units: check if we're safe enough to try rallying
+	if enemy_distance > MoraleConstants.RALLY_DISTANCE_FROM_ENEMY:
+		# Far enough from enemies - check if morale allows rally attempt
+		if current_morale >= MoraleConstants.RALLY_MORALE_THRESHOLD:
+			# Stop fleeing and try to rally
+			leader.stop_movement()
+			set_state(State.RALLYING)
+			return
+
+	# Still need to flee - move away from enemy
+	var flee_distance: float = MoraleConstants.RALLY_DISTANCE_FROM_ENEMY + 15.0
+	var flee_target: Vector3 = global_position + flee_dir * flee_distance
+	flee_target.y = global_position.y
+	leader.move_to(flee_target)
+	_apply_route_movement(delta, map_bound)
 
 
-func _process_rally(_delta):
-	if current_morale >= 40.0:
+func _apply_route_movement(delta: float, map_bound: float):
+	## Apply leader velocity to regiment position during routing.
+	## BUG FIX: Previously leader.move_to() was called but velocity was never applied.
+	var velocity: Vector3 = leader.current_velocity
+	if velocity.length_squared() < 0.0001:
+		return
+
+	# Apply velocity to regiment position
+	var movement = velocity * delta
+	global_position += movement
+
+	# Sync leader position back to regiment (child follows parent)
+	leader.global_position = global_position
+
+	# Apply terrain height
+	if leader.has_method("get_terrain_height"):
+		var terrain_height = leader.get_terrain_height(global_position)
+		global_position.y = terrain_height
+		leader.global_position.y = terrain_height
+
+	# Apply arena bounds (but don't clamp routing units - let them flee off map)
+	# The map boundary check at the start of _process_route handles cleanup
+
+
+func _process_rally(delta: float) -> void:
+	# BUG #4 FIX: Actively recover morale during RALLYING state.
+	# Previously just checked morale threshold without any recovery.
+	current_morale += MoraleConstants.CONTINUOUS_RALLY_RECOVERY * delta
+	current_morale = clampf(current_morale, 0.0, 100.0)
+
+	# Check if we've rallied enough to return to IDLE
+	if current_morale >= MoraleConstants.RALLY_SUCCESS_THRESHOLD:
 		set_state(State.IDLE)
 
 
 func _find_current_combat_target() -> Regiment:
 	## Find the regiment we're currently fighting in melee.
+	## BUG #6 FIX: Return null if not in active melee, don't fallback to nearest enemy.
+	## The fallback was masking bugs where melee registration failed.
+	## Callers already handle null gracefully.
 	if not CombatManager:
 		return null
 	for melee in CombatManager.active_melees:
@@ -757,8 +1314,8 @@ func _find_current_combat_target() -> Regiment:
 			# Check if attacker is still valid (not freed)
 			if is_instance_valid(melee.attacker):
 				return melee.attacker
-	# Fallback to nearest enemy if not found in active melees
-	return _find_nearest_enemy()
+	# No active melee found - return null so caller can handle appropriately
+	return null
 
 
 func _on_melee_area_contact(area: Area3D) -> void:
@@ -773,6 +1330,15 @@ func _on_melee_area_contact(area: Area3D) -> void:
 		return
 	if other.is_player_controlled == is_player_controlled:
 		return  # Same faction — no engagement
+
+	# BUG #7 FIX: Check disengagement cooldown to prevent immediate re-engagement.
+	# Units that just disengaged have a 500ms grace period before re-engaging.
+	const DISENGAGE_COOLDOWN_MS: int = 500
+	var my_cooldown: int = get_meta("disengage_cooldown", 0)
+	var other_cooldown: int = other.get_meta("disengage_cooldown", 0)
+	var now: int = Time.get_ticks_msec()
+	if (now - my_cooldown) < DISENGAGE_COOLDOWN_MS or (now - other_cooldown) < DISENGAGE_COOLDOWN_MS:
+		return  # Still in cooldown, don't re-engage
 
 	# Already engaged with this exact unit? Bail — don't re-trigger.
 	if state == State.ENGAGING and _find_current_combat_target() == other:
@@ -861,6 +1427,30 @@ func _on_average_morale_changed(new_average: float):
 	## Sync regiment-level morale with per-soldier average.
 	current_morale = new_average
 	BattleSignals.unit_morale_changed.emit(self, new_average)
+
+
+func _on_casualty_threshold_reached(threshold_name: String, loss_pct: float):
+	## Called when casualty tracker hits a loss threshold.
+	## This is a HARD trigger - heavy casualties force routing regardless of individual soldier morale.
+	print("[Regiment] %s: Casualty threshold '%s' reached (%.0f%% loss)" % [
+		data.regiment_name if data else name, threshold_name, loss_pct * 100.0])
+
+	match threshold_name:
+		"rout":
+			# Force immediate rout - 75%+ casualties in window
+			if state != State.ROUTING and state != State.DEAD:
+				set_state(State.ROUTING)
+				BattleSignals.regiment_routing.emit(self)
+		"withdraw":
+			# Drop morale significantly to encourage routing soon
+			if unit_morale:
+				unit_morale.apply_morale_modifier(-30.0)
+		"caution":
+			# Minor morale hit, AI should go defensive
+			if unit_morale:
+				unit_morale.apply_morale_modifier(-10.0)
+			if ai_controller:
+				ai_controller.set_stance(CommanderAI.Stance.DEFENSIVE)
 
 
 # --- STANCE MANAGEMENT ---
@@ -1067,7 +1657,88 @@ func set_formation_dimensions(file_count: int, animate: bool = true) -> void:
 func get_facing_direction() -> Vector3:
 	## Returns the direction the regiment is facing (for flanking calculations).
 	## Normalized vector pointing "forward" from the regiment's perspective.
-	return _facing_direction.normalized() if _facing_direction.length_squared() > 0.001 else -global_transform.basis.z
+	## Fallback to South if not initialized (should not happen if set_initial_facing() is called).
+	if _facing_direction.length_squared() > 0.001:
+		return _facing_direction.normalized()
+	# Fallback: use South (toward typical enemy position) if not set
+	return WorldCompassScript.SOUTH
+
+
+func set_facing_direction(direction: Vector3) -> void:
+	## Set the regiment's facing direction (for ranged attacks, formations).
+	## Updates sprites, LOS cone, and internal facing state.
+	direction.y = 0
+	if direction.length_squared() < 0.001:
+		return
+
+	_facing_direction = direction.normalized()
+	# Use WorldCompass for consistent angle calculation
+	var dir_index := WorldCompassScript.direction_from_vector(_facing_direction)
+	_current_heading = WorldCompassScript.angle_from_direction(dir_index)
+	_target_heading = _current_heading
+
+	# Update formation sprite facing
+	if formation and formation.has_method("set_facing_direction"):
+		formation.set_facing_direction(_facing_direction)
+
+	# Update sprite overlay
+	if sprite_overlay:
+		sprite_overlay.set_facing_direction(_facing_direction)
+
+	# Update artillery formation
+	if artillery_formation:
+		artillery_formation.set_facing_direction(_facing_direction)
+
+	# Update range indicator LOS cone
+	if range_indicator and range_indicator.has_method("update_facing"):
+		range_indicator.update_facing(_facing_direction)
+
+
+func set_initial_facing(direction: Vector3) -> void:
+	## Set initial facing direction on spawn (Bug C fix).
+	## Call this after spawning to orient regiment toward enemy deployment zone.
+	## This is separate from set_facing_direction() to be explicit about spawn-time setup.
+	direction.y = 0
+	if direction.length_squared() < 0.001:
+		# Default: face South if no direction provided (toward typical enemy position)
+		direction = WorldCompassScript.SOUTH
+
+	_facing_direction = direction.normalized()
+	var dir_index := WorldCompassScript.direction_from_vector(_facing_direction)
+	_current_heading = WorldCompassScript.angle_from_direction(dir_index)
+	_target_heading = _current_heading
+
+	# Update all visual components
+	if formation and formation.has_method("set_facing_direction"):
+		formation.set_facing_direction(_facing_direction)
+	if sprite_overlay:
+		sprite_overlay.set_facing_direction(_facing_direction)
+	if artillery_formation:
+		artillery_formation.set_facing_immediate(_facing_direction)
+	if range_indicator and range_indicator.has_method("update_facing"):
+		range_indicator.update_facing(_facing_direction)
+
+
+func _compute_initial_facing_from_deployment() -> Vector3:
+	## Look up PlayerDeployment / EnemyDeployment markers in the scene and
+	## compute the initial facing as the direction toward the opposing side.
+	## Falls back to an east-west assumption if markers aren't found.
+	var scene_root: Node = get_tree().current_scene
+	if scene_root:
+		var player_marker: Node = scene_root.find_child("PlayerDeployment", true, false)
+		var enemy_marker: Node = scene_root.find_child("EnemyDeployment", true, false)
+		if player_marker and enemy_marker and \
+		   player_marker is Node3D and enemy_marker is Node3D:
+			var dir: Vector3
+			if is_player_controlled:
+				dir = enemy_marker.global_position - player_marker.global_position
+			else:
+				dir = player_marker.global_position - enemy_marker.global_position
+			dir.y = 0.0
+			if dir.length_squared() > 0.001:
+				return dir.normalized()
+	# Fallback: previous east-west hardcoded behavior.
+	return Vector3(1, 0, 0) if is_player_controlled else Vector3(-1, 0, 0)
 
 
 func reset_charge_state():
@@ -1160,7 +1831,7 @@ func _on_stamina_recovered():
 func _on_level_up(old_level: VeterancySystem.Level, new_level: VeterancySystem.Level):
 	# Apply morale bonus from veterancy
 	if unit_morale and veterancy:
-		var bonus: float = veterancy.get_morale_bonus()
+		var _bonus: float = veterancy.get_morale_bonus()  # Applied via unit_morale modifiers
 		# This is applied as a continuous modifier to base morale
 	BattleSignals.unit_leveled_up.emit(self, old_level, new_level)
 
@@ -1169,7 +1840,7 @@ func _on_ability_activated(ability: AbilityType.Type):
 	BattleSignals.ability_used.emit(self, ability)
 
 
-func _on_ability_ended(ability: AbilityType.Type):
+func _on_ability_ended(_ability: AbilityType.Type):
 	pass
 
 
@@ -1256,6 +1927,14 @@ func _apply_unit_type_morale_modifiers() -> void:
 				unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.UNIT_TYPE_PENALTY)
 				unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.UNIT_TYPE_BONUS)
 
+		UnitType.Type.MONSTER:
+			# Monsters get a confidence bonus - they're big and scary!
+			unit_morale.set_continuous_modifier_all(
+				MoraleEvent.Source.UNIT_TYPE_BONUS,
+				MoraleConstants.UNIT_TYPE_CAVALRY_MORALE_BONUS  # +10% like cavalry
+			)
+			unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.UNIT_TYPE_PENALTY)
+
 		_:
 			# General/other - no special modifiers
 			unit_morale.clear_continuous_modifier_all(MoraleEvent.Source.UNIT_TYPE_BONUS)
@@ -1288,6 +1967,42 @@ func sync_all_positions(pos: Vector3) -> void:
 		melee_area.global_position = pos
 
 
+# --- AMMO TYPE ---
+func set_round_type(round_type: int) -> bool:
+	## Change the current ammo/round type for artillery weapons.
+	## Returns true if the change was successful, false if invalid.
+	## Only artillery weapons (cannon, mortar, war_machine) support multiple round types.
+	if not data:
+		return false
+
+	# Check if this is an artillery weapon that supports round switching
+	if not WeaponClassData.is_artillery_weapon(data.weapon_class):
+		return false
+
+	# Check if the requested round type is valid for this weapon
+	var available_rounds: Array[int] = WeaponClassData.get_available_rounds(data.weapon_class)
+	if round_type not in available_rounds:
+		return false
+
+	# Don't emit signal if round type hasn't changed
+	if round_type == current_round_type:
+		return true
+
+	var old_type: int = current_round_type
+	current_round_type = round_type
+
+	# Emit signal for UI and other systems to respond
+	BattleSignals.round_type_changed.emit(self, old_type, round_type)
+
+	return true
+
+
+func get_round_type_name() -> String:
+	## Returns the human-readable name of the current round type.
+	## e.g., "Grapeshot", "Solid Shot", "Explosive"
+	return WeaponClassData.get_round_type_name(current_round_type)
+
+
 # --- CLEANUP ---
 func _exit_tree():
 	# Clear movement group references (prevent stale refs in other regiments)
@@ -1301,3 +2016,44 @@ func _exit_tree():
 		ai_controller.destroy()
 	if AIAutoload:
 		AIAutoload.unregister_entity(self)
+
+
+# === SELECTION VISUAL (QOL Phase 3) ===
+
+func set_selected_visual(is_selected: bool) -> void:
+	"""Show or hide selection ring on ground."""
+	if is_selected:
+		if not _selection_ring:
+			var SelectionRingScript := preload("res://battle_system/effects/selection_ring.gd")
+			_selection_ring = SelectionRingScript.new()
+			add_child(_selection_ring)
+			# Position at ground level
+			_selection_ring.position = Vector3(0, 0.05, 0)
+
+			# Tint by faction
+			var color: Color = (
+				Color(0.4, 0.8, 1.0, 0.6) if is_player_controlled
+				else Color(1.0, 0.4, 0.4, 0.6)
+			)
+			if _selection_ring.has_method("set_color"):
+				_selection_ring.set_color(color)
+
+			# Size to formation extent
+			var radius: float = _calculate_formation_radius()
+			if _selection_ring.has_method("set_size"):
+				_selection_ring.set_size(radius)
+	else:
+		if _selection_ring:
+			_selection_ring.queue_free()
+			_selection_ring = null
+
+
+func _calculate_formation_radius() -> float:
+	"""Approximate radius of formation footprint."""
+	if not data:
+		return 3.0
+	# Estimate based on soldier count and spacing
+	var soldier_count: int = current_soldiers if current_soldiers > 0 else data.max_soldiers
+	var rows: int = ceili(sqrt(float(soldier_count)))
+	var spacing: float = 1.2  # Default formation spacing
+	return rows * spacing * 0.7

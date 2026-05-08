@@ -3,6 +3,7 @@ extends Node3D
 
 # Preload to avoid parse-order issues with class_name
 const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.gd")
+const WorldCompassScript = preload("res://battle_system/data/world_compass.gd")
 
 ## Manages a grid of 3D soldiers for a regiment
 ## Handles spawning, formation layout, and synchronized animations
@@ -45,6 +46,13 @@ const WEDGE_BASE_SPACING: float = 1.5
 const SCHILTRON_RADIUS_PER_SOLDIER: float = 0.2
 const SQUARE_SIDE_SPACING: float = 1.0
 
+# Idle sway constants (Phase 7 - formation looseness)
+const SWAY_AMPLITUDE: float = 0.04  # Max displacement in units
+const SWAY_FREQ_X: float = 0.7      # Horizontal sway frequency
+const SWAY_FREQ_Z: float = 0.5      # Forward/back sway frequency
+var _soldier_sway_phases: Array[Vector2] = []  # Per-soldier X,Z phase offsets
+var _sway_time: float = 0.0
+
 
 func _ready():
 	if soldier_scene:
@@ -83,6 +91,10 @@ func _process(delta: float):
 	if _is_transitioning:
 		_update_formation_transition(delta)
 
+	# Idle sway (Phase 7 - formation looseness)
+	_sway_time += delta
+	_update_idle_sway()
+
 
 func _update_soldier_terrain_positions():
 	## Phase 6.4: Use TerrainHelper for terrain access
@@ -96,8 +108,33 @@ func _update_soldier_terrain_positions():
 			soldier.global_position.y = terrain_height
 
 
+func _update_idle_sway():
+	## Phase 7 - Formation looseness: subtle per-soldier idle sway
+	## Each soldier has a unique phase offset for non-synchronized movement
+	if _is_transitioning:
+		return  # Don't sway during formation transitions
+
+	for i in soldiers.size():
+		if i >= _soldier_sway_phases.size():
+			break
+		var soldier = soldiers[i]
+		if not is_instance_valid(soldier) or not soldier.visible:
+			continue
+
+		var phase: Vector2 = _soldier_sway_phases[i]
+		var sway_x: float = sin(_sway_time * SWAY_FREQ_X + phase.x) * SWAY_AMPLITUDE
+		var sway_z: float = sin(_sway_time * SWAY_FREQ_Z + phase.y) * SWAY_AMPLITUDE
+
+		# Apply sway as local offset (doesn't affect base position)
+		# We store the original position in spawn_formation and apply sway on top
+		# For simplicity, apply slight rotation instead of position offset
+		soldier.rotation.x = sway_z * 0.5  # Subtle forward/back lean
+		soldier.rotation.z = sway_x * 0.3  # Subtle side-to-side lean
+
+
 func spawn_formation(count: int):
 	clear_formation()
+	_soldier_sway_phases.clear()
 
 	var cols = ceili(float(count) / float(rows))
 
@@ -110,9 +147,9 @@ func spawn_formation(count: int):
 		var row = i / cols
 		var col = i % cols
 
-		# Calculate position with slight randomization
-		var x = (col - cols / 2.0) * spacing + randf_range(-0.1, 0.1)
-		var z = (row - rows / 2.0) * spacing + randf_range(-0.1, 0.1)
+		# Calculate position with spacing jitter (±0.15 for organic look)
+		var x = (col - cols / 2.0) * spacing + randf_range(-0.15, 0.15)
+		var z = (row - rows / 2.0) * spacing + randf_range(-0.15, 0.15)
 
 		# Offset alternating rows
 		if row % 2 == 1:
@@ -127,6 +164,9 @@ func spawn_formation(count: int):
 
 		add_child(soldier)
 		soldiers.append(soldier)
+
+		# Per-soldier sway phase (random offset for non-synchronized sway)
+		_soldier_sway_phases.append(Vector2(randf() * TAU, randf() * TAU))
 
 	alive_count = soldiers.size()
 	formation_ready.emit()
@@ -207,20 +247,29 @@ func get_formation_bounds() -> AABB:
 
 
 func set_facing_direction(direction: Vector3):
-	"""Set all soldiers to face a world direction"""
+	"""Set all soldiers to face a world direction (using WorldCompass for consistency)
+	Bug A fix: Rotates the formation Node3D so geometry matches facing direction."""
 	if direction.length_squared() < 0.001:
 		return
-	var target_angle = atan2(direction.x, direction.z)
+	var dir_index := WorldCompassScript.direction_from_vector(direction)
+	var target_angle := WorldCompassScript.angle_from_direction(dir_index)
 	set_facing_angle(target_angle)
 
 
 func set_facing_angle(angle_rad: float):
-	"""Set all soldiers to face an angle (radians)"""
+	"""Set all soldiers to face an angle (radians)
+	Bug A fix: Rotates the formation Node3D itself, soldiers only get small jitter."""
 	_current_facing = angle_rad
+
+	# Bug A fix: Rotate the formation node so geometry matches facing
+	# This means front rank is physically in front, not just visually facing forward
+	rotation.y = angle_rad
+
+	# Individual soldiers only get small variance (they're already rotated with parent)
 	for soldier in soldiers:
 		if is_instance_valid(soldier) and soldier.visible:
-			# Add slight variance for natural look
-			soldier.rotation.y = angle_rad + randf_range(-0.1, 0.1)
+			# Small variance for natural look (relative to formation rotation)
+			soldier.rotation.y = randf_range(-0.1, 0.1)
 
 
 # =============================================================================
@@ -423,7 +472,7 @@ func _calculate_wedge_positions(count: int) -> Array[Vector3]:
 
 	while placed < count:
 		var soldiers_in_row: int = row + 1
-		var row_width: float = soldiers_in_row * WEDGE_BASE_SPACING
+		var _row_width: float = soldiers_in_row * WEDGE_BASE_SPACING  # Reserved for centering
 
 		for col in soldiers_in_row:
 			if placed >= count:

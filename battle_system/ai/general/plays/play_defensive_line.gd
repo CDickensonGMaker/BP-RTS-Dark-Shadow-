@@ -1,6 +1,9 @@
 class_name PlayDefensiveLine
 extends StrategicPlay
 
+# Preload BattleObjective class
+const BattleObjectiveClass = preload("res://battle_system/ai/data/battle_objective.gd")
+
 ## Defensive Line strategy.
 ## Form a solid defensive line and let the enemy come to us.
 ## Good when outnumbered or on favorable terrain.
@@ -17,6 +20,7 @@ var _reserve_units: Array = []
 
 func _init(p_general_ai: GeneralAI = null) -> void:
 	super._init(p_general_ai, "Defensive Line")
+	intent = "Form solid defensive line and let enemy come to us; conserve strength and wear them down"
 
 
 func evaluate(analysis: BattlefieldAnalysis) -> float:
@@ -90,15 +94,33 @@ func tick() -> Status:
 
 func _calculate_line_position(analysis: BattlefieldAnalysis) -> void:
 	## Calculate where to form the defensive line.
+	## OBJECTIVE FIX: HOLD_GROUND defenders form line at hold_position from
+	## their objective, instead of advancing 30% toward the enemy.
 
-	# Position between our center and enemy center, slightly towards us
-	_line_position = analysis.friendly_center.lerp(analysis.enemy_center, 0.3)
-	_line_position.y = 0
+	# Read objective from the parent GeneralAI
+	var objective: BattleObjectiveClass = null
+	if general_ai and general_ai.objective:
+		objective = general_ai.objective
 
-	# Face the enemy
-	var to_enemy: Vector3 = (analysis.enemy_center - _line_position).normalized()
-	to_enemy.y = 0
-	_line_facing = to_enemy
+	if objective and objective.type == BattleObjectiveClass.Type.HOLD_GROUND:
+		# Defender: hold the line at the designated position. Don't advance.
+		_line_position = objective.hold_position
+		_line_position.y = 0.0
+
+		# Still face the enemy — just don't move toward them.
+		var to_enemy: Vector3 = (analysis.enemy_center - _line_position)
+		to_enemy.y = 0.0
+		if to_enemy.length_squared() < 0.01:
+			to_enemy = Vector3(0, 0, -1)  # safe default if enemy_center coincides
+		_line_facing = to_enemy.normalized()
+	else:
+		# Original behavior for ANNIHILATE objective: form line 30% of the way
+		# toward the enemy (defending is just a tactical choice, not a goal).
+		_line_position = analysis.friendly_center.lerp(analysis.enemy_center, 0.3)
+		_line_position.y = 0.0
+		var to_enemy: Vector3 = (analysis.enemy_center - _line_position).normalized()
+		to_enemy.y = 0.0
+		_line_facing = to_enemy
 
 
 func _assign_units(analysis: BattlefieldAnalysis) -> void:
@@ -153,7 +175,7 @@ func _form_line() -> void:
 
 	# Reserves behind ranged
 	for regiment in _reserve_units:
-		var position: Vector3 = _line_position - _line_facing * 20.0
+		var _position: Vector3 = _line_position - _line_facing * 20.0  # Reserved for reserve positioning
 		issue_hold(regiment)
 
 
@@ -164,17 +186,31 @@ func _maintain_line() -> void:
 		if not is_instance_valid(regiment):
 			continue
 
-		# If enemy is close, engage
+		# Skip if already engaged in melee
+		if regiment.state == Regiment.State.ENGAGING:
+			continue
+
+		# If enemy is within engagement range, engage them
+		# Use larger radius (30m) so defensive line actually engages approaching enemies
 		var nearest_enemy: Node = AIAutoload.query_nearest_enemy(
-			regiment.global_position, 15.0,
+			regiment.global_position, 30.0,
 			0 if regiment.is_player_controlled else 1
 		)
 
-		if nearest_enemy and regiment.state != Regiment.State.ENGAGING:
+		if nearest_enemy:
 			var commander: CommanderAI = general_ai.get_commander(regiment)
 			if commander:
-				commander.set_stance(CommanderAI.Stance.DEFENSIVE)
-				commander.set_target(nearest_enemy)
+				var dist: float = regiment.global_position.distance_to(nearest_enemy.global_position)
+				# If enemy is close (within 20m), actively attack them
+				# This ensures defensive units actually engage instead of just watching
+				if dist < 20.0:
+					commander.set_target(nearest_enemy)
+					commander.issue_attack_order(nearest_enemy)
+				else:
+					# Beyond 20m, just set target and let them hold position
+					# They'll engage when enemy gets closer
+					commander.set_stance(CommanderAI.Stance.DEFENSIVE)
+					commander.set_target(nearest_enemy)
 
 
 func _manage_ranged() -> void:

@@ -8,6 +8,28 @@ var is_dragging: bool = false
 var last_click_time: float = 0.0
 var last_clicked_regiment: Regiment = null
 const DOUBLE_CLICK_TIME: float = 0.3
+var _show_spell_ranges: bool = false
+
+# QOL Phase 5: Hover preview state
+var _hovered_regiment: Regiment = null
+var _hover_update_timer: float = 0.0
+const HOVER_UPDATE_INTERVAL: float = 0.1  # Update hover 10x/sec
+
+
+func _process(delta: float) -> void:
+	# QOL Phase 5: Hover preview - update periodically
+	_hover_update_timer += delta
+	if _hover_update_timer >= HOVER_UPDATE_INTERVAL:
+		_hover_update_timer = 0.0
+		_update_hover_state()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Handle ALT key for spell range display toggle
+	if event is InputEventKey:
+		if event.keycode == KEY_ALT:
+			_show_spell_ranges = event.pressed
+			_update_spell_range_display()
 
 
 func _input(event):
@@ -51,6 +73,11 @@ func _input(event):
 
 
 func _handle_key_input(event: InputEventKey):
+	# Ctrl+G: Create next available group (1-9)
+	if event.ctrl_pressed and event.keycode == KEY_G:
+		_create_next_group()
+		return
+
 	# Control groups: Ctrl+0-9 save, 0-9 recall, Shift+0-9 add to selection
 	for i in range(10):
 		var key: int = KEY_0 + i
@@ -90,20 +117,56 @@ func _handle_key_input(event: InputEventKey):
 			KEY_F4:
 				_set_formation_for_selected(FormationType.Type.SQUARE)
 
-	# Ability hotkeys (Q, E, R)
+	# Ability hotkeys (Q, E, F)
 	if not selected_regiments.is_empty():
 		match event.keycode:
 			KEY_Q:
 				_use_ability_hotkey(0)  # First ability
 			KEY_E:
 				_use_ability_hotkey(1)  # Second ability
-			KEY_R:
-				_use_ability_hotkey(2)  # Third ability
+			KEY_F:
+				_use_ability_hotkey(2)  # Third ability (moved from R)
+
+	# Run/Walk toggle (R key)
+	if event.keycode == KEY_R and not selected_regiments.is_empty():
+		_toggle_run_for_selected()
 
 	# Hold position command (H key - not S, since S is used for WASD camera)
 	if event.keycode == KEY_H:
 		for regiment in selected_regiments:
 			regiment.give_order(OrderType.Type.HOLD_POSITION)
+
+	# === CAMERA SHORTCUTS (QOL Phase 1) ===
+
+	# Space: Focus on selected units (cycles through if multiple)
+	if event.keycode == KEY_SPACE and not selected_regiments.is_empty():
+		_camera_focus_selected()
+		return
+
+	# Home: Focus on player's general
+	if event.keycode == KEY_HOME:
+		_camera_focus_general()
+		return
+
+	# End: Focus on battle center
+	if event.keycode == KEY_END:
+		_camera_focus_battle_center()
+		return
+
+	# Pause toggle (P key)
+	if event.keycode == KEY_P:
+		_toggle_pause()
+		return
+
+	# Camera bookmarks: F5-F8 to save, Shift+F5-F8 to recall
+	for i in 4:
+		var save_key: int = KEY_F5 + i
+		if event.keycode == save_key:
+			if event.shift_pressed:
+				_camera_recall_bookmark(i)
+			else:
+				_camera_save_bookmark(i)
+			return
 func _single_select(screen_pos: Vector2):
 	var regiment: Regiment = _raycast_regiment(screen_pos)
 	var current_time: float = Time.get_unix_time_from_system()
@@ -146,9 +209,17 @@ func _finish_drag_select(end_pos: Vector2):
 func _add_to_selection(regiment: Regiment):
 	if regiment not in selected_regiments:
 		selected_regiments.append(regiment)
+		# Show selection ring (QOL Phase 3)
+		if regiment.has_method("set_selected_visual"):
+			regiment.set_selected_visual(true)
 		BattleSignals.regiment_selected.emit(regiment)
+
+
 func clear_selection():
 	for r in selected_regiments:
+		# Hide selection ring (QOL Phase 3)
+		if is_instance_valid(r) and r.has_method("set_selected_visual"):
+			r.set_selected_visual(false)
 		BattleSignals.regiment_deselected.emit(r)
 	selected_regiments.clear()
 	BattleSignals.selection_cleared.emit()
@@ -193,7 +264,7 @@ func _raycast_regiment(screen_pos: Vector2) -> Regiment:
 	# FALLBACK: Screen-space distance check (more reliable for RTS selection)
 	# If raycast failed, check if click is near any regiment's screen position
 	var closest_regiment: Regiment = null
-	var closest_dist: float = 50.0  # Max screen pixels to count as a hit
+	var closest_dist: float = 30.0  # Max screen pixels to count as a hit (tighter selection)
 
 	for regiment in get_tree().get_nodes_in_group("all_regiments"):
 		if regiment is Regiment:
@@ -220,6 +291,13 @@ func select_regiment(regiment: Regiment):
 	if not regiment or not regiment.is_player_controlled:
 		return
 	clear_selection()
+	_add_to_selection(regiment)
+
+
+func add_to_selection(regiment: Regiment):
+	"""Public method to add a regiment to selection (shift+click from UI)"""
+	if not regiment or not regiment.is_player_controlled:
+		return
 	_add_to_selection(regiment)
 
 
@@ -299,6 +377,34 @@ func _add_group_to_selection(id: int):
 				_add_to_selection(r)
 
 
+func _create_next_group():
+	"""Create group in first empty slot (1-9)"""
+	if selected_regiments.is_empty():
+		return
+
+	# Find first empty slot (1-9, skip 0)
+	for i in range(1, 10):
+		var group_is_empty: bool = not saved_groups.has(i) or saved_groups.get(i, []).is_empty()
+		# Also check if all units in group are dead (effectively empty)
+		if saved_groups.has(i):
+			var any_valid: bool = false
+			for r in saved_groups[i]:
+				if is_instance_valid(r) and r.state != Regiment.State.DEAD:
+					any_valid = true
+					break
+			if not any_valid:
+				group_is_empty = true
+
+		if group_is_empty:
+			_save_group(i)
+			print("[SelectionManager] Created control group %d" % i)
+			return
+
+	# All full - find oldest/smallest group to overwrite
+	push_warning("[SelectionManager] All 9 control groups are full - overwriting group 9")
+	_save_group(9)
+
+
 # === STANCE MANAGEMENT ===
 
 func _set_stance_for_selected(stance: StanceType.Type):
@@ -371,6 +477,52 @@ func _use_ability_hotkey(slot: int):
 					regiment.use_ability(ability, regiment.global_position + forward * 30.0)
 
 
+# === RUN/WALK TOGGLE ===
+
+func _toggle_run_for_selected() -> void:
+	"""Toggle run/walk mode for selected regiments. If any are walking, set all to run. Otherwise, set all to walk."""
+	if selected_regiments.is_empty():
+		return
+
+	# Check if any selected regiment is walking
+	var any_walking: bool = false
+	for regiment in selected_regiments:
+		if not is_instance_valid(regiment) or not regiment.leader:
+			continue
+		if regiment.leader.move_mode == RegimentLeader.MoveMode.WALK:
+			any_walking = true
+			break
+
+	# If any are walking, set all to run. Otherwise, set all to walk.
+	# Don't override CHARGE mode.
+	var new_mode: RegimentLeader.MoveMode = (
+		RegimentLeader.MoveMode.RUN if any_walking
+		else RegimentLeader.MoveMode.WALK
+	)
+
+	for regiment in selected_regiments:
+		if not is_instance_valid(regiment) or not regiment.leader:
+			continue
+		# Don't interrupt charge mode
+		if regiment.leader.move_mode != RegimentLeader.MoveMode.CHARGE:
+			regiment.leader.set_move_mode(new_mode)
+
+	# Emit signal for UI update
+	BattleSignals.move_mode_changed.emit(new_mode)
+
+
+# === RANGE DISPLAY ===
+
+func _update_spell_range_display() -> void:
+	"""Update spell range display for all selected regiments based on ALT key state."""
+	for regiment in selected_regiments:
+		if not is_instance_valid(regiment):
+			continue
+		if regiment.range_indicator:
+			if regiment.range_indicator.has_method("show_spell_ranges"):
+				regiment.range_indicator.show_spell_ranges(_show_spell_ranges)
+
+
 # === CAMPAIGN MAP CHECK ===
 
 func _is_campaign_map_active() -> bool:
@@ -380,3 +532,128 @@ func _is_campaign_map_active() -> bool:
 		return false
 	var current_scene := tree.current_scene
 	return current_scene and current_scene.name == "CampaignMap"
+
+
+# === CAMERA SHORTCUTS (QOL Phase 1) ===
+
+var _last_focused_index: int = 0  # For cycling through multiple selections
+
+func _camera_focus_selected() -> void:
+	"""Focus camera on selected units. Cycles through if multiple selected."""
+	if selected_regiments.is_empty():
+		return
+	var camera := _get_battle_camera()
+	if not camera:
+		return
+
+	# Cycle through selected if multiple
+	var target = selected_regiments[_last_focused_index % selected_regiments.size()]
+	_last_focused_index += 1
+	if camera.has_method("center_on_regiment"):
+		camera.center_on_regiment(target)
+
+
+func _camera_focus_general() -> void:
+	"""Focus camera on the player's general (unit with aura)."""
+	var general := _find_player_general()
+	if general and is_instance_valid(general):
+		var camera := _get_battle_camera()
+		if camera and camera.has_method("center_on_regiment"):
+			camera.center_on_regiment(general)
+
+
+func _camera_focus_battle_center() -> void:
+	"""Focus camera on the centroid of all units in battle."""
+	var all_units: Array = (
+		get_tree().get_nodes_in_group("player_regiments") +
+		get_tree().get_nodes_in_group("enemy_regiments")
+	)
+	if all_units.is_empty():
+		return
+
+	var center := Vector3.ZERO
+	var count: int = 0
+	for u in all_units:
+		if is_instance_valid(u) and u.state != Regiment.State.DEAD:
+			center += u.global_position
+			count += 1
+	if count > 0:
+		center /= count
+		var camera := _get_battle_camera()
+		if camera and camera.has_method("center_on_position"):
+			camera.center_on_position(center)
+
+
+func _camera_save_bookmark(slot: int) -> void:
+	"""Save current camera position to a bookmark slot."""
+	var camera := _get_battle_camera()
+	if camera and camera.has_method("save_bookmark"):
+		camera.save_bookmark(slot)
+
+
+func _camera_recall_bookmark(slot: int) -> void:
+	"""Recall a saved camera bookmark."""
+	var camera := _get_battle_camera()
+	if camera and camera.has_method("snap_to_bookmark"):
+		camera.snap_to_bookmark(slot)
+
+
+func _find_player_general() -> Node:
+	"""Find the player's general (unit with aura)."""
+	for r in get_tree().get_nodes_in_group("player_regiments"):
+		if r.data and r.data.has_aura:
+			return r
+	return null
+
+
+func _get_battle_camera() -> Node:
+	"""Get the battle camera from scene group."""
+	var cameras := get_tree().get_nodes_in_group("battle_camera")
+	return cameras[0] if cameras.size() > 0 else null
+
+
+# === PAUSE TOGGLE (QOL Phase 2) ===
+
+func _toggle_pause() -> void:
+	"""Toggle battle pause state."""
+	get_tree().paused = not get_tree().paused
+	BattleSignals.battle_paused.emit(get_tree().paused)
+
+
+# === HOVER PREVIEW (QOL Phase 5) ===
+
+func _update_hover_state() -> void:
+	"""Update which regiment the mouse is hovering over."""
+	if _is_campaign_map_active():
+		_set_hovered_regiment(null)
+		return
+
+	var mouse_pos: Vector2 = get_viewport().get_mouse_position()
+	var regiment: Regiment = _raycast_regiment(mouse_pos)
+
+	# Only trigger hover for units not already selected
+	if regiment and regiment in selected_regiments:
+		regiment = null
+
+	_set_hovered_regiment(regiment)
+
+
+func _set_hovered_regiment(regiment: Regiment) -> void:
+	"""Set the currently hovered regiment, emitting signals on change."""
+	if regiment == _hovered_regiment:
+		return
+
+	var old_hover: Regiment = _hovered_regiment
+	_hovered_regiment = regiment
+
+	# Emit signals for UI
+	if old_hover and is_instance_valid(old_hover):
+		BattleSignals.regiment_hover_exited.emit(old_hover)
+
+	if regiment and is_instance_valid(regiment):
+		BattleSignals.regiment_hover_entered.emit(regiment)
+
+
+func get_hovered_regiment() -> Regiment:
+	"""Get the currently hovered regiment (if any)."""
+	return _hovered_regiment
