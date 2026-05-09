@@ -1,5 +1,8 @@
 extends Node
 
+# Preload to avoid parse-order issues with class_name
+const OrderTypeScript = preload("res://battle_system/data/order_type.gd")
+
 ## Centralized audio management for the battle system.
 ## Per bible §16, handles 5 audio layers:
 ## 1. Music - dynamic, escalating with battle intensity
@@ -836,29 +839,29 @@ func _on_battle_ended(result: Dictionary):
 	ambient_player.stop()
 
 
-func _on_regiment_selected(_regiment: Regiment):
+func _on_regiment_selected(_regiment):
 	play_order_acknowledgment("select")
 
 
-func _on_order_given(_regiment: Regiment, order: OrderType.Type, _target: Variant):
+func _on_order_given(_regiment, order, _target):
 	match order:
-		OrderType.Type.MOVE, OrderType.Type.ATTACK_MOVE:
+		OrderTypeScript.Type.MOVE, OrderTypeScript.Type.ATTACK_MOVE:
 			play_order_acknowledgment("move")
-		OrderType.Type.CHARGE:
+		OrderTypeScript.Type.CHARGE:
 			play_order_acknowledgment("charge")
-		OrderType.Type.HOLD_POSITION:
+		OrderTypeScript.Type.HOLD_POSITION:
 			play_order_acknowledgment("formation")
-		OrderType.Type.GUARD:
+		OrderTypeScript.Type.GUARD:
 			play_order_acknowledgment("guard")
 
 
-func _on_regiment_routing(_regiment: Regiment):
+func _on_regiment_routing(_regiment):
 	play_morale_event("unit_routing")
 	# Increase music intensity
 	set_music_intensity(minf(_current_music_intensity + 0.2, 1.0))
 
 
-func _on_regiment_attacked(attacker: Regiment, defender: Regiment, _damage: int):
+func _on_regiment_attacked(attacker, defender, _damage: int):
 	# Play combat SFX based on unit type
 	if attacker.data.unit_type == UnitType.Type.RANGED:
 		play_sfx_random("arrow_hit", 3, defender.global_position)
@@ -870,7 +873,7 @@ func _on_regiment_attacked(attacker: Regiment, defender: Regiment, _damage: int)
 		set_music_intensity(minf(_current_music_intensity + 0.05, 1.0))
 
 
-func _on_regiment_dead(regiment: Regiment):
+func _on_regiment_dead(regiment):
 	# Play death cry when a regiment is destroyed
 	if is_instance_valid(regiment):
 		play_sfx_random("death", 5, regiment.global_position)
@@ -878,7 +881,7 @@ func _on_regiment_dead(regiment: Regiment):
 		play_sfx_random("death", 5, Vector3.ZERO)
 
 
-func _on_ability_used(regiment: Regiment, ability: int):
+func _on_ability_used(regiment, ability: int):
 	match ability:
 		AbilityType.Type.CHARGE:
 			play_sfx("cavalry_charge_01", regiment.global_position)
@@ -888,12 +891,12 @@ func _on_ability_used(regiment: Regiment, ability: int):
 			play_sfx("volley_fire_01", regiment.global_position)
 
 
-func _on_formation_changed(_regiment: Node, _old_formation: int, _new_formation: int) -> void:
+func _on_formation_changed(_regiment, _old_formation: int, _new_formation: int) -> void:
 	# Play formation change sound
 	play_order_acknowledgment("formation")
 
 
-func _on_charge_impact(charger: Regiment, _target: Regiment, _was_braced: bool):
+func _on_charge_impact(charger, _target, _was_braced: bool):
 	"""Play charge shouting sound when units charge into combat."""
 	if not is_instance_valid(charger):
 		return

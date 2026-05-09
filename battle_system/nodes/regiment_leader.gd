@@ -40,6 +40,10 @@ const STUCK_MOVE_THRESHOLD: float = 0.5  # Must move more than this to not be st
 # where both Regiment (parent) and Leader (child) were writing to global_position.
 var current_velocity: Vector3 = Vector3.ZERO  # Published for Regiment to read
 
+# Avoidance system - stores safe velocity from NavigationAgent3D callback
+var _safe_velocity: Vector3 = Vector3.ZERO
+var _avoidance_velocity_computed: bool = false
+
 
 ## Get the effective movement speed based on mode and charge distance
 func get_effective_speed() -> float:
@@ -87,6 +91,15 @@ func _ready():
 	current_velocity = Vector3.ZERO
 	if nav_agent:
 		nav_agent.target_position = global_position
+		# Enable avoidance so units steer around each other
+		nav_agent.avoidance_enabled = true
+		nav_agent.neighbor_distance = 25.0   # How far to look for other agents
+		nav_agent.max_neighbors = 10         # Max agents to consider
+		nav_agent.time_horizon_agents = 1.0  # Lookahead time for agent avoidance
+		nav_agent.time_horizon_obstacles = 0.5  # Lookahead for static obstacles
+		nav_agent.radius = 4.0               # Avoidance radius (unit size)
+		# Connect to velocity_computed signal for proper avoidance
+		nav_agent.velocity_computed.connect(_on_velocity_computed)
 
 
 func _get_terrain() -> DaggerfallTerrain:
@@ -128,16 +141,14 @@ func move_to(pos: Vector3):
 
 
 func _physics_process(delta):
-	# === VELOCITY-BASED MOVEMENT ===
-	# Leader computes velocity, Regiment applies it. Leader no longer writes global_position
-	# directly (except for facing). This breaks the parent-child feedback loop.
-
-	# Note: Terrain height and arena bounds are now applied by Regiment after it moves.
-	# Leader only computes the desired velocity vector.
+	# === VELOCITY-BASED MOVEMENT WITH AVOIDANCE ===
+	# Leader computes desired velocity, passes it through NavigationAgent3D avoidance,
+	# then publishes the safe velocity for Regiment to apply.
 
 	if nav_agent.is_navigation_finished():
 		_stuck_time = 0.0  # Reset stuck timer when navigation complete
 		current_velocity = Vector3.ZERO
+		nav_agent.set_velocity(Vector3.ZERO)
 		return
 
 	# Stuck detection (spring1944-inspired)
@@ -161,6 +172,7 @@ func _physics_process(delta):
 	# Check if we've arrived at target
 	if dist_to_target < 1.0:
 		current_velocity = Vector3.ZERO
+		nav_agent.set_velocity(Vector3.ZERO)
 		return
 
 	# Calculate direction to move
@@ -176,6 +188,7 @@ func _physics_process(delta):
 			direction = dir_to_target.normalized()
 		else:
 			current_velocity = Vector3.ZERO
+			nav_agent.set_velocity(Vector3.ZERO)
 			return
 	else:
 		direction = (next - global_position).normalized()
@@ -183,6 +196,7 @@ func _physics_process(delta):
 
 	if direction.length_squared() < 0.01:
 		current_velocity = Vector3.ZERO
+		nav_agent.set_velocity(Vector3.ZERO)
 		return
 
 	# Get speed based on movement mode (walk/run/charge)
@@ -192,13 +206,28 @@ func _physics_process(delta):
 	if move_mode == MoveMode.CHARGE:
 		_charge_distance_used += effective_speed * delta
 
-	# SET VELOCITY instead of writing position - Regiment will apply this
-	current_velocity = direction * effective_speed
+	# Compute desired velocity
+	var desired_velocity: Vector3 = direction * effective_speed
+
+	# Pass through NavigationAgent3D avoidance system
+	# The velocity_computed callback will update current_velocity with the safe velocity
+	if nav_agent.avoidance_enabled:
+		nav_agent.set_velocity(desired_velocity)
+		# current_velocity is set in _on_velocity_computed callback
+	else:
+		# No avoidance - use desired velocity directly
+		current_velocity = desired_velocity
 
 	# Update facing based on velocity direction (rotation is fine to set here)
 	if direction.length() > 0.01:
 		var look_target = global_position + direction
 		look_at(look_target, Vector3.UP)
+
+
+## Callback from NavigationAgent3D avoidance system
+## Receives the computed safe velocity that avoids other agents
+func _on_velocity_computed(safe_velocity: Vector3) -> void:
+	current_velocity = safe_velocity
 
 
 func _apply_terrain_height():

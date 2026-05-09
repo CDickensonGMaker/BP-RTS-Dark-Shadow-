@@ -49,6 +49,29 @@ func tick(delta: float) -> Status:
 	# Update kite cooldown
 	_kite_cooldown -= delta
 
+	# Check if this is artillery (stationary weapon - never moves to engage)
+	var is_artillery: bool = regiment.data and regiment.data.unit_type == UnitType.Type.ARTILLERY
+
+	# DEBUG: Track artillery behavior
+	if is_artillery:
+		var state_name := str(regiment.state)
+		if regiment.state == Regiment.State.IDLE: state_name = "IDLE"
+		elif regiment.state == Regiment.State.MARCHING: state_name = "MARCHING"
+		elif regiment.state == Regiment.State.ENGAGING: state_name = "ENGAGING"
+		print("[ARTILLERY DEBUG] %s: state=%s, target=%s, distance=%.1f, range=%.1f" % [
+			regiment.data.regiment_name if regiment.data else "?",
+			state_name,
+			target.data.regiment_name if target and target.data else "?",
+			regiment.global_position.distance_to(target.global_position) if target else -1,
+			regiment.data.range_distance if regiment.data else 0
+		])
+
+	# ARTILLERY FIX: Artillery should NEVER move. If it's marching (e.g. from ATTACK_MOVE order), stop it immediately.
+	if is_artillery and regiment.state == Regiment.State.MARCHING:
+		print("[ARTILLERY DEBUG] %s: STOPPING - was marching, now idle" % (regiment.data.regiment_name if regiment.data else "?"))
+		regiment.leader.stop_movement()
+		regiment.set_state(Regiment.State.IDLE)
+
 	# Check for approaching enemies - ranged units kite away if too close
 	var is_ranged_unit: bool = regiment.data and regiment.data.unit_type == UnitType.Type.RANGED
 	if is_ranged_unit and regiment.state != Regiment.State.ENGAGING:
@@ -73,6 +96,16 @@ func tick(delta: float) -> Status:
 
 	# If out of range, move to just within max range (fire ASAP from max distance)
 	if distance > range_dist:
+		# ARTILLERY STAYS PUT: Artillery never moves to engage - waits for targets to enter range
+		if is_artillery:
+			# Face target even when out of range (important for crew sprite direction)
+			var aim_direction: Vector3 = (target.global_position - regiment.global_position).normalized()
+			aim_direction.y = 0
+			if aim_direction.length_squared() > 0.01:
+				regiment.set_facing_direction(aim_direction)
+			# Stay in place and wait - target is out of range
+			return Status.RUNNING
+
 		# Fire from near max range (95%) - prioritize shooting over closing distance
 		var optimal_range: float = range_dist * 0.95
 		var dir_to_target: Vector3 = (target.global_position - regiment.global_position).normalized()
@@ -105,6 +138,12 @@ func tick(delta: float) -> Status:
 	var shots_ready: int = _tick_firing(regiment, delta)
 
 	if shots_ready > 0:
+		if is_artillery:
+			print("[ARTILLERY DEBUG] %s: FIRING %d shots at %s!" % [
+				regiment.data.regiment_name if regiment.data else "?",
+				shots_ready,
+				target.data.regiment_name if target and target.data else "?"
+			])
 		_fire_volley(target, shots_ready)
 
 	# Success but keep attacking
@@ -117,7 +156,20 @@ func _tick_firing(regiment: Node, delta: float) -> int:
 
 	# Use RegimentFiring if available
 	if regiment.firing and regiment.firing.has_method("tick"):
-		return regiment.firing.tick(delta)
+		var shots: int = regiment.firing.tick(delta)
+		# DEBUG: Track firing component state for artillery
+		var is_artillery: bool = regiment.data and regiment.data.unit_type == UnitType.Type.ARTILLERY
+		if is_artillery:
+			var progress: float = regiment.firing.get_reload_progress() if regiment.firing.has_method("get_reload_progress") else -1.0
+			var pattern: String = regiment.firing.get_fire_pattern_name() if regiment.firing.has_method("get_fire_pattern_name") else "?"
+			print("[FIRING DEBUG] %s: pattern=%s, progress=%.2f, delta=%.2f, shots=%d" % [
+				regiment.data.regiment_name if regiment.data else "?",
+				pattern,
+				progress,
+				delta,
+				shots
+			])
+		return shots
 
 	# Legacy fallback - single cooldown for entire regiment
 	_legacy_fire_cooldown -= delta
@@ -151,6 +203,10 @@ func _fire_volley(target: Node, shot_count: int) -> void:
 
 	# Use multi-shot function for per-soldier firing
 	CombatManager.fire_ranged_multi(regiment, target, shot_count)
+
+	# Mark that we've fired (for AIMING/RELOADING state tracking)
+	if regiment.firing and regiment.firing.has_method("mark_shot_fired"):
+		regiment.firing.mark_shot_fired()
 
 
 func reset() -> void:

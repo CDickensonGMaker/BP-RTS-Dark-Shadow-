@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://ruumq3fhntlv" path="res://battle_system/ui/selection_box_overlay.gd" id="4_selection"]
 [ext_resource type="Script" uid="uid://ce268xhxh0rpc" path="res://battle_system/debug/combat_debug_overlay.gd" id="5_debug"]
 [ext_resource type="Script" uid="uid://biqn168xq7h7o" path="res://battle_system/terrain/battle_terrain.gd" id="6_terrain"]
+[ext_resource type="Script" uid="uid://c72ybmdqv3e2" path="res://tools/agent/agent_test_runner.gd" id="7_agent"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 10.0
@@ -506,8 +507,6 @@ map_bounds_max = Vector3(180, 100, 180)
 
 [node name="BattleTerrain" type="Node3D" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport/BattleWorld" unique_id=2084206529]
 script = ExtResource("6_terrain")
-terrain_size = Vector2(300, 300)
-terrain_resolution = 64
 height_scale = 2.0
 tree_count = 50
 building_count = 0
@@ -527,3 +526,7 @@ script = ExtResource("4_selection")
 [node name="CombatDebugOverlay" type="CanvasLayer" parent="ZooDebugUI/MainLayout/ViewportContainer/BattleViewport" unique_id=1729029143]
 layer = 100
 script = ExtResource("5_debug")
+
+[node name="AgentTestRunner" type="Node" parent="." unique_id=1796958794]
+script = ExtResource("7_agent")
+quit_when_done = false

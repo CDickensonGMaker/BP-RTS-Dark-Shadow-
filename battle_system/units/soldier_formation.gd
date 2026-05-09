@@ -19,6 +19,11 @@ signal formation_transition_complete
 @export var row_offset: float = 0.3  # Stagger rows for natural look
 @export var faction_color: Color = Color.BLUE
 
+## Model front direction offset (0-7). Maps which direction the 3D model's "front" faces.
+## 0 = Model front is North, 4 = Model front is South, etc.
+## This adds a rotation offset so the model visually faces the correct direction.
+var model_front_direction: int = 0
+
 var soldiers: Array[Node3D] = []  # Can be Soldier or SoldierBlock
 var alive_count: int = 0
 # Phase 6.4: Terrain access via TerrainHelper (removed _terrain variable)
@@ -261,9 +266,15 @@ func set_facing_angle(angle_rad: float):
 	Bug A fix: Rotates the formation Node3D itself, soldiers only get small jitter."""
 	_current_facing = angle_rad
 
+	# Apply model_front_direction offset
+	# Each direction step (0-7) is 45 degrees (PI/4 radians)
+	# This remaps which direction the 3D model's "front" actually faces
+	var offset_angle := model_front_direction * (PI / 4.0)
+	var final_angle := angle_rad + offset_angle
+
 	# Bug A fix: Rotate the formation node so geometry matches facing
 	# This means front rank is physically in front, not just visually facing forward
-	rotation.y = angle_rad
+	rotation.y = final_angle
 
 	# Individual soldiers only get small variance (they're already rotated with parent)
 	for soldier in soldiers:

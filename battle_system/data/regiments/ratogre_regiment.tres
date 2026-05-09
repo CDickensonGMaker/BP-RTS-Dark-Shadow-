@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
 [ext_resource type="Resource" path="res://assets/sprites/units/ratogre_atlas.tres" id="2"]
@@ -8,24 +8,19 @@ script = ExtResource("1")
 regiment_name = "Rat Ogres"
 unit_type = 5
 faction = "skaven"
-attack = 28
-defense = 20
-weapon_skill = 10
-ballistic_skill = 0
-strength = 14
-armor = 1
+attack = 34
+defense = 26
+weapon_skill = 14
+strength = 15
+armor = 4
 max_soldiers = 12
 current_soldiers = 12
-base_morale = 50.0
-morale_save = 5
+base_morale = 70.0
 walk_speed = 1.8
 run_speed = 2.6
 charge_speed = 3.8
 charge_speed_distance = 12.0
 mass = 3.5
-charge_bonus = 6
-max_ammo = 0
-current_ammo = 0
-range_distance = 0.0
 faction_color = Color(0.3, 0.1, 0.4, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

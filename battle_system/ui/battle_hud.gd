@@ -182,10 +182,12 @@ func _setup_ui():
 	# === BOTTOM LEFT - Selected Unit Panel ===
 	_create_selected_unit_panel()
 
-	# === BOTTOM CENTER - Unit Cards ===
-	_create_unit_card_bar()
+	# === BOTTOM HUD (Phase 1: Unified container) ===
+	# Creates selected_unit_panel + unit cards + speed controls in one HBoxContainer
+	_create_bottom_hud()
 
-	# === BOTTOM RIGHT - Speed Controls ===
+	# Legacy calls (now no-ops, content in _create_bottom_hud)
+	_create_unit_card_bar()
 	_create_speed_controls()
 
 	# === HOVER PREVIEW (QOL Phase 5) ===
@@ -399,12 +401,9 @@ func _on_start_battle_pressed():
 
 
 func _create_selected_unit_panel():
+	# Phase 2: Info-only panel (commands moved to command bar)
 	selected_unit_panel = Panel.new()
-	selected_unit_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	selected_unit_panel.offset_left = 10
-	selected_unit_panel.offset_right = 300  # Wider to fit larger buttons
-	selected_unit_panel.offset_top = -310  # Taller to fit larger buttons
-	selected_unit_panel.offset_bottom = -50
+	selected_unit_panel.custom_minimum_size = Vector2(200, 0)  # Slimmer, info only
 	selected_unit_panel.visible = false  # Hidden until unit selected
 
 	var panel_style = StyleBoxFlat.new()
@@ -413,20 +412,35 @@ func _create_selected_unit_panel():
 	panel_style.set_border_width_all(2)
 	panel_style.set_corner_radius_all(4)
 	selected_unit_panel.add_theme_stylebox_override("panel", panel_style)
-	add_child(selected_unit_panel)
 
-	# Portrait area (left side)
+	# Main margin container
+	var margin = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	selected_unit_panel.add_child(margin)
+
+	# Main vertical layout
+	var main_vbox = VBoxContainer.new()
+	main_vbox.add_theme_constant_override("separation", 6)
+	margin.add_child(main_vbox)
+
+	# === HEADER ROW: Portrait + Name/Stats ===
+	var header_hbox = HBoxContainer.new()
+	header_hbox.add_theme_constant_override("separation", 8)
+	main_vbox.add_child(header_hbox)
+
+	# Portrait panel (fixed size)
 	var portrait_panel = Panel.new()
-	portrait_panel.offset_left = 8
-	portrait_panel.offset_top = 8
-	portrait_panel.offset_right = 78
-	portrait_panel.offset_bottom = 78
+	portrait_panel.custom_minimum_size = Vector2(70, 70)
 	var portrait_style = StyleBoxFlat.new()
 	portrait_style.bg_color = Color(0.15, 0.12, 0.1, 1.0)
 	portrait_style.border_color = COLOR_GOLD
 	portrait_style.set_border_width_all(2)
 	portrait_panel.add_theme_stylebox_override("panel", portrait_style)
-	selected_unit_panel.add_child(portrait_panel)
+	header_hbox.add_child(portrait_panel)
 
 	selected_unit_portrait = TextureRect.new()
 	selected_unit_portrait.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -437,128 +451,92 @@ func _create_selected_unit_panel():
 	selected_unit_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait_panel.add_child(selected_unit_portrait)
 
+	# Stats column (expands to fill)
+	var stats_vbox = VBoxContainer.new()
+	stats_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_vbox.add_theme_constant_override("separation", 2)
+	header_hbox.add_child(stats_vbox)
+
 	# Unit name
 	selected_unit_name = Label.new()
-	selected_unit_name.offset_left = 85
-	selected_unit_name.offset_top = 8
-	selected_unit_name.offset_right = 265
-	selected_unit_name.offset_bottom = 30
 	selected_unit_name.text = "Unit Name"
 	selected_unit_name.add_theme_font_size_override("font_size", 16)
 	selected_unit_name.add_theme_color_override("font_color", COLOR_GOLD)
-	selected_unit_panel.add_child(selected_unit_name)
+	stats_vbox.add_child(selected_unit_name)
 
-	# Stats container
+	# Stats container (dynamic stat lines)
 	selected_unit_stats = VBoxContainer.new()
-	selected_unit_stats.offset_left = 85
-	selected_unit_stats.offset_top = 32
-	selected_unit_stats.offset_right = 265
-	selected_unit_stats.offset_bottom = 85
 	selected_unit_stats.add_theme_constant_override("separation", 2)
-	selected_unit_panel.add_child(selected_unit_stats)
+	selected_unit_stats.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stats_vbox.add_child(selected_unit_stats)
 
-	# Stance buttons
-	var stance_label: Label = Label.new()
-	stance_label.text = "Stance"
-	stance_label.offset_left = 8
-	stance_label.offset_top = 90
-	stance_label.offset_right = 60
-	stance_label.offset_bottom = 106
-	stance_label.add_theme_font_size_override("font_size", 11)
-	stance_label.add_theme_color_override("font_color", COLOR_TEXT_DIM)
-	selected_unit_panel.add_child(stance_label)
-
-	stance_container = HBoxContainer.new()
-	stance_container.offset_left = 8
-	stance_container.offset_top = 108
-	stance_container.offset_right = 285
-	stance_container.offset_bottom = 145
-	stance_container.add_theme_constant_override("separation", 5)
-	selected_unit_panel.add_child(stance_container)
-	_create_stance_buttons()
-
-	# Formation buttons
-	var formation_label: Label = Label.new()
-	formation_label.text = "Formation"
-	formation_label.offset_left = 8
-	formation_label.offset_top = 150
-	formation_label.offset_right = 80
-	formation_label.offset_bottom = 166
-	formation_label.add_theme_font_size_override("font_size", 11)
-	formation_label.add_theme_color_override("font_color", COLOR_TEXT_DIM)
-	selected_unit_panel.add_child(formation_label)
-
-	formation_container = HBoxContainer.new()
-	formation_container.offset_left = 8
-	formation_container.offset_top = 168
-	formation_container.offset_right = 285
-	formation_container.offset_bottom = 205
-	formation_container.add_theme_constant_override("separation", 5)
-	selected_unit_panel.add_child(formation_container)
-	_create_formation_buttons()
-
-	# Ability buttons
-	var ability_label: Label = Label.new()
-	ability_label.text = "Abilities (Q/E/R)"
-	ability_label.offset_left = 8
-	ability_label.offset_top = 210
-	ability_label.offset_right = 120
-	ability_label.offset_bottom = 226
-	ability_label.add_theme_font_size_override("font_size", 11)
-	ability_label.add_theme_color_override("font_color", COLOR_TEXT_DIM)
-	selected_unit_panel.add_child(ability_label)
-
-	ability_container = HBoxContainer.new()
-	ability_container.offset_left = 8
-	ability_container.offset_top = 228
-	ability_container.offset_right = 285
-	ability_container.offset_bottom = 270
-	ability_container.add_theme_constant_override("separation", 6)
-	selected_unit_panel.add_child(ability_container)
+	# Phase 2: Stance/Formation/Ability buttons moved to command bar
+	# This panel is now purely informational
 
 
 func _create_unit_card_bar():
-	var bottom_panel = Panel.new()
-	bottom_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	bottom_panel.offset_left = 310  # Leave room for wider selected unit panel
-	bottom_panel.offset_right = -200  # Leave room for speed controls
-	bottom_panel.offset_top = -170
-	bottom_panel.offset_bottom = -50
+	# Phase 1: This now creates just the card panel content, added to unified bottom HUD
+	pass  # Content moved to _create_bottom_hud()
 
-	var bottom_style = StyleBoxFlat.new()
-	bottom_style.bg_color = COLOR_PANEL_BG
-	bottom_style.border_color = COLOR_PANEL_BORDER
-	bottom_style.set_border_width_all(2)
-	bottom_style.set_corner_radius_all(4)
-	bottom_panel.add_theme_stylebox_override("panel", bottom_style)
-	add_child(bottom_panel)
 
+func _create_bottom_hud():
+	# Phase 2: Unified bottom HUD with command bar
+	var bottom_hud = HBoxContainer.new()
+	bottom_hud.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	bottom_hud.offset_left = 10
+	bottom_hud.offset_right = -10
+	bottom_hud.offset_top = -180  # Taller for command bar
+	bottom_hud.offset_bottom = -10
+	bottom_hud.add_theme_constant_override("separation", 8)
+	add_child(bottom_hud)
+
+	# === LEFT: Selected Unit Panel (fixed width, info only) ===
+	bottom_hud.add_child(selected_unit_panel)
+
+	# === CENTER: Command Bar + Unit Cards (expands to fill) ===
+	var center_panel = Panel.new()
+	center_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center_panel.custom_minimum_size = Vector2(200, 0)
+
+	var center_style = StyleBoxFlat.new()
+	center_style.bg_color = COLOR_PANEL_BG
+	center_style.border_color = COLOR_PANEL_BORDER
+	center_style.set_border_width_all(2)
+	center_style.set_corner_radius_all(4)
+	center_panel.add_theme_stylebox_override("panel", center_style)
+	bottom_hud.add_child(center_panel)
+
+	# VBox for [command bar | unit cards]
+	var center_vbox = VBoxContainer.new()
+	center_vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center_vbox.offset_left = 4
+	center_vbox.offset_right = -4
+	center_vbox.offset_top = 4
+	center_vbox.offset_bottom = -4
+	center_vbox.add_theme_constant_override("separation", 4)
+	center_panel.add_child(center_vbox)
+
+	# === COMMAND BAR (Phase 2) ===
+	_create_command_bar(center_vbox)
+
+	# === UNIT CARDS SCROLL ===
 	var scroll = ScrollContainer.new()
-	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
-	scroll.offset_left = 8
-	scroll.offset_right = -8
-	scroll.offset_top = 8
-	scroll.offset_bottom = -8
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS  # Always show scrollbar for many units
-	scroll.follow_focus = true  # Auto-scroll to selected unit
-	scroll.mouse_filter = Control.MOUSE_FILTER_PASS  # Let clicks pass through to unit cards
-	bottom_panel.add_child(scroll)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
+	scroll.follow_focus = true
+	scroll.mouse_filter = Control.MOUSE_FILTER_PASS
+	center_vbox.add_child(scroll)
 
 	unit_card_container = HBoxContainer.new()
-	unit_card_container.add_theme_constant_override("separation", 4)  # Smaller spacing for more units
+	unit_card_container.add_theme_constant_override("separation", 4)
 	unit_card_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	unit_card_container.mouse_filter = Control.MOUSE_FILTER_PASS  # Let clicks pass through to unit cards
+	unit_card_container.mouse_filter = Control.MOUSE_FILTER_PASS
 	scroll.add_child(unit_card_container)
 
-
-func _create_speed_controls():
+	# === RIGHT: Speed Controls (fixed width) ===
 	var speed_panel = Panel.new()
-	speed_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	speed_panel.offset_left = -190
-	speed_panel.offset_right = -10
-	speed_panel.offset_top = -170
-	speed_panel.offset_bottom = -50
+	speed_panel.custom_minimum_size = Vector2(140, 0)  # Slimmer
 
 	var speed_style = StyleBoxFlat.new()
 	speed_style.bg_color = COLOR_PANEL_BG
@@ -566,30 +544,31 @@ func _create_speed_controls():
 	speed_style.set_border_width_all(2)
 	speed_style.set_corner_radius_all(4)
 	speed_panel.add_theme_stylebox_override("panel", speed_style)
-	add_child(speed_panel)
+	bottom_hud.add_child(speed_panel)
+
+	# Speed panel content
+	var speed_vbox = VBoxContainer.new()
+	speed_vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	speed_vbox.offset_left = 8
+	speed_vbox.offset_right = -8
+	speed_vbox.offset_top = 8
+	speed_vbox.offset_bottom = -8
+	speed_vbox.add_theme_constant_override("separation", 8)
+	speed_panel.add_child(speed_vbox)
 
 	# Speed label
 	speed_label = Label.new()
 	speed_label.text = "1.0x"
 	speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	speed_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	speed_label.offset_top = 10
-	speed_label.offset_bottom = 35
-	speed_label.offset_left = -40
-	speed_label.offset_right = 40
 	speed_label.add_theme_font_size_override("font_size", 18)
 	speed_label.add_theme_color_override("font_color", COLOR_GOLD)
-	speed_panel.add_child(speed_label)
+	speed_vbox.add_child(speed_label)
 
 	# Speed buttons
 	var button_container = HBoxContainer.new()
-	button_container.set_anchors_preset(Control.PRESET_CENTER)
-	button_container.offset_top = 10
-	button_container.offset_left = -75
-	button_container.offset_right = 75
-	button_container.add_theme_constant_override("separation", 10)
+	button_container.add_theme_constant_override("separation", 4)
 	button_container.alignment = BoxContainer.ALIGNMENT_CENTER
-	speed_panel.add_child(button_container)
+	speed_vbox.add_child(button_container)
 
 	var slow_btn = _create_speed_button("<<", 0.5)
 	var pause_btn = _create_speed_button("||", 0.0)
@@ -600,6 +579,105 @@ func _create_speed_controls():
 	button_container.add_child(pause_btn)
 	button_container.add_child(normal_btn)
 	button_container.add_child(fast_btn)
+
+
+# Phase 2: Command bar with unified controls
+var command_bar: HBoxContainer
+
+func _create_command_bar(parent: Control):
+	command_bar = HBoxContainer.new()
+	command_bar.custom_minimum_size = Vector2(0, 40)
+	command_bar.add_theme_constant_override("separation", 8)
+	parent.add_child(command_bar)
+
+	# === ORDERS SECTION ===
+	var orders_section = HBoxContainer.new()
+	orders_section.add_theme_constant_override("separation", 4)
+	command_bar.add_child(orders_section)
+
+	# Halt button
+	var halt_btn = _create_command_button("H", "Halt [H]", func(): _issue_halt_command())
+	orders_section.add_child(halt_btn)
+
+	# Run toggle button
+	var run_btn = _create_command_button("R", "Run/Walk [R]", func(): _toggle_run_command())
+	orders_section.add_child(run_btn)
+
+	# Divider
+	command_bar.add_child(_create_divider())
+
+	# === STANCE SECTION ===
+	stance_container = HBoxContainer.new()
+	stance_container.add_theme_constant_override("separation", 3)
+	command_bar.add_child(stance_container)
+	_create_stance_buttons()
+
+	# Divider
+	command_bar.add_child(_create_divider())
+
+	# === FORMATION SECTION ===
+	formation_container = HBoxContainer.new()
+	formation_container.add_theme_constant_override("separation", 3)
+	command_bar.add_child(formation_container)
+	_create_formation_buttons()
+
+	# Divider
+	command_bar.add_child(_create_divider())
+
+	# === ABILITIES SECTION ===
+	ability_container = HBoxContainer.new()
+	ability_container.add_theme_constant_override("separation", 4)
+	command_bar.add_child(ability_container)
+	# Abilities populated dynamically based on selection
+
+
+func _create_divider() -> ColorRect:
+	var divider = ColorRect.new()
+	divider.custom_minimum_size = Vector2(2, 32)
+	divider.color = Color(0.4, 0.35, 0.3, 0.6)
+	return divider
+
+
+func _create_command_button(text: String, tooltip: String, callback: Callable) -> Button:
+	var btn = Button.new()
+	btn.text = text
+	btn.tooltip_text = tooltip
+	btn.custom_minimum_size = Vector2(36, 32)
+	btn.add_theme_font_size_override("font_size", 12)
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_apply_hud_button_style(btn)
+	btn.pressed.connect(callback)
+	return btn
+
+
+func _issue_halt_command():
+	for regiment in SelectionManager.selected_regiments:
+		if is_instance_valid(regiment):
+			regiment.give_order(OrderType.Type.HOLD_POSITION)
+
+
+func _toggle_run_command():
+	if SelectionManager.selected_regiments.is_empty():
+		return
+	# Check if any selected regiment is walking
+	var any_walking: bool = false
+	for regiment in SelectionManager.selected_regiments:
+		if is_instance_valid(regiment) and regiment.leader:
+			if regiment.leader.move_mode == RegimentLeader.MoveMode.WALK:
+				any_walking = true
+				break
+	# Toggle
+	var new_mode = RegimentLeader.MoveMode.RUN if any_walking else RegimentLeader.MoveMode.WALK
+	for regiment in SelectionManager.selected_regiments:
+		if is_instance_valid(regiment) and regiment.leader:
+			if regiment.leader.move_mode != RegimentLeader.MoveMode.CHARGE:
+				regiment.leader.set_move_mode(new_mode)
+
+
+func _create_speed_controls():
+	# Phase 1: Content moved to _create_bottom_hud()
+	pass
 
 
 func _create_speed_button(text: String, speed: float) -> Button:
@@ -1018,11 +1096,19 @@ func _connect_signals():
 			BattleSignals.regiment_routing.connect(_on_regiment_routing_autopause)
 		if not BattleSignals.battle_ended.is_connected(_on_battle_ended_autopause):
 			BattleSignals.battle_ended.connect(_on_battle_ended_autopause)
+		# Phase 3: Re-bucket cards when control groups change
+		if not BattleSignals.group_saved.is_connected(_on_group_saved):
+			BattleSignals.group_saved.connect(_on_group_saved)
 
 
 func _on_deployment_ended():
 	deployment_panel.visible = false
 	# Repopulate cards in case any were missed during initial load
+	_populate_unit_cards()
+
+
+# Phase 3: Re-bucket unit cards when control groups change
+func _on_group_saved(_group_id: int, _regiments: Array):
 	_populate_unit_cards()
 
 
@@ -1032,10 +1118,9 @@ func _on_battle_started():
 
 
 func _populate_unit_cards():
-	# Clear existing cards
-	for card in unit_cards.values():
-		if is_instance_valid(card):
-			card.queue_free()
+	# Phase 3: Clear all children including dividers
+	for child in unit_card_container.get_children():
+		child.queue_free()
 	unit_cards.clear()
 
 	await get_tree().process_frame
@@ -1045,19 +1130,82 @@ func _populate_unit_cards():
 	if not is_instance_valid(self) or not is_instance_valid(unit_card_container):
 		return
 
-	var regiments = get_tree().get_nodes_in_group("player_regiments")
-	print("[BattleHUD] Populating unit cards - found %d player regiments" % regiments.size())
+	# Phase 3: Get regiments bucketed by control group
+	var grouped: Dictionary = SelectionManager.get_regiments_by_group()
+	var total_count: int = 0
 
-	for regiment in regiments:
-		if regiment is Regiment and regiment not in unit_cards:
-			_add_unit_card(regiment)
+	# Render in order: groups 1-9, group 0, ungrouped (-1)
+	var group_order: Array = []
+	for g_id in range(1, 10):
+		if grouped.has(g_id):
+			group_order.append(g_id)
+	if grouped.has(0):
+		group_order.append(0)
+	if grouped.has(-1):
+		group_order.append(-1)
 
-	print("[BattleHUD] Created %d unit cards" % unit_cards.size())
+	for g_idx in range(group_order.size()):
+		var group_id: int = group_order[g_idx]
+		var members: Array = grouped[group_id]
+
+		# Add group divider (except before first group)
+		if g_idx > 0:
+			_add_group_divider(group_id)
+		elif group_id >= 0:
+			# First group - show label without divider line
+			_add_group_label(group_id)
+
+		for regiment in members:
+			if regiment is Regiment and regiment not in unit_cards:
+				_add_unit_card(regiment)
+				total_count += 1
+
+	print("[BattleHUD] Created %d unit cards in %d groups" % [total_count, group_order.size()])
 
 
 ## Public method to refresh unit cards (for unit zoo and dynamic spawning)
 func refresh_unit_cards() -> void:
 	_populate_unit_cards()
+
+
+# Phase 3: Add a visual divider with group label between card groups
+func _add_group_divider(group_id: int) -> void:
+	var divider = VBoxContainer.new()
+	divider.custom_minimum_size = Vector2(24, 0)
+	divider.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	# Vertical line
+	var line = ColorRect.new()
+	line.custom_minimum_size = Vector2(2, 60)
+	line.color = Color(0.5, 0.45, 0.35, 0.5)
+	divider.add_child(line)
+
+	# Group label below line
+	if group_id >= 0:
+		var lbl = Label.new()
+		lbl.text = str(group_id)
+		lbl.add_theme_font_size_override("font_size", 10)
+		lbl.add_theme_color_override("font_color", COLOR_TEXT_DIM)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		divider.add_child(lbl)
+
+	unit_card_container.add_child(divider)
+
+
+# Phase 3: Add just a group label (no divider line) for first group
+func _add_group_label(group_id: int) -> void:
+	var container = VBoxContainer.new()
+	container.custom_minimum_size = Vector2(20, 0)
+	container.alignment = BoxContainer.ALIGNMENT_END
+
+	var lbl = Label.new()
+	lbl.text = str(group_id)
+	lbl.add_theme_font_size_override("font_size", 10)
+	lbl.add_theme_color_override("font_color", COLOR_GOLD)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	container.add_child(lbl)
+
+	unit_card_container.add_child(container)
 
 
 func _add_unit_card(regiment: Regiment):
@@ -1140,6 +1288,11 @@ func _on_regiment_selected(regiment: Regiment):
 	current_selected_regiment = regiment
 	_update_selected_unit_panel(regiment)
 
+	# Phase 2: Update command bar for current selection
+	_update_stance_buttons()
+	_update_formation_buttons()
+	_update_command_bar_abilities()
+
 	for reg in unit_cards:
 		unit_cards[reg].set_selected(reg == regiment)
 
@@ -1178,12 +1331,8 @@ func _update_selected_unit_panel(regiment: Regiment):
 				ammo_color = Color(1.0, 0.7, 0.2)  # Orange/yellow warning
 			_add_stat_line_colored("Ammo:", ammo_text, ammo_color)
 
-	# Update stance and formation buttons
-	_update_stance_buttons()
-	_update_formation_buttons()
-
-	# Update ability buttons
-	_update_ability_buttons(regiment)
+	# Phase 2: Stance/formation/ability buttons moved to command bar
+	# Updated via _on_regiment_selected, not here
 
 
 func _add_stat_line(label_text: String, value_text: String):
@@ -1270,15 +1419,19 @@ func _create_formation_buttons():
 
 
 func _on_stance_button_pressed(stance: StanceType.Type):
-	if current_selected_regiment and is_instance_valid(current_selected_regiment):
-		current_selected_regiment.set_stance(stance)
-		_update_stance_buttons()
+	# Phase 2: Apply to all selected units
+	for regiment in SelectionManager.selected_regiments:
+		if is_instance_valid(regiment):
+			regiment.set_stance(stance)
+	_update_stance_buttons()
 
 
 func _on_formation_button_pressed(formation: FormationType.Type):
-	if current_selected_regiment and is_instance_valid(current_selected_regiment):
-		current_selected_regiment.set_formation(formation)
-		_update_formation_buttons()
+	# Phase 2: Apply to all selected units
+	for regiment in SelectionManager.selected_regiments:
+		if is_instance_valid(regiment):
+			regiment.set_formation(formation)
+	_update_formation_buttons()
 
 
 func _update_stance_buttons():
@@ -1378,14 +1531,104 @@ func _update_ability_buttons(regiment: Regiment):
 
 
 func _on_ability_button_pressed(ability: AbilityType.Type):
-	if current_selected_regiment and is_instance_valid(current_selected_regiment):
-		var data: Dictionary = AbilityType.get_ability_data(ability)
-		if data.get("duration", 1.0) == 0.0:
-			# Toggle ability
-			current_selected_regiment.toggle_ability(ability)
+	# Phase 2: Apply to all selected units that have this ability
+	var data: Dictionary = AbilityType.get_ability_data(ability)
+	var is_toggle: bool = data.get("duration", 1.0) == 0.0
+
+	for regiment in SelectionManager.selected_regiments:
+		if not is_instance_valid(regiment) or not regiment.abilities:
+			continue
+		if ability not in regiment.abilities.available_abilities:
+			continue
+		if is_toggle:
+			regiment.toggle_ability(ability)
 		else:
-			# Instant or duration ability
-			current_selected_regiment.use_ability(ability)
+			regiment.use_ability(ability)
+
+
+# Phase 2: Get abilities available across the selection
+func _abilities_for_selection() -> Array:
+	var sel = SelectionManager.selected_regiments
+	if sel.is_empty():
+		return []
+
+	# Single unit: simple list
+	if sel.size() == 1:
+		var single = []
+		var reg = sel[0]
+		if not is_instance_valid(reg) or not reg.abilities:
+			return []
+		for a in reg.abilities.available_abilities:
+			single.append({"ability": a, "available_count": 1, "total": 1})
+		return single
+
+	# Multiple units: count how many have each ability
+	var counts = {}
+	for reg in sel:
+		if not is_instance_valid(reg) or not reg.abilities:
+			continue
+		for a in reg.abilities.available_abilities:
+			counts[a] = counts.get(a, 0) + 1
+
+	var result = []
+	for a in counts:
+		result.append({"ability": a, "available_count": counts[a], "total": sel.size()})
+	return result
+
+
+# Phase 2: Update command bar abilities based on selection
+func _update_command_bar_abilities():
+	# Clear old abilities
+	for child in ability_container.get_children():
+		child.queue_free()
+	ability_buttons.clear()
+	ability_overlays.clear()
+	ability_types.clear()
+
+	var abilities = _abilities_for_selection()
+	if abilities.is_empty():
+		return
+
+	var hotkeys: Array[String] = ["Q", "E", "R", "T"]
+	var idx: int = 0
+
+	for ability_info in abilities:
+		var ability = ability_info["ability"]
+		var available_count: int = ability_info["available_count"]
+		var total: int = ability_info["total"]
+		var data: Dictionary = AbilityType.get_ability_data(ability)
+
+		var container: Control = Control.new()
+		container.custom_minimum_size = Vector2(52, 32)
+
+		var btn: Button = Button.new()
+		var btn_text: String = data.get("name", "?").substr(0, 3)
+		if idx < hotkeys.size():
+			btn_text = "[%s] %s" % [hotkeys[idx], btn_text]
+
+		# Show count badge if not all units have it
+		if available_count < total:
+			btn_text += " %d/%d" % [available_count, total]
+
+		btn.text = btn_text
+		btn.tooltip_text = "%s\n%s\nCooldown: %.0fs\n%d/%d units" % [
+			data.get("name", "Unknown"),
+			data.get("description", ""),
+			data.get("cooldown", 0.0),
+			available_count, total
+		]
+		btn.set_anchors_preset(Control.PRESET_FULL_RECT)
+		btn.add_theme_font_size_override("font_size", 10)
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		_apply_hud_button_style(btn)
+		btn.pressed.connect(_on_ability_button_pressed.bind(ability))
+		container.add_child(btn)
+
+		ability_container.add_child(container)
+		ability_buttons.append(btn)
+		ability_types.append(ability)
+		idx += 1
 
 
 func _on_regiment_dead(regiment: Regiment):

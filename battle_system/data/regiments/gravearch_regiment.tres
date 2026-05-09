@@ -1,21 +1,18 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
-[ext_resource type="Resource" path="res://assets/sprites/units/skelarch_atlas.tres" id="2"]
+[ext_resource type="Resource" path="res://assets/sprites/units/gobarch_atlas.tres" id="2"]
 
 [resource]
 script = ExtResource("1")
 regiment_name = "Skeleton Archers"
 unit_type = 2
 faction = "undead"
-weapon_class = 1
 personality = 3
-fire_mode = 0
 attack = 5
 defense = 4
 weapon_skill = 5
 ballistic_skill = 10
-strength = 3
 armor = 1
 max_soldiers = 32
 current_soldiers = 32
@@ -26,10 +23,10 @@ run_speed = 1.9
 charge_speed = 2.8
 charge_speed_distance = 10.0
 charge_bonus = 1
-mass = 1.0
-turn_rate = 3.0
+weapon_class = 1
 max_ammo = 24
 current_ammo = 24
 range_distance = 35.0
-faction_color = Color(0.3, 0.1, 0.4, 1)
+faction_color = Color(0.05, 0.05, 0.05, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

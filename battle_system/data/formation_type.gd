@@ -187,3 +187,75 @@ static func get_transition_combat_penalty() -> float:
 
 static func get_transition_defense_penalty() -> float:
 	return TRANSITION_DEFENSE_PENALTY
+
+
+# === COHESION SCALING (Total War-style formation cohesion) ===
+# Formation bonuses scale with cohesion:
+# - 0.85+ = "Formed" - 100% formation bonuses
+# - 0.50-0.85 = "Loose" - Linear interpolation of bonuses
+# - <0.50 = "Broken" - 0% formation bonuses
+
+const COHESION_FORMED: float = 0.85
+const COHESION_LOOSE: float = 0.50
+
+
+static func get_cohesion_scale_factor(cohesion: float) -> float:
+	"""Get cohesion-based bonus scale factor (0.0-1.0).
+	0.85+ = 1.0 (full bonus)
+	0.50-0.85 = linear interpolation
+	<0.50 = 0.0 (no bonus)"""
+	if cohesion >= COHESION_FORMED:
+		return 1.0
+	elif cohesion < COHESION_LOOSE:
+		return 0.0
+	else:
+		# Linear interpolation between LOOSE (0.0) and FORMED (1.0)
+		return (cohesion - COHESION_LOOSE) / (COHESION_FORMED - COHESION_LOOSE)
+
+
+static func get_attack_modifier_scaled(formation: Type, cohesion: float) -> float:
+	"""Get attack modifier scaled by formation cohesion.
+	Base modifier interpolates toward 1.0 as cohesion decreases."""
+	var base: float = ATTACK_MODIFIERS.get(formation, 1.0)
+	var scale: float = get_cohesion_scale_factor(cohesion)
+	# Interpolate: at full cohesion = base modifier, at broken = 1.0 (neutral)
+	return lerpf(1.0, base, scale)
+
+
+static func get_defense_modifier_scaled(formation: Type, cohesion: float) -> float:
+	"""Get defense modifier scaled by formation cohesion.
+	Base modifier interpolates toward 1.0 as cohesion decreases."""
+	var base: float = DEFENSE_MODIFIERS.get(formation, 1.0)
+	var scale: float = get_cohesion_scale_factor(cohesion)
+	return lerpf(1.0, base, scale)
+
+
+static func get_anti_cavalry_modifier_scaled(formation: Type, cohesion: float) -> float:
+	"""Get anti-cavalry modifier scaled by formation cohesion."""
+	var base: float = ANTI_CAVALRY.get(formation, 1.0)
+	var scale: float = get_cohesion_scale_factor(cohesion)
+	return lerpf(1.0, base, scale)
+
+
+static func get_charge_modifier_scaled(formation: Type, cohesion: float) -> float:
+	"""Get charge modifier scaled by formation cohesion."""
+	var base: float = CHARGE_MODIFIERS.get(formation, 1.0)
+	var scale: float = get_cohesion_scale_factor(cohesion)
+	return lerpf(1.0, base, scale)
+
+
+static func get_ranged_modifier_scaled(formation: Type, cohesion: float) -> float:
+	"""Get ranged modifier scaled by formation cohesion."""
+	var base: float = RANGED_MODIFIERS.get(formation, 1.0)
+	var scale: float = get_cohesion_scale_factor(cohesion)
+	return lerpf(1.0, base, scale)
+
+
+static func get_speed_modifier_scaled(formation: Type, cohesion: float) -> float:
+	"""Get speed modifier scaled by formation cohesion.
+	Note: Speed is less affected by cohesion - units can move even when loose."""
+	var base: float = SPEED_MODIFIERS.get(formation, 1.0)
+	# Speed penalty is halved compared to combat penalties
+	var scale: float = get_cohesion_scale_factor(cohesion)
+	var half_scale: float = 0.5 + scale * 0.5  # Range: 0.5-1.0 instead of 0.0-1.0
+	return lerpf(1.0, base, half_scale)

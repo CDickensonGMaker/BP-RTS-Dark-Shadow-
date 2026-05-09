@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://campaign_system/data/contract_data.gd" id="1"]
 [ext_resource type="Resource" path="res://battle_system/data/regiments/biguns_regiment.tres" id="2"]
-[ext_resource type="Resource" path="res://battle_system/data/regiments/gob1_regiment.tres" id="3"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/ntgoblin_regiment.tres" id="3"]
 
 [resource]
 script = ExtResource("1")

@@ -272,6 +272,29 @@ func _ready():
 	melee_area.area_entered.connect(_on_melee_area_contact)
 	melee_area.monitorable = true
 	melee_area.monitoring = true
+	# DEBUG: Verify melee area setup
+	var shape_node = melee_area.get_node_or_null("CollisionShape3D")
+	var shape_valid = shape_node and shape_node.shape != null and not shape_node.disabled
+	print("[MELEE SETUP] %s: MeleeArea connected, shape_valid=%s, layer=%d, mask=%d" % [
+		data.regiment_name if data else name, shape_valid, melee_area.collision_layer, melee_area.collision_mask])
+
+	# For artillery units, increase MeleeArea radius to cover crew spread
+	# Crew is positioned in a 270° arc with radius up to 3.5m around each cannon
+	# With 2 cannons spaced 5m apart, total spread is ~12m
+	if data.artillery_model and shape_node and shape_node.shape is CapsuleShape3D:
+		var capsule: CapsuleShape3D = shape_node.shape as CapsuleShape3D
+		capsule.radius = 10.0  # Cover crew positioned around both cannons
+		capsule.height = 20.0
+		print("[MELEE SETUP] %s: Artillery MeleeArea enlarged - radius=%.1f, height=%.1f" % [
+			data.regiment_name if data else name, capsule.radius, capsule.height])
+
+	# Final melee configuration debug
+	print("[MELEE INIT] %s: layer=%d mask=%d monitoring=%s monitorable=%s pos=%s" % [
+		data.regiment_name if data else name,
+		melee_area.collision_layer, melee_area.collision_mask,
+		melee_area.monitoring, melee_area.monitorable,
+		melee_area.global_position])
+
 	# Add to groups for signal-based selection
 	add_to_group("all_regiments")
 	if is_player_controlled:
@@ -391,6 +414,12 @@ func _setup_3d_formation():
 	soldier_formation.rows = ceili(sqrt(float(data.max_soldiers)))
 	soldier_formation.spacing = 1.2
 	soldier_formation.faction_color = data.faction_color
+
+	# Set model front direction from regiment data
+	# This remaps which direction the 3D model's "front" actually faces
+	if data:
+		soldier_formation.model_front_direction = data.sprite_front_direction
+
 	add_child(soldier_formation)
 	formation = soldier_formation
 
@@ -433,13 +462,27 @@ func _setup_sprite_overlay():
 		sprite_formation.height_offset = -1.5  # Negative offset to ground the wheels
 		sprite_formation.spacing = 4.0  # Wide spacing between guns
 
+	# Set sprite front direction from regiment data
+	# This remaps which sprite row is the unit's visual "front"
+	if data:
+		sprite_formation.sprite_front_direction = data.sprite_front_direction
+
 	add_child(sprite_formation)
 	sprite_overlay = sprite_formation
+
+	# Connect cohesion signal to emit battle signal
+	if sprite_formation.cohesion_changed.get_connections().is_empty():
+		sprite_formation.cohesion_changed.connect(_on_cohesion_changed)
+
+
+func _on_cohesion_changed(cohesion: float) -> void:
+	## Forward cohesion changes to BattleSignals for UI and other systems.
+	BattleSignals.formation_cohesion_changed.emit(self, cohesion)
 
 
 func _setup_artillery_formation():
 	## Set up 3D artillery models (cannons, mortars) using ArtilleryFormation.
-	## This replaces sprite overlay for artillery units with 3D models.
+	## ALSO sets up crew sprites around the cannons for visible melee combat.
 	var arty_formation: Node3D = ArtilleryFormationScript.new()
 
 	arty_formation.artillery_model = data.artillery_model
@@ -447,14 +490,82 @@ func _setup_artillery_formation():
 	arty_formation.model_scale = data.artillery_model_scale
 	arty_formation.spacing = 5.0  # Wide spacing between guns
 	arty_formation.faction_color = data.faction_color
-	arty_formation.enable_collision = true
+	arty_formation.enable_collision = false  # Cannon pieces have NO collision - crew handles melee
 	arty_formation.height_offset = 0.0
+
+	# Use artillery_model_direction for 3D cannon models (default 0 = cannon faces forward)
+	# This is separate from sprite_front_direction which controls 2D crew sprites
+	arty_formation.model_front_direction = data.artillery_model_direction
 
 	add_child(arty_formation)
 	artillery_formation = arty_formation
 
 	# Spawn the artillery pieces
 	arty_formation.spawn_formation(data.artillery_pieces_count)
+
+	# === CREW SPRITES: Enable hybrid rendering ===
+	# Artillery shows BOTH 3D cannon models AND crew sprites around them
+	# Melee combat happens between crew sprites, not cannon models
+	if data.sprite_atlas:
+		use_sprite_soldiers = true
+		var crew_formation := SpriteFormation.new()
+		crew_formation.atlas = data.sprite_atlas
+		crew_formation.max_soldiers = data.max_soldiers
+		crew_formation.faction_color = data.faction_color
+
+		# Artillery crew are smaller than normal infantry (working around cannons)
+		crew_formation.sprite_scale = Vector2(2.0, 2.5)
+		crew_formation.height_offset = 1.2
+		crew_formation.spacing = 1.0  # Tight spacing, positioned by artillery crew mode
+
+		# Set sprite front direction from regiment data
+		crew_formation.sprite_front_direction = data.sprite_front_direction
+
+		add_child(crew_formation)
+		sprite_overlay = crew_formation
+
+		# Enable artillery crew positioning mode
+		var piece_positions: Array[Vector3] = arty_formation._calculate_piece_positions(data.artillery_pieces_count)
+		crew_formation.set_artillery_crew_mode(piece_positions)
+
+		# Set initial facing direction to match regiment (same as other sprite formations)
+		crew_formation.set_facing_direction(_facing_direction)
+
+		# Connect cohesion signal
+		if crew_formation.cohesion_changed.get_connections().is_empty():
+			crew_formation.cohesion_changed.connect(_on_cohesion_changed)
+
+
+func _update_artillery_visual_state() -> void:
+	## Update artillery formation visual state based on firing state.
+	## Called from _process to keep 3D artillery models in sync with firing system.
+	if not artillery_formation or not firing:
+		return
+
+	# Only for artillery units
+	if not data or data.unit_type != UnitType.Type.ARTILLERY:
+		return
+
+	# Get current firing state from the firing component
+	if not firing.has_method("get_firing_state"):
+		return
+
+	var RegimentFiringScript = load("res://battle_system/ai/commander/regiment_firing.gd")
+	if not RegimentFiringScript:
+		return
+
+	var current_firing_state = firing.get_firing_state()
+
+	# Map RegimentFiring.FiringState to ArtilleryFormation.VisualFiringState
+	var visual_state: int = ArtilleryFormationScript.VisualFiringState.IDLE
+	if current_firing_state == RegimentFiringScript.FiringState.AIMING:
+		visual_state = ArtilleryFormationScript.VisualFiringState.AIMING
+	elif current_firing_state == RegimentFiringScript.FiringState.RELOADING:
+		visual_state = ArtilleryFormationScript.VisualFiringState.RELOADING
+
+	# Update the artillery formation's visual state
+	if artillery_formation.has_method("set_visual_firing_state"):
+		artillery_formation.set_visual_firing_state(visual_state)
 
 
 func _setup_war_banner():
@@ -511,8 +622,13 @@ func _snap_to_terrain_then_init_ai():
 		return
 
 	# Initialize AI controller for enemy units (after terrain snap)
+	# Also initialize for player ranged/artillery units so they can fire via behavior tree
 	if not is_player_controlled:
 		_setup_ai_controller()
+	elif data and data.ballistic_skill > 0:
+		# Player ranged units need AI controller for firing behavior
+		_setup_ai_controller()
+		print("[REGIMENT] Player ranged unit %s: AI controller initialized for firing" % (data.regiment_name if data else name))
 
 
 func _snap_to_terrain():
@@ -540,7 +656,10 @@ func _snap_to_terrain():
 		formation.global_position.y = terrain_height
 	if sprite_overlay:
 		sprite_overlay.global_position.y = terrain_height
+	# Sync MeleeArea to regiment position AFTER terrain snap
+	# Artillery crew spread requires the full position sync, not just height
 	if melee_area:
+		melee_area.global_position = global_position
 		melee_area.global_position.y = terrain_height
 
 
@@ -672,6 +791,9 @@ func _process(delta):
 	if abilities:
 		abilities.update(delta)
 
+	# Update artillery visual state based on firing state
+	_update_artillery_visual_state()
+
 	# Smooth rotation toward enemy during combat (spring1944-style)
 	_update_combat_facing(delta)
 
@@ -688,6 +810,11 @@ func _physics_process(delta):
 		State.ENGAGING:  _process_engage(delta)
 		State.ROUTING:   _process_route(delta)
 		State.RALLYING:  _process_rally(delta)
+
+	# Polling-based melee detection fallback (area_entered signal can be unreliable in Godot 4)
+	# Only check when not already engaged and not dead/routing
+	if state != State.ENGAGING and state != State.DEAD and state != State.ROUTING:
+		_poll_melee_overlaps()
 
 
 func _update_combat_facing(delta: float) -> void:
@@ -788,6 +915,9 @@ func set_state(new_state: State):
 			sprite_overlay.play_animation_staggered(sprite_anim, 0.03)
 		else:
 			sprite_overlay.play_animation_all(sprite_anim)
+
+	# Update formation tolerance mode based on state
+	_update_tolerance_mode_for_state()
 
 	match new_state:
 		State.ROUTING:
@@ -892,6 +1022,25 @@ func give_order(order: OrderType.Type, target: Variant = null, append: bool = fa
 
 	current_order = order
 	BattleSignals.order_given.emit(self, order, target)
+
+	# ARTILLERY SPECIAL CASE: Artillery never moves to engage
+	# For ATTACK_MOVE, set target on AI controller and let behavior tree handle firing
+	var is_artillery: bool = data and data.unit_type == UnitType.Type.ARTILLERY
+	if is_artillery and order == OrderType.Type.ATTACK_MOVE:
+		# Don't move - artillery is stationary. AI controller will handle firing.
+		leader.stop_movement()
+		set_state(State.IDLE)
+		# SET THE TARGET on AI controller so behavior tree can fire at it
+		if ai_controller and target is Node:
+			ai_controller.set_target(target)
+			print("[REGIMENT] Artillery %s: ATTACK_MOVE -> stationary fire, target=%s" % [
+				data.regiment_name if data else name,
+				target.data.regiment_name if target is Node and target.data else str(target)
+			])
+		else:
+			print("[REGIMENT] Artillery %s: ATTACK_MOVE but no valid target" % (data.regiment_name if data else name))
+		return
+
 	match order:
 		OrderType.Type.MOVE, OrderType.Type.ATTACK_MOVE:
 			if target is Vector3:
@@ -1004,7 +1153,17 @@ func take_casualties(amount: int):
 		formation.kill_soldiers(amount)
 	if sprite_overlay:
 		sprite_overlay.kill_soldiers(amount)
-	if not formation and not sprite_overlay:
+	# Kill artillery pieces proportionally when taking casualties
+	# Artillery has fewer pieces than max_soldiers, so we calculate target piece count
+	if artillery_formation and artillery_formation.has_method("kill_random_piece"):
+		var max_pieces: int = data.artillery_pieces_count if data else 4
+		var soldiers_per_piece: float = float(data.max_soldiers) / float(max_pieces)
+		var target_pieces: int = ceili(float(current_soldiers) / soldiers_per_piece)
+		target_pieces = clampi(target_pieces, 0, max_pieces)
+		# Kill pieces until we reach target count
+		while artillery_formation.alive_count > target_pieces:
+			artillery_formation.kill_random_piece()
+	if not formation and not sprite_overlay and not artillery_formation:
 		# Fallback to sprite alpha fade
 		var health_ratio = float(current_soldiers) / float(data.max_soldiers)
 		sprite.modulate.a = clamp(health_ratio + 0.3, 0.3, 1.0)
@@ -1068,6 +1227,41 @@ func play_hit_reaction():
 
 
 # --- PRIVATE PROCESS FUNCTIONS ---
+
+## Apply separation steering to avoid overlapping with nearby units
+func _apply_separation_steering(velocity: Vector3) -> Vector3:
+	if not AIAutoload or not AIAutoload.spatial_hash:
+		return velocity
+
+	var separation := Vector3.ZERO
+	var nearby: Array = AIAutoload.spatial_hash.query_regiments_in_radius(
+		global_position, 20.0, -1  # All factions, 20 unit radius
+	)
+
+	for other in nearby:
+		if other == self or not is_instance_valid(other):
+			continue
+		# Only separate from living units
+		if other.state == State.DEAD or other.state == State.ROUTING:
+			continue
+
+		var other_pos: Vector3 = other.global_position
+		var diff: Vector3 = global_position - other_pos
+		diff.y = 0  # Only separate horizontally
+		var dist: float = diff.length()
+
+		# Apply stronger separation when closer
+		if dist > 0.5 and dist < 15.0:
+			# Inverse distance weighting - closer = stronger push
+			separation += diff.normalized() * (15.0 - dist) / 15.0
+
+	# Apply separation force (scaled down to not overwhelm navigation)
+	if separation.length_squared() > 0.01:
+		velocity += separation.normalized() * 1.5
+
+	return velocity
+
+
 func _process_march(delta):
 	# Don't process march movement when engaged in combat - prevents rubberbanding
 	if state == State.ENGAGING:
@@ -1081,6 +1275,10 @@ func _process_march(delta):
 		return
 
 	var velocity: Vector3 = leader.current_velocity
+
+	# Apply separation steering to avoid overlapping with other units
+	velocity = _apply_separation_steering(velocity)
+
 	if velocity.length_squared() > 0.0001:
 		# Apply velocity to regiment position
 		var movement = velocity * delta
@@ -1095,8 +1293,8 @@ func _process_march(delta):
 			global_position.y = terrain_height
 			leader.global_position.y = terrain_height
 
-		# Apply arena bounds
-		var map_bound: float = 90.0
+		# Apply arena bounds (fallback 590 for 1200x1200 map if AIAutoload unavailable)
+		var map_bound: float = 590.0
 		if AIAutoload:
 			map_bound = AIAutoload.get_map_bounds()
 		var hard_limit: float = map_bound - 1.0
@@ -1293,8 +1491,16 @@ func _process_rally(delta: float) -> void:
 	current_morale += MoraleConstants.CONTINUOUS_RALLY_RECOVERY * delta
 	current_morale = clampf(current_morale, 0.0, 100.0)
 
+	# Advance rally reformation phases based on morale thresholds
+	# Phase progression: Stop (30) → Centroid (35) → Flow-back (38) → Tighten (40)
+	if sprite_overlay and sprite_overlay.has_method("advance_rally_phase"):
+		sprite_overlay.advance_rally_phase(current_morale)
+
 	# Check if we've rallied enough to return to IDLE
 	if current_morale >= MoraleConstants.RALLY_SUCCESS_THRESHOLD:
+		# Complete rally reformation if still in progress
+		if sprite_overlay and sprite_overlay.has_method("complete_rally_reformation"):
+			sprite_overlay.complete_rally_reformation()
 		set_state(State.IDLE)
 
 
@@ -1320,13 +1526,24 @@ func _find_current_combat_target() -> Regiment:
 
 func _on_melee_area_contact(area: Area3D) -> void:
 	## Simple stop-and-engage handler. NO teleport — soft separation happens in _process_engage.
+	var my_name = data.regiment_name if data else name
+	print("[MELEE DEBUG] %s: _on_melee_area_contact triggered with area=%s, my_pos=%s, area_pos=%s" % [my_name, area.name if area else "null", melee_area.global_position if melee_area else "null", area.global_position if area else "null"])
 	if not is_instance_valid(area):
 		return
 
+	# Try direct parent first (standard case: MeleeArea -> Regiment)
 	var other: Regiment = area.get_parent() as Regiment
+
+	# If direct parent isn't Regiment, check metadata (artillery collision case)
+	# Artillery pieces: StaticBody3D -> ArtilleryPiece -> ArtilleryFormation -> Regiment
 	if not is_instance_valid(other) or other == self:
+		other = _find_regiment_from_node(area)
+
+	if not is_instance_valid(other) or other == self:
+		print("[MELEE DEBUG] %s: area parent is not valid regiment (parent=%s)" % [my_name, area.get_parent().name if area and area.get_parent() else "null"])
 		return
 	if other.state == State.DEAD or state == State.DEAD:
+		print("[MELEE DEBUG] %s: Contact with %s blocked - one is DEAD" % [data.regiment_name if data else name, other.data.regiment_name if other.data else other.name])
 		return
 	if other.is_player_controlled == is_player_controlled:
 		return  # Same faction — no engagement
@@ -1338,6 +1555,7 @@ func _on_melee_area_contact(area: Area3D) -> void:
 	var other_cooldown: int = other.get_meta("disengage_cooldown", 0)
 	var now: int = Time.get_ticks_msec()
 	if (now - my_cooldown) < DISENGAGE_COOLDOWN_MS or (now - other_cooldown) < DISENGAGE_COOLDOWN_MS:
+		print("[MELEE DEBUG] %s: Contact with %s blocked - disengage cooldown" % [data.regiment_name if data else name, other.data.regiment_name if other.data else other.name])
 		return  # Still in cooldown, don't re-engage
 
 	# Already engaged with this exact unit? Bail — don't re-trigger.
@@ -1348,6 +1566,8 @@ func _on_melee_area_contact(area: Area3D) -> void:
 	if get_instance_id() > other.get_instance_id():
 		return
 
+	print("[MELEE DEBUG] %s: Starting melee with %s" % [data.regiment_name if data else name, other.data.regiment_name if other.data else other.name])
+
 	# Stop both units where they actually are. No teleport.
 	leader.stop_movement()
 	other.leader.stop_movement()
@@ -1356,6 +1576,87 @@ func _on_melee_area_contact(area: Area3D) -> void:
 	CombatManager.begin_melee(self, other)
 	set_state(State.ENGAGING)
 	other.set_state(State.ENGAGING)
+
+
+func _find_regiment_from_node(node: Node) -> Regiment:
+	## Walk up the parent chain looking for a Regiment.
+	## Also checks metadata "regiment" key for indirect references (e.g., artillery collision bodies).
+	if not is_instance_valid(node):
+		return null
+
+	var current: Node = node
+	var depth: int = 0
+	const MAX_DEPTH: int = 8  # Prevent infinite loops
+
+	while current and depth < MAX_DEPTH:
+		# Check metadata first (set by artillery_formation._ensure_collision)
+		var meta_regiment: Variant = current.get_meta("regiment", null)
+		if meta_regiment is Regiment and is_instance_valid(meta_regiment):
+			return meta_regiment
+
+		# Check if current node is a Regiment
+		if current is Regiment:
+			return current
+
+		current = current.get_parent()
+		depth += 1
+
+	return null
+
+
+func _poll_melee_overlaps() -> void:
+	## Polling-based fallback for melee detection when area_entered signal fails.
+	## This catches overlaps that the signal misses (common in Godot 4 with fast movement).
+	if not melee_area or not is_instance_valid(melee_area):
+		return
+
+	var overlapping: Array[Area3D] = melee_area.get_overlapping_areas()
+	for area in overlapping:
+		if not is_instance_valid(area):
+			continue
+
+		# Find regiment from this area
+		var other: Regiment = area.get_parent() as Regiment
+		if not is_instance_valid(other) or other == self:
+			other = _find_regiment_from_node(area)
+		if not is_instance_valid(other) or other == self:
+			continue
+
+		# Skip same faction
+		if other.is_player_controlled == is_player_controlled:
+			continue
+
+		# Skip dead units
+		if other.state == State.DEAD or state == State.DEAD:
+			continue
+
+		# Check disengage cooldown
+		const DISENGAGE_COOLDOWN_MS: int = 500
+		var my_cooldown: int = get_meta("disengage_cooldown", 0)
+		var other_cooldown: int = other.get_meta("disengage_cooldown", 0)
+		var now: int = Time.get_ticks_msec()
+		if (now - my_cooldown) < DISENGAGE_COOLDOWN_MS or (now - other_cooldown) < DISENGAGE_COOLDOWN_MS:
+			continue
+
+		# Already engaged with this unit?
+		if state == State.ENGAGING and _find_current_combat_target() == other:
+			continue
+
+		# Lower instance ID owns engagement-start
+		if get_instance_id() > other.get_instance_id():
+			continue
+
+		print("[MELEE POLL] %s: Detected overlap with %s via polling fallback" % [
+			data.regiment_name if data else name,
+			other.data.regiment_name if other.data else other.name])
+
+		# Stop both units and start combat
+		leader.stop_movement()
+		other.leader.stop_movement()
+		CombatManager.begin_melee(self, other)
+		set_state(State.ENGAGING)
+		other.set_state(State.ENGAGING)
+		return  # Only process one engagement per tick
 
 
 func _find_nearest_enemy() -> Regiment:
@@ -1585,7 +1886,9 @@ func clear_movement_group() -> void:
 
 
 func get_attack_modifier() -> float:
-	var base: float = FormationType.get_attack_modifier(current_formation)
+	## Get attack modifier scaled by formation cohesion.
+	var cohesion: float = get_formation_cohesion()
+	var base: float = FormationType.get_attack_modifier_scaled(current_formation, cohesion)
 	# Penalty while reforming - vulnerable during transition
 	if is_reforming:
 		base *= FormationType.get_transition_combat_penalty()
@@ -1602,7 +1905,9 @@ func get_attack_modifier() -> float:
 
 
 func get_defense_modifier() -> float:
-	var base: float = FormationType.get_defense_modifier(current_formation)
+	## Get defense modifier scaled by formation cohesion.
+	var cohesion: float = get_formation_cohesion()
+	var base: float = FormationType.get_defense_modifier_scaled(current_formation, cohesion)
 	# Penalty while reforming - vulnerable during transition
 	if is_reforming:
 		base *= FormationType.get_transition_defense_penalty()
@@ -1618,15 +1923,18 @@ func get_defense_modifier() -> float:
 
 
 func get_anti_cavalry_modifier() -> float:
-	var base: float = FormationType.get_anti_cavalry_modifier(current_formation)
+	## Get anti-cavalry modifier scaled by formation cohesion.
+	var cohesion: float = get_formation_cohesion()
+	var base: float = FormationType.get_anti_cavalry_modifier_scaled(current_formation, cohesion)
 	if is_braced:
 		base *= 2.0  # Double when braced
 	return base
 
 
 func get_ranged_modifier() -> float:
-	## Get ranged accuracy modifier (formation + veterancy + stamina).
-	var base: float = FormationType.get_ranged_modifier(current_formation)
+	## Get ranged accuracy modifier (formation + veterancy + stamina), scaled by cohesion.
+	var cohesion: float = get_formation_cohesion()
+	var base: float = FormationType.get_ranged_modifier_scaled(current_formation, cohesion)
 	# Veterancy ranged bonus
 	if veterancy:
 		base += veterancy.get_ranged_bonus()
@@ -1637,12 +1945,49 @@ func get_ranged_modifier() -> float:
 
 
 func get_charge_modifier() -> float:
-	## Get charge damage modifier (formation + stamina).
-	var base: float = FormationType.get_charge_modifier(current_formation)
+	## Get charge damage modifier (formation + stamina), scaled by cohesion.
+	var cohesion: float = get_formation_cohesion()
+	var base: float = FormationType.get_charge_modifier_scaled(current_formation, cohesion)
 	# Stamina affects charge power
 	if stamina:
 		base *= stamina.get_combat_modifier()
 	return base
+
+
+# === FORMATION COHESION SYSTEM ===
+
+func get_formation_cohesion() -> float:
+	## Get current formation cohesion (0.0-1.0).
+	## Delegates to sprite_overlay if available.
+	if sprite_overlay and sprite_overlay.has_method("get_cohesion"):
+		return sprite_overlay.get_cohesion()
+	return 1.0  # Default to fully formed if no sprite overlay
+
+
+func _update_tolerance_mode_for_state() -> void:
+	## Map regiment state to appropriate tolerance mode.
+	## Called when state changes to sync formation tolerance.
+	if not sprite_overlay:
+		return
+	if not sprite_overlay.has_method("set_tolerance_mode"):
+		return
+
+	# Import SlotToleranceMode from SpriteFormation
+	const LOCKED = 0  # SpriteFormation.SlotToleranceMode.LOCKED
+	const TOLERANT = 1  # SpriteFormation.SlotToleranceMode.TOLERANT
+	const SUSPENDED = 2  # SpriteFormation.SlotToleranceMode.SUSPENDED
+
+	match state:
+		State.IDLE, State.MARCHING:
+			sprite_overlay.set_tolerance_mode(LOCKED)
+		State.ENGAGING:
+			sprite_overlay.set_tolerance_mode(TOLERANT)
+		State.ROUTING:
+			sprite_overlay.set_tolerance_mode(SUSPENDED)
+		State.RALLYING:
+			# Start wide, tighten progressively (handled by rally phase system)
+			if not sprite_overlay.is_rally_reforming():
+				sprite_overlay.begin_rally_reformation()
 
 
 func set_formation_dimensions(file_count: int, animate: bool = true) -> void:
@@ -1688,6 +2033,10 @@ func set_facing_direction(direction: Vector3) -> void:
 	# Update artillery formation
 	if artillery_formation:
 		artillery_formation.set_facing_direction(_facing_direction)
+		# Update crew sprite positions around the rotated cannons
+		if sprite_overlay and sprite_overlay.has_method("update_artillery_piece_positions"):
+			var piece_positions: Array[Vector3] = artillery_formation._calculate_piece_positions(data.artillery_pieces_count)
+			sprite_overlay.update_artillery_piece_positions(piece_positions)
 
 	# Update range indicator LOS cone
 	if range_indicator and range_indicator.has_method("update_facing"):
@@ -1715,6 +2064,10 @@ func set_initial_facing(direction: Vector3) -> void:
 		sprite_overlay.set_facing_direction(_facing_direction)
 	if artillery_formation:
 		artillery_formation.set_facing_immediate(_facing_direction)
+		# Update crew sprite positions around the rotated cannons
+		if sprite_overlay and sprite_overlay.has_method("update_artillery_piece_positions"):
+			var piece_positions: Array[Vector3] = artillery_formation._calculate_piece_positions(data.artillery_pieces_count)
+			sprite_overlay.update_artillery_piece_positions(piece_positions)
 	if range_indicator and range_indicator.has_method("update_facing"):
 		range_indicator.update_facing(_facing_direction)
 

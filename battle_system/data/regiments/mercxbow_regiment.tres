@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
 [ext_resource type="Resource" path="res://assets/sprites/units/mercxbow_atlas.tres" id="2"]
@@ -8,23 +8,21 @@ script = ExtResource("1")
 regiment_name = "Blackwood Marksmen"
 unit_type = 2
 faction = "empire"
-weapon_class = 2
 attack = 8
 defense = 8
-weapon_skill = 10
 ballistic_skill = 16
 strength = 4
 max_soldiers = 24
 current_soldiers = 24
 base_morale = 55.0
-morale_save = 5
 walk_speed = 1.5
 run_speed = 1.8
 charge_speed = 3.0
-charge_speed_distance = 15.0
 charge_bonus = 2
+weapon_class = 2
 max_ammo = 20
 current_ammo = 20
 range_distance = 35.0
 faction_color = Color(0.2, 0.4, 0.8, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

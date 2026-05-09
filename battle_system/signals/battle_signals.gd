@@ -60,6 +60,7 @@ signal stance_changed(regiment: Regiment, old_stance: int, new_stance: int)
 signal formation_type_changed(regiment: Regiment, old_formation: int, new_formation: int)
 signal formation_reform_started(regiment: Regiment, duration: float)
 signal formation_reform_completed(regiment: Regiment)
+signal formation_cohesion_changed(regiment: Regiment, cohesion: float)  # Total War-style cohesion
 
 # Stamina
 signal unit_exhausted(regiment: Regiment)

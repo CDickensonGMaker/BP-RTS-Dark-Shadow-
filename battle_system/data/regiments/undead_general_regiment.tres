@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
 [ext_resource type="Resource" path="res://assets/sprites/units/graveknight_atlas.tres" id="2"]
@@ -12,7 +12,6 @@ personality = 3
 attack = 26
 defense = 20
 weapon_skill = 26
-ballistic_skill = 0
 strength = 14
 armor = 11
 max_soldiers = 1
@@ -26,8 +25,6 @@ charge_speed_distance = 22.0
 charge_bonus = 18
 mass = 3.0
 turn_rate = 2.0
-max_ammo = 0
-current_ammo = 0
-range_distance = 0.0
 faction_color = Color(0.3, 0.1, 0.4, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

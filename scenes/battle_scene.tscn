@@ -26,7 +26,7 @@
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape_1"]
 radius = 8.0
-height = 10.0
+height = 16.0
 
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 1
@@ -53,13 +53,13 @@ light_energy = 1.2
 transform = Transform3D(1, 0, 0, 0, 0.707, 0.707, 0, -0.707, 0.707, 0, 30, 25)
 script = ExtResource("7")
 fov = 60.0
-map_bounds_min = Vector3(-180, 0, -180)
-map_bounds_max = Vector3(180, 100, 180)
+map_bounds_min = Vector3(-600, 0, -600)
+map_bounds_max = Vector3(600, 100, 600)
 
 [node name="BattleTerrain" type="Node3D" parent="."]
 script = ExtResource("1")
-terrain_size = Vector2(300, 300)
-terrain_resolution = 96
+terrain_size = Vector2(1200, 1200)
+terrain_resolution = 192
 height_scale = 12.0
 tree_count = 50
 building_count = 8

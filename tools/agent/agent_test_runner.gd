@@ -131,6 +131,9 @@ func _run_single_battle(battle_spec: Dictionary) -> Dictionary:
 	_clear_units()
 	await get_tree().process_frame
 
+	# Connect to all BattleSignals BEFORE spawning units
+	_connect_all_battle_signals()
+
 	# Spawn player units
 	var player_spec: Array = battle_spec.get("player", [])
 	for unit_spec in player_spec:
@@ -144,6 +147,9 @@ func _run_single_battle(battle_spec: Dictionary) -> Dictionary:
 		var reg = await _spawn_unit(unit_spec, false)
 		if reg:
 			_enemy_regiments.append(reg)
+
+	# Apply orders AFTER all units spawned (so target references resolve)
+	_apply_orders()
 
 	# Record starting state
 	var player_start_soldiers: int = 0
@@ -205,6 +211,7 @@ func _run_single_battle(battle_spec: Dictionary) -> Dictionary:
 
 
 ## Spawn a unit from spec
+## Supports: unit, soldiers/count, pos, facing, order, target
 func _spawn_unit(unit_spec: Dictionary, is_player: bool) -> Node:
 	var unit_id: String = unit_spec.get("unit", "")
 	if unit_id.is_empty():
@@ -216,28 +223,102 @@ func _spawn_unit(unit_spec: Dictionary, is_player: bool) -> Node:
 		push_warning("[AgentTestRunner] Unknown unit: %s" % unit_id)
 		return null
 
+	# Duplicate data to allow per-unit modifications
+	data = data.duplicate()
+
+	# Set soldier count if specified (support both 'soldiers' and 'count' keys)
+	var soldiers: int = unit_spec.get("soldiers", unit_spec.get("count", data.max_soldiers))
+	data.max_soldiers = soldiers  # max_soldiers is on RegimentData, not Regiment
+
 	var regiment: Node3D = REGIMENT_SCENE.instantiate()
 	regiment.data = data
 	regiment.is_player_controlled = is_player
+	regiment.current_soldiers = soldiers  # current_soldiers IS on Regiment
 
-	# Set soldier count if specified
-	var soldiers: int = unit_spec.get("soldiers", data.max_soldiers)
-	regiment.max_soldiers = soldiers
-	regiment.current_soldiers = soldiers
+	# Position - support explicit pos or default positions
+	var pos: Array = unit_spec.get("pos", [])
+	if pos.size() >= 3:
+		regiment.global_position = Vector3(pos[0], pos[1], pos[2])
+	else:
+		# Default positions: player on left, enemy on right
+		var x_pos: float = -20.0 if is_player else 20.0
+		regiment.global_position = Vector3(x_pos, 0, 0)
 
-	# Position
+	# Facing - support explicit facing vector
 	var facing: Array = unit_spec.get("facing", [1.0, 0.0, 0.0] if is_player else [-1.0, 0.0, 0.0])
 	var facing_vec: Vector3 = Vector3(facing[0], facing[1], facing[2])
-
-	# Default positions: player on left, enemy on right
-	var x_pos: float = -20.0 if is_player else 20.0
-	regiment.global_position = Vector3(x_pos, 0, 0)
 	regiment.look_at(regiment.global_position + facing_vec, Vector3.UP)
 
 	_unit_container.add_child(regiment)
 	regiment.add_to_group("all_regiments")
 
+	# Store order/target for deferred application after all units spawned
+	if unit_spec.has("order"):
+		regiment.set_meta("_agent_order", unit_spec.get("order", "hold"))
+		regiment.set_meta("_agent_target", unit_spec.get("target", ""))
+
 	return regiment
+
+
+## Apply orders to all spawned units (called after all units created)
+func _apply_orders() -> void:
+	for reg in _player_regiments:
+		if is_instance_valid(reg) and reg.has_meta("_agent_order"):
+			_apply_single_order(reg, true)
+
+	for reg in _enemy_regiments:
+		if is_instance_valid(reg) and reg.has_meta("_agent_order"):
+			_apply_single_order(reg, false)
+
+
+## Apply order to a single regiment
+func _apply_single_order(reg: Node, is_player: bool) -> void:
+	var order_str: String = reg.get_meta("_agent_order", "hold")
+	var target_str: String = reg.get_meta("_agent_target", "")
+
+	# Parse target reference like "enemy[0]" or "player[1]"
+	var target_reg: Node = null
+	var target_pos: Vector3 = Vector3.ZERO
+
+	if target_str.begins_with("enemy["):
+		var idx_str: String = target_str.trim_prefix("enemy[").trim_suffix("]")
+		var idx: int = int(idx_str)
+		var pool: Array = _enemy_regiments if is_player else _player_regiments
+		if idx >= 0 and idx < pool.size():
+			target_reg = pool[idx]
+			if is_instance_valid(target_reg):
+				target_pos = target_reg.global_position
+	elif target_str.begins_with("player["):
+		var idx_str: String = target_str.trim_prefix("player[").trim_suffix("]")
+		var idx: int = int(idx_str)
+		var pool: Array = _player_regiments if is_player else _enemy_regiments
+		if idx >= 0 and idx < pool.size():
+			target_reg = pool[idx]
+			if is_instance_valid(target_reg):
+				target_pos = target_reg.global_position
+
+	# Default target position if no specific target
+	if target_pos == Vector3.ZERO:
+		var enemy_pool: Array = _enemy_regiments if is_player else _player_regiments
+		if not enemy_pool.is_empty() and is_instance_valid(enemy_pool[0]):
+			target_pos = enemy_pool[0].global_position
+
+	# Apply order
+	if reg.has_method("set_order"):
+		var order_type: int = OrderType.Type.HOLD_POSITION
+		match order_str.to_lower():
+			"charge":
+				order_type = OrderType.Type.CHARGE
+			"march", "move":
+				order_type = OrderType.Type.MOVE
+			"hold", _:
+				order_type = OrderType.Type.HOLD_POSITION
+
+		reg.set_order(order_type, target_pos, target_reg)
+
+	# Clear meta after applying
+	reg.remove_meta("_agent_order")
+	reg.remove_meta("_agent_target")
 
 
 ## Clear all spawned units
@@ -343,3 +424,162 @@ func _save_results() -> void:
 	var json_string: String = JSON.stringify(_results, "\t")
 	file.store_string(json_string)
 	file.close()
+
+
+# =============================================================================
+# SIGNAL CAPTURE SYSTEM
+# =============================================================================
+# Captures all BattleSignals events for expectation checking.
+# The referee uses this data to verify scenario expectations.
+
+var _signal_connections: Array[Dictionary] = []  # Track connections for cleanup
+
+## Connect to all BattleSignals for event capture
+func _connect_all_battle_signals() -> void:
+	if not BattleSignals:
+		push_warning("[AgentTestRunner] BattleSignals autoload not available")
+		return
+
+	# Disconnect any existing connections
+	_disconnect_all_battle_signals()
+
+	# Get all signals from BattleSignals
+	for sig_info in BattleSignals.get_signal_list():
+		var sig_name: String = sig_info.name
+
+		# Skip Object built-in signals
+		if sig_name in ["script_changed", "property_list_changed", "changed", "tree_entered", "tree_exiting", "tree_exited"]:
+			continue
+
+		# Create a callback based on signal argument count
+		var arg_count: int = sig_info.args.size()
+		var callback: Callable
+
+		match arg_count:
+			0:
+				callback = func(): _record_event_0(sig_name)
+			1:
+				callback = func(a0): _record_event_1(sig_name, a0)
+			2:
+				callback = func(a0, a1): _record_event_2(sig_name, a0, a1)
+			3:
+				callback = func(a0, a1, a2): _record_event_3(sig_name, a0, a1, a2)
+			4:
+				callback = func(a0, a1, a2, a3): _record_event_4(sig_name, a0, a1, a2, a3)
+			_:
+				# For signals with 5+ args, use generic handler
+				callback = func(a0 = null, a1 = null, a2 = null, a3 = null, a4 = null):
+					_record_event_generic(sig_name, [a0, a1, a2, a3, a4])
+
+		BattleSignals.connect(sig_name, callback)
+		_signal_connections.append({"signal": sig_name, "callable": callback})
+
+
+## Disconnect all signal connections
+func _disconnect_all_battle_signals() -> void:
+	for conn in _signal_connections:
+		if BattleSignals and BattleSignals.is_connected(conn.signal, conn.callable):
+			BattleSignals.disconnect(conn.signal, conn.callable)
+	_signal_connections.clear()
+
+
+## Record events - arity-specific handlers for type safety
+func _record_event_0(sig_name: String) -> void:
+	_battle_events.append({
+		"t": (Time.get_ticks_msec() / 1000.0) - _battle_start_time,
+		"type": sig_name,
+		"data": []
+	})
+
+
+func _record_event_1(sig_name: String, a0) -> void:
+	_battle_events.append({
+		"t": (Time.get_ticks_msec() / 1000.0) - _battle_start_time,
+		"type": sig_name,
+		"data": [_serialize_arg(a0)]
+	})
+
+
+func _record_event_2(sig_name: String, a0, a1) -> void:
+	_battle_events.append({
+		"t": (Time.get_ticks_msec() / 1000.0) - _battle_start_time,
+		"type": sig_name,
+		"data": [_serialize_arg(a0), _serialize_arg(a1)]
+	})
+
+
+func _record_event_3(sig_name: String, a0, a1, a2) -> void:
+	_battle_events.append({
+		"t": (Time.get_ticks_msec() / 1000.0) - _battle_start_time,
+		"type": sig_name,
+		"data": [_serialize_arg(a0), _serialize_arg(a1), _serialize_arg(a2)]
+	})
+
+
+func _record_event_4(sig_name: String, a0, a1, a2, a3) -> void:
+	_battle_events.append({
+		"t": (Time.get_ticks_msec() / 1000.0) - _battle_start_time,
+		"type": sig_name,
+		"data": [_serialize_arg(a0), _serialize_arg(a1), _serialize_arg(a2), _serialize_arg(a3)]
+	})
+
+
+func _record_event_generic(sig_name: String, args: Array) -> void:
+	var serialized: Array = []
+	for arg in args:
+		if arg != null:
+			serialized.append(_serialize_arg(arg))
+	_battle_events.append({
+		"t": (Time.get_ticks_msec() / 1000.0) - _battle_start_time,
+		"type": sig_name,
+		"data": serialized
+	})
+
+
+## Serialize an argument to JSON-safe form
+func _serialize_arg(a) -> Variant:
+	if a == null:
+		return null
+
+	# Regiment nodes - extract key data
+	if a is Node and a.has_method("get") and "data" in a:
+		var is_player: bool = a.is_player_controlled if "is_player_controlled" in a else false
+		var unit_id: String = ""
+		var unit_name: String = ""
+		var soldiers: int = 0
+
+		if a.data:
+			unit_id = a.data.id if "id" in a.data else ""
+			unit_name = a.data.regiment_name if "regiment_name" in a.data else ""
+		if "current_soldiers" in a:
+			soldiers = a.current_soldiers
+
+		return {
+			"node_name": a.name,
+			"unit_id": unit_id,
+			"unit_name": unit_name,
+			"is_player": is_player,
+			"soldiers": soldiers
+		}
+
+	# Vector3 - convert to array
+	if a is Vector3:
+		return [a.x, a.y, a.z]
+
+	# Dictionary - pass through (should already be JSON-safe)
+	if a is Dictionary:
+		return a
+
+	# Primitives - pass through
+	if a is bool or a is int or a is float or a is String:
+		return a
+
+	# Arrays - serialize each element
+	if a is Array:
+		var result: Array = []
+		for item in a:
+			result.append(_serialize_arg(item))
+		return result
+
+	# Fallback - convert to string
+	return str(a)

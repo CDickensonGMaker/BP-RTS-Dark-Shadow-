@@ -190,7 +190,15 @@ func _create_has_target_condition() -> BTNode:
 	var cond: BTCondition = BTCondition.new("HasTarget")
 	cond.condition_func = func():
 		var target = blackboard.get("target")
-		return target != null and is_instance_valid(target)
+		var has_target: bool = target != null and is_instance_valid(target)
+		# DEBUG: Trace target check for artillery
+		if regiment and regiment.data and regiment.data.unit_type == UnitType.Type.ARTILLERY:
+			print("[COMMANDER DEBUG] %s: HasTarget check - target=%s, result=%s" % [
+				regiment.data.regiment_name if regiment.data else "?",
+				target.data.regiment_name if target and is_instance_valid(target) and target.data else "none",
+				str(has_target)
+			])
+		return has_target
 	cond.blackboard = blackboard
 	return cond
 
@@ -198,7 +206,16 @@ func _create_has_target_condition() -> BTNode:
 func _create_has_ammo_condition() -> BTNode:
 	var cond: BTCondition = BTCondition.new("HasAmmo")
 	cond.condition_func = func():
-		return regiment and regiment.current_ammo > 0 and regiment.data.ballistic_skill > 0
+		var has_ammo: bool = regiment and regiment.current_ammo > 0 and regiment.data.ballistic_skill > 0
+		# DEBUG: Trace ammo check for artillery
+		if regiment and regiment.data and regiment.data.unit_type == UnitType.Type.ARTILLERY:
+			print("[COMMANDER DEBUG] %s: HasAmmo check - ammo=%d, bs=%d, result=%s" % [
+				regiment.data.regiment_name if regiment.data else "?",
+				regiment.current_ammo if regiment else -1,
+				regiment.data.ballistic_skill if regiment and regiment.data else -1,
+				str(has_ammo)
+			])
+		return has_ammo
 	cond.blackboard = blackboard
 	return cond
 
@@ -278,9 +295,24 @@ func tick() -> void:
 	if regiment.state == Regiment.State.ENGAGING:
 		return
 
+	# DEBUG: Trace behavior tree for artillery
+	var is_artillery: bool = regiment.data and regiment.data.unit_type == UnitType.Type.ARTILLERY
+	if is_artillery:
+		print("[COMMANDER DEBUG] %s: tick() - target=%s, ammo=%d, bs=%d" % [
+			regiment.data.regiment_name if regiment.data else "?",
+			current_target.data.regiment_name if current_target and is_instance_valid(current_target) and current_target.data else "none",
+			regiment.current_ammo,
+			regiment.data.ballistic_skill if regiment.data else 0
+		])
+
 	# Run behavior tree
 	if behavior_tree:
 		var _bt_result = behavior_tree.tick(tick_delta)
+		if is_artillery:
+			print("[COMMANDER DEBUG] %s: behavior_tree result=%s" % [
+				regiment.data.regiment_name if regiment.data else "?",
+				str(_bt_result)
+			])
 
 
 func _update_blackboard() -> void:

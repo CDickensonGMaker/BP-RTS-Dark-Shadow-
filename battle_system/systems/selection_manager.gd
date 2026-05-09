@@ -657,3 +657,54 @@ func _set_hovered_regiment(regiment: Regiment) -> void:
 func get_hovered_regiment() -> Regiment:
 	"""Get the currently hovered regiment (if any)."""
 	return _hovered_regiment
+
+
+# === CONTROL GROUP QUERIES (Phase 3) ===
+
+func find_group_for(regiment: Regiment) -> int:
+	"""Find which control group (if any) contains this regiment.
+	Returns group ID (0-9) or -1 if not in any group."""
+	for group_id: int in saved_groups.keys():
+		var group_members: Array = saved_groups[group_id]
+		if regiment in group_members:
+			return group_id
+	return -1
+
+
+func get_regiments_by_group() -> Dictionary:
+	"""Return all regiments bucketed by group ID.
+	Returns: Dictionary { group_id: Array[Regiment], -1: Array[Regiment] for ungrouped }"""
+	var result: Dictionary = {}
+	var all_player_regiments: Array = get_tree().get_nodes_in_group("player_regiments")
+	var assigned: Array = []
+
+	# Collect grouped regiments (in order 1-9, then 0)
+	for group_id in range(1, 10):
+		if saved_groups.has(group_id):
+			var valid_members: Array = []
+			for r in saved_groups[group_id]:
+				if is_instance_valid(r) and r.state != Regiment.State.DEAD:
+					valid_members.append(r)
+					assigned.append(r)
+			if not valid_members.is_empty():
+				result[group_id] = valid_members
+
+	# Group 0 last
+	if saved_groups.has(0):
+		var valid_members: Array = []
+		for r in saved_groups[0]:
+			if is_instance_valid(r) and r.state != Regiment.State.DEAD:
+				valid_members.append(r)
+				assigned.append(r)
+		if not valid_members.is_empty():
+			result[0] = valid_members
+
+	# Ungrouped regiments
+	var ungrouped: Array = []
+	for r in all_player_regiments:
+		if is_instance_valid(r) and r not in assigned and r.state != Regiment.State.DEAD:
+			ungrouped.append(r)
+	if not ungrouped.is_empty():
+		result[-1] = ungrouped
+
+	return result

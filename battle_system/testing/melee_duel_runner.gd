@@ -73,7 +73,7 @@ const UNIT_POOL: Array[String] = [
 	"res://battle_system/data/regiments/avengers_regiment.tres",      # Avengers
 	"res://battle_system/data/regiments/hammers_regiment.tres",       # Hammers
 	# Spear/Halberd Infantry
-	"res://battle_system/data/regiments/halb_regiment.tres",          # Halberdiers
+	"res://battle_system/data/regiments/nlnhlb_regiment.tres",          # Halberdiers
 	"res://battle_system/data/regiments/nlnhlb_regiment.tres",        # Nuln Halberdiers
 	# Cavalry
 	"res://battle_system/data/regiments/reik_regiment.tres",          # Reiksguard
@@ -94,7 +94,7 @@ const UNIT_POOL: Array[String] = [
 	# =========================================================================
 	# Melee Infantry
 	"res://battle_system/data/regiments/dwwar_regiment.tres",         # Dwarf Warriors
-	"res://battle_system/data/regiments/iron_regiment.tres",          # Ironbreakers
+	"res://battle_system/data/regiments/ironbrks_regiment.tres",          # Ironbreakers
 	"res://battle_system/data/regiments/ironbrks_regiment.tres",      # Ironbreakers alt
 	"res://battle_system/data/regiments/dwslay_regiment.tres",        # Slayers
 	"res://battle_system/data/regiments/ragnar_regiment.tres",        # Ragnar's Slayers
@@ -109,7 +109,7 @@ const UNIT_POOL: Array[String] = [
 	# ORCS & GOBLINS
 	# =========================================================================
 	# Goblin Infantry
-	"res://battle_system/data/regiments/gob1_regiment.tres",          # Goblins
+	"res://battle_system/data/regiments/ntgoblin_regiment.tres",          # Goblins
 	"res://battle_system/data/regiments/ntgoblin_regiment.tres",      # Night Goblins
 	"res://battle_system/data/regiments/fanatic_regiment.tres",       # Fanatics
 	"res://battle_system/data/regiments/squigs_regiment.tres",        # Squig Hoppers

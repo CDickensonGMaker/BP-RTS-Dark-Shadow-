@@ -89,5 +89,6 @@ func _get_engagement_distance() -> float:
 		else:
 			return regiment.data.range_distance * 0.8  # Hybrid units slightly closer
 
-	# Melee units close in
-	return 2.0  # Melee range
+	# Melee units close in - must be INSIDE TaskEngageMelee.MELEE_RANGE (7.0)
+	# to prevent deadlock where infantry stops outside engagement distance
+	return 5.0

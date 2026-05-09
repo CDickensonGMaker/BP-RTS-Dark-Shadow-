@@ -25,13 +25,14 @@ const ROUTING_CONTAGION_RADIUS: float = 15.0
 const LEADERSHIP_BONUS_RADIUS: float = 25.0
 
 # Cascade morale system - nearby units affected by one unit's state change
-const CASCADE_CAUTION_RADIUS: float = 20.0    # Radius for caution cascade
-const CASCADE_CAUTION_PENALTY: float = 5.0    # Morale penalty for caution cascade
-const CASCADE_WITHDRAW_RADIUS: float = 25.0   # Radius for withdraw cascade
-const CASCADE_WITHDRAW_PENALTY: float = 10.0  # Morale penalty for withdraw cascade
-const CASCADE_ROUT_RADIUS: float = 30.0       # Radius for rout cascade
-const CASCADE_ROUT_PENALTY: float = 20.0      # Morale penalty for rout cascade
-const CASCADE_PRESSURE_DECAY: float = 0.02    # Per-second decay of cascade pressure
+# REDUCED from original values to prevent mass-routing of large armies
+const CASCADE_CAUTION_RADIUS: float = 15.0    # Radius for caution cascade (reduced)
+const CASCADE_CAUTION_PENALTY: float = 3.0    # Morale penalty for caution cascade (reduced)
+const CASCADE_WITHDRAW_RADIUS: float = 20.0   # Radius for withdraw cascade (reduced)
+const CASCADE_WITHDRAW_PENALTY: float = 5.0   # Morale penalty for withdraw cascade (reduced)
+const CASCADE_ROUT_RADIUS: float = 20.0       # Radius for rout cascade (reduced)
+const CASCADE_ROUT_PENALTY: float = 10.0      # Morale penalty for rout cascade (reduced from 20)
+const CASCADE_PRESSURE_DECAY: float = 0.03    # Per-second decay of cascade pressure (faster decay)
 
 # Tick rate for morale checks (avoid per-frame overhead)
 const MORALE_CHECK_INTERVAL: float = 0.5

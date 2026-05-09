@@ -13,16 +13,10 @@ signal card_ctrl_clicked(regiment: Regiment)   # Toggle selection support
 var regiment: Regiment
 var is_selected: bool = false
 
-# === REGIMENT STATE COLOR CODING ===
-# Background colors based on what the unit is DOING (behavioral state)
-const STATE_BG_COLORS = {
-	Regiment.State.IDLE: Color(0.25, 0.25, 0.25, 0.9),        # Dark gray - waiting
-	Regiment.State.MARCHING: Color(0.15, 0.3, 0.55, 0.9),     # Blue - moving
-	Regiment.State.ENGAGING: Color(0.55, 0.15, 0.15, 0.9),    # Red - fighting
-	Regiment.State.ROUTING: Color(0.35, 0.1, 0.1, 0.9),       # Dark red - fleeing
-	Regiment.State.RALLYING: Color(0.5, 0.45, 0.15, 0.9),     # Yellow - recovering
-	Regiment.State.DEAD: Color(0.15, 0.15, 0.15, 0.6),        # Very dark - dead
-}
+# === PHASE 2: Simplified background ===
+# State communicated via border color only, not background
+# Removed STATE_BG_COLORS - was competing with morale bar for attention
+const COLOR_BG_NEUTRAL = Color(0.12, 0.11, 0.10, 0.95)  # Neutral dark
 
 # === CARD STATE SYSTEM (Task 1) ===
 enum CardState {
@@ -81,6 +75,8 @@ const COLOR_STATUS_INSPIRED = Color(0.85, 0.7, 0.4, 1.0)  # Gold
 const COLOR_STATUS_HOLD_FIRE = Color(0.8, 0.3, 0.3, 1.0)  # Red
 const COLOR_STATUS_RUNNING = Color(0.3, 0.9, 0.5, 1.0)  # Green - running mode
 const COLOR_STATUS_SHAKEN = Color(0.7, 0.5, 0.9, 1.0)   # Purple - hasn't fully recovered
+const COLOR_STATUS_AIMING = Color(0.95, 0.6, 0.2, 1.0)  # Orange - artillery aiming
+const COLOR_STATUS_RELOADING = Color(0.6, 0.6, 0.6, 1.0)  # Gray - artillery reloading
 
 # === MORALE THRESHOLDS (Task 4) ===
 const MORALE_STEADY_THRESHOLD: float = 70.0
@@ -104,15 +100,20 @@ var ammo_warning_label: Label
 var ammo_container: VBoxContainer
 
 # UI elements - new
-var chevron_container: HBoxContainer
-var unit_type_badge: Panel
-var unit_type_label: Label
+var chevron_container: HBoxContainer  # Phase 2: Hidden, will move to selected panel
+var unit_type_edge: ColorRect  # Phase 2: 4px edge indicator for unit type
 var status_container: HBoxContainer
 var morale_bar_container: Control
 var morale_threshold_markers: Array[ColorRect] = []
 var morale_cap_marker: ColorRect  # Vertical notch showing morale cap
 var morale_cap_shade: ColorRect   # Shaded region above cap
 var ability_cooldown_container: HBoxContainer
+
+# Artillery reload UI
+var artillery_reload_container: VBoxContainer
+var artillery_reload_bar: ProgressBar
+var artillery_state_label: Label
+var _cached_reload_style: StyleBoxFlat = null
 
 # Ammo warning state
 var _ammo_warning_active: bool = false
@@ -166,11 +167,26 @@ func _setup_ui():
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
+	# Phase 2: Main layout is HBox with [type edge | content]
+	var main_hbox = HBoxContainer.new()
+	main_hbox.add_theme_constant_override("separation", 0)
+	main_hbox.mouse_filter = Control.MOUSE_FILTER_PASS
+	add_child(main_hbox)
+
+	# Unit type edge (4px left border colored by type)
+	unit_type_edge = ColorRect.new()
+	unit_type_edge.custom_minimum_size = Vector2(4, 0)
+	unit_type_edge.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	unit_type_edge.color = Color(0.4, 0.5, 0.7, 1.0)  # Default infantry
+	unit_type_edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	main_hbox.add_child(unit_type_edge)
+
 	var vbox = VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 1)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	# Children should pass mouse events to parent (this card)
 	vbox.mouse_filter = Control.MOUSE_FILTER_PASS
-	add_child(vbox)
+	main_hbox.add_child(vbox)
 
 	# Portrait area with faction color background
 	var portrait_container = Control.new()
@@ -184,33 +200,29 @@ func _setup_ui():
 	portrait_rect.mouse_filter = Control.MOUSE_FILTER_PASS
 	portrait_container.add_child(portrait_rect)
 
-	# === CHEVRON BADGES (Task 2) - smaller ===
+	# Phase 1: Overlay surface for badges (anchored instead of absolute position)
+	var overlay_surface = Control.new()
+	overlay_surface.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay_surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_container.add_child(overlay_surface)
+
+	# === CHEVRON BADGES - Phase 2: Hidden (moved to selected unit panel) ===
 	chevron_container = HBoxContainer.new()
-	chevron_container.position = Vector2(2, 2)
+	chevron_container.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	chevron_container.offset_left = 2
+	chevron_container.offset_top = 2
 	chevron_container.add_theme_constant_override("separation", 1)
 	chevron_container.mouse_filter = Control.MOUSE_FILTER_PASS
-	portrait_container.add_child(chevron_container)
+	chevron_container.visible = false  # Phase 2: Hidden, chevrons shown in selected panel
+	overlay_surface.add_child(chevron_container)
 
-	# === UNIT TYPE BADGE (Task 3) - slightly larger for visibility ===
-	unit_type_badge = Panel.new()
-	unit_type_badge.custom_minimum_size = Vector2(16, 16)
-	unit_type_badge.position = Vector2(52, 2)  # Top-right of portrait
-	unit_type_badge.mouse_filter = Control.MOUSE_FILTER_PASS
-	var badge_style = StyleBoxFlat.new()
-	badge_style.bg_color = Color(0.4, 0.5, 0.7)
-	badge_style.set_corner_radius_all(2)
-	unit_type_badge.add_theme_stylebox_override("panel", badge_style)
-	portrait_container.add_child(unit_type_badge)
-
-	unit_type_label = Label.new()
-	unit_type_label.text = "I"
-	unit_type_label.add_theme_font_size_override("font_size", 9)
-	unit_type_label.add_theme_color_override("font_color", Color.WHITE)
-	unit_type_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	unit_type_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	unit_type_label.set_anchors_preset(Control.PRESET_FULL_RECT)
-	unit_type_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	unit_type_badge.add_child(unit_type_label)
+	# === UNIT TYPE EDGE (Phase 2) - 4px left edge colored by unit type ===
+	# Replaces the corner badge with a subtle peripheral indicator
+	unit_type_edge = ColorRect.new()
+	unit_type_edge.custom_minimum_size = Vector2(4, 0)
+	unit_type_edge.color = Color(0.4, 0.5, 0.7, 1.0)  # Default infantry blue
+	unit_type_edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Note: Added to card layout in setup(), not overlay
 
 	# Unit name - readable size
 	name_label = Label.new()
@@ -313,13 +325,48 @@ func _setup_ui():
 	ammo_warning_label.visible = false
 	ammo_container.add_child(ammo_warning_label)
 
-	# === ABILITY COOLDOWN BADGES (Task 5) - smaller ===
+	# === ARTILLERY RELOAD STATUS (prominent visual feedback) ===
+	artillery_reload_container = VBoxContainer.new()
+	artillery_reload_container.add_theme_constant_override("separation", 1)
+	artillery_reload_container.visible = false  # Hidden for non-artillery
+	vbox.add_child(artillery_reload_container)
+
+	# Artillery state label (AIMING / RELOADING)
+	artillery_state_label = Label.new()
+	artillery_state_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	artillery_state_label.add_theme_font_size_override("font_size", 8)
+	artillery_state_label.add_theme_color_override("font_color", COLOR_STATUS_AIMING)
+	artillery_state_label.text = "AIMING"
+	artillery_reload_container.add_child(artillery_state_label)
+
+	# Artillery reload progress bar
+	artillery_reload_bar = ProgressBar.new()
+	artillery_reload_bar.custom_minimum_size = Vector2(74, 6)
+	artillery_reload_bar.show_percentage = false
+	artillery_reload_bar.min_value = 0
+	artillery_reload_bar.max_value = 100
+	artillery_reload_bar.value = 80  # Artillery starts 80% loaded
+	var reload_bar_style = StyleBoxFlat.new()
+	reload_bar_style.bg_color = COLOR_STATUS_AIMING  # Orange when reloading
+	artillery_reload_bar.add_theme_stylebox_override("fill", reload_bar_style)
+	var reload_bg_style = StyleBoxFlat.new()
+	reload_bg_style.bg_color = Color(0.15, 0.15, 0.2)
+	artillery_reload_bar.add_theme_stylebox_override("background", reload_bg_style)
+	artillery_reload_container.add_child(artillery_reload_bar)
+
+	# Cache the reload bar style for updates
+	_cached_reload_style = reload_bar_style
+
+	# === ABILITY COOLDOWN BADGES (Task 5) - bottom-right of card ===
 	ability_cooldown_container = HBoxContainer.new()
 	ability_cooldown_container.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	ability_cooldown_container.position = Vector2(-30, -12)
+	ability_cooldown_container.offset_left = -32
+	ability_cooldown_container.offset_right = -2
+	ability_cooldown_container.offset_top = -14
+	ability_cooldown_container.offset_bottom = -2
 	ability_cooldown_container.add_theme_constant_override("separation", 1)
 	ability_cooldown_container.mouse_filter = Control.MOUSE_FILTER_PASS
-	add_child(ability_cooldown_container)
+	add_child(ability_cooldown_container)  # Add to card, not portrait overlay
 
 	# === CREATE CACHED STYLEBOXES (Performance Optimization) ===
 	_cached_morale_style = StyleBoxFlat.new()
@@ -346,8 +393,6 @@ func _add_morale_marker(threshold: float, color: Color):
 	morale_threshold_markers.append(marker)
 
 
-var _last_regiment_state: int = -1
-
 func setup(reg: Regiment):
 	regiment = reg
 	if not regiment:
@@ -362,7 +407,7 @@ func setup(reg: Regiment):
 
 	# Initialize cached panel style - will update color based on state
 	_cached_panel_style = StyleBoxFlat.new()
-	_cached_panel_style.bg_color = STATE_BG_COLORS.get(Regiment.State.IDLE, Color(0.25, 0.25, 0.25, 0.9))
+	_cached_panel_style.bg_color = Color(0.25, 0.25, 0.25, 0.9)  # Neutral gray for all states
 	_cached_panel_style.corner_radius_top_left = 3
 	_cached_panel_style.corner_radius_top_right = 3
 	_cached_panel_style.corner_radius_bottom_left = 3
@@ -393,23 +438,27 @@ func setup(reg: Regiment):
 		_ammo_empty_warning_played = false
 		_ammo_low_warning_played = false
 
+	# Show artillery reload container for artillery units
+	if regiment.data.unit_type == UnitType.Type.ARTILLERY:
+		artillery_reload_container.visible = true
+
 	# Build card tooltip with hatred info if applicable
 	_update_card_tooltip()
 
 
-func _setup_unit_type_badge():
+func _setup_unit_type_edge():
+	# Phase 2: Set edge color based on unit type (peripheral type indicator)
 	if not regiment or not regiment.data:
 		return
 
 	var unit_type = regiment.data.unit_type
 	var color = UNIT_TYPE_COLORS.get(unit_type, Color(0.5, 0.5, 0.5))
-	var letter = UNIT_TYPE_LETTERS.get(unit_type, "?")
+	unit_type_edge.color = color
 
-	var badge_style = StyleBoxFlat.new()
-	badge_style.bg_color = color
-	badge_style.set_corner_radius_all(3)
-	unit_type_badge.add_theme_stylebox_override("panel", badge_style)
-	unit_type_label.text = letter
+
+# Legacy compatibility alias
+func _setup_unit_type_badge():
+	_setup_unit_type_edge()
 
 
 func _process(delta: float):
@@ -434,6 +483,7 @@ func _process(delta: float):
 		_update_status_icons_throttled()
 		_update_morale_display_throttled()
 		_update_ability_cooldowns_throttled()
+		_update_artillery_reload_throttled()
 		_update_state_background_color()
 
 
@@ -669,6 +719,17 @@ func _update_status_icons_throttled():
 	if regiment.unit_morale and regiment.unit_morale.get_morale_cap() < 99.5:
 		status_hash |= 32
 
+	# Artillery firing state: bits 64 = AIMING, 128 = RELOADING
+	if regiment.data and regiment.data.unit_type == UnitType.Type.ARTILLERY and regiment.firing:
+		# Access the FiringState enum from RegimentFiring class
+		var RegimentFiringClass = load("res://battle_system/ai/commander/regiment_firing.gd")
+		if RegimentFiringClass and regiment.firing.has_method("get_firing_state"):
+			var firing_state = regiment.firing.get_firing_state()
+			if firing_state == RegimentFiringClass.FiringState.AIMING:
+				status_hash |= 64
+			elif firing_state == RegimentFiringClass.FiringState.RELOADING:
+				status_hash |= 128
+
 	# Skip if unchanged
 	if status_hash == _last_status_hash:
 		return
@@ -697,6 +758,13 @@ func _update_status_icons_throttled():
 	if status_hash & 32:
 		var cap: float = regiment.unit_morale.get_morale_cap() if regiment.unit_morale else 100.0
 		_add_status_icon("~", COLOR_STATUS_SHAKEN, "Shaken (cap: %.0f%% - hasn't fully recovered)" % cap)
+
+	# Artillery firing states
+	if status_hash & 64:
+		_add_status_icon("A", COLOR_STATUS_AIMING, "AIMING - Ready to fire")
+
+	if status_hash & 128:
+		_add_status_icon("R", COLOR_STATUS_RELOADING, "RELOADING")
 
 
 # Legacy function for compatibility
@@ -794,26 +862,72 @@ func _update_morale_display():
 	_update_morale_display_throttled()
 
 
-# === STATE-BASED BACKGROUND COLOR ===
+# === ARTILLERY RELOAD DISPLAY ===
+
+func _update_artillery_reload_throttled():
+	## Update artillery reload bar and state label.
+	## Shows AIMING (ready to fire) or RELOADING with progress bar.
+	if not regiment or not regiment.data:
+		return
+
+	# Only for artillery units
+	if regiment.data.unit_type != UnitType.Type.ARTILLERY:
+		return
+
+	if not artillery_reload_container or not artillery_reload_bar or not artillery_state_label:
+		return
+
+	# Check if regiment has firing component
+	if not regiment.firing:
+		artillery_state_label.text = "NO TARGET"
+		artillery_state_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
+		artillery_reload_bar.value = 0
+		return
+
+	# Get firing state and progress
+	var RegimentFiringClass = load("res://battle_system/ai/commander/regiment_firing.gd")
+	if not RegimentFiringClass or not regiment.firing.has_method("get_firing_state"):
+		return
+
+	var firing_state = regiment.firing.get_firing_state()
+	var reload_progress: float = regiment.firing.get_reload_progress() * 100.0 if regiment.firing.has_method("get_reload_progress") else 0.0
+
+	# Update bar value
+	artillery_reload_bar.value = reload_progress
+
+	# Update label and colors based on state
+	if firing_state == RegimentFiringClass.FiringState.AIMING:
+		artillery_state_label.text = "⚡ READY"
+		artillery_state_label.add_theme_color_override("font_color", Color(0.2, 0.9, 0.2))  # Green
+		if _cached_reload_style:
+			_cached_reload_style.bg_color = Color(0.2, 0.9, 0.2)  # Green fill
+			artillery_reload_bar.add_theme_stylebox_override("fill", _cached_reload_style)
+	elif firing_state == RegimentFiringClass.FiringState.RELOADING:
+		artillery_state_label.text = "⟳ RELOAD"
+		artillery_state_label.add_theme_color_override("font_color", COLOR_STATUS_AIMING)  # Orange
+		if _cached_reload_style:
+			_cached_reload_style.bg_color = COLOR_STATUS_AIMING  # Orange fill
+			artillery_reload_bar.add_theme_stylebox_override("fill", _cached_reload_style)
+	else:
+		# IDLE state
+		artillery_state_label.text = "IDLE"
+		artillery_state_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+		if _cached_reload_style:
+			_cached_reload_style.bg_color = Color(0.4, 0.4, 0.4)
+			artillery_reload_bar.add_theme_stylebox_override("fill", _cached_reload_style)
+
+	# Update tooltip with detailed info
+	artillery_reload_bar.tooltip_text = "%s (%.0f%% loaded)" % [artillery_state_label.text, reload_progress]
+
+
+# === PHASE 2: Neutral background (state via border only) ===
 func _update_state_background_color():
-	if not regiment or not _cached_panel_style:
+	# Phase 2: Use neutral background - state is communicated via border color
+	# This avoids competing with morale bar for attention
+	if not _cached_panel_style:
 		return
-
-	var current_state: int = regiment.state
-
-	# Skip if state unchanged
-	if current_state == _last_regiment_state:
-		return
-	_last_regiment_state = current_state
-
-	# Update background color based on regiment state
-	var state_color: Color = STATE_BG_COLORS.get(current_state, Color(0.25, 0.25, 0.25, 0.9))
-	_cached_panel_style.bg_color = state_color
-
-	# Add faction color tint overlay
-	if regiment.data:
-		var faction_tint: Color = regiment.data.faction_color
-		_cached_panel_style.bg_color = _cached_panel_style.bg_color.lerp(faction_tint, 0.15)
+	# Use constant neutral background
+	_cached_panel_style.bg_color = COLOR_BG_NEUTRAL
 
 
 # === ABILITY COOLDOWNS (Task 5) ===

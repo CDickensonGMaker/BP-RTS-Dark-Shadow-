@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
 [ext_resource type="Resource" path="res://assets/sprites/units/woodelf_atlas.tres" id="2"]
@@ -6,10 +6,8 @@
 [resource]
 script = ExtResource("1")
 regiment_name = "Wood Elf Wardens"
-unit_type = 0
 faction = "woodelf"
 attack = 12
-defense = 10
 weapon_skill = 14
 ballistic_skill = 16
 strength = 4
@@ -27,4 +25,5 @@ max_ammo = 24
 current_ammo = 24
 range_distance = 30.0
 faction_color = Color(0.2, 0.5, 0.2, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

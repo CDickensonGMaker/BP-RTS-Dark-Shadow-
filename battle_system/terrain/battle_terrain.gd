@@ -128,6 +128,13 @@ func _spawn_objects():
 	_spawn_rocks()
 	_spawn_bushes()
 
+	# Rebake navigation mesh to include spawned buildings as obstacles
+	# Buildings are added to "navigation_geometry" group for NavMesh parsing
+	if terrain and terrain.has_method("rebake_navigation"):
+		# Wait a frame for collision shapes to be ready
+		await get_tree().process_frame
+		terrain.rebake_navigation()
+
 
 func _spawn_trees():
 	for i in range(tree_count):
@@ -217,7 +224,7 @@ func _get_terrain_slope(pos: Vector3) -> float:
 	return max(slope_x, slope_z)
 
 
-func _spawn_model(path: String, pos: Vector3, scale_factor: float = 1.0, _is_building: bool = false) -> Node3D:
+func _spawn_model(path: String, pos: Vector3, scale_factor: float = 1.0, is_building: bool = false) -> Node3D:
 	# Check if resource exists
 	if not ResourceLoader.exists(path):
 		push_warning("Model not found: " + path)
@@ -238,8 +245,12 @@ func _spawn_model(path: String, pos: Vector3, scale_factor: float = 1.0, _is_bui
 	scene.scale = Vector3.ONE * scale_factor
 	scene.rotation.y = randf() * TAU  # Random rotation
 
-	# Hide any collision shapes that came with the model
+	# Configure collision shapes (keep for nav mesh but configure layers)
 	_hide_collision_shapes(scene)
+
+	# Add buildings to navigation group so NavMesh includes them as obstacles
+	if is_building:
+		_add_to_navigation_group(scene)
 
 	# Add to tree temporarily to calculate AABB
 	add_child(scene)
@@ -253,6 +264,14 @@ func _spawn_model(path: String, pos: Vector3, scale_factor: float = 1.0, _is_bui
 
 	spawned_objects.append(scene)
 	return scene
+
+
+func _add_to_navigation_group(node: Node) -> void:
+	## Add all StaticBody3D children to navigation_geometry group for NavMesh baking
+	if node is StaticBody3D:
+		node.add_to_group("navigation_geometry")
+	for child in node.get_children():
+		_add_to_navigation_group(child)
 
 
 func _get_combined_aabb(node: Node) -> AABB:
@@ -295,29 +314,29 @@ func _add_cover_to_object(obj: Node3D, cover_type: CoverObject.CoverType, radius
 
 
 func _hide_collision_shapes(node: Node):
-	# Remove or hide collision shapes and static bodies that came with GLB imports
-	var to_remove: Array[Node] = []
+	# KEEP collision shapes for navigation/pathfinding, but configure them properly
+	# Previously this removed all collisions, causing units to walk through buildings
 
 	for child in node.get_children():
-		# Remove collision-related nodes that might be visible
-		if child is CollisionShape3D or child is CollisionPolygon3D:
-			to_remove.append(child)
-		elif child is StaticBody3D or child is RigidBody3D or child is CharacterBody3D:
-			to_remove.append(child)
-		# Also check for mesh instances that might be collision visualizations
+		# Configure StaticBody3D for terrain collision (layer 1)
+		if child is StaticBody3D:
+			var body = child as StaticBody3D
+			body.collision_layer = 1  # Terrain layer - used by nav mesh
+			body.collision_mask = 0   # Don't actively collide, just exist as obstacle
+		elif child is RigidBody3D or child is CharacterBody3D:
+			# Convert physics bodies to static for building obstacles
+			var body = child as PhysicsBody3D
+			body.collision_layer = 1
+			body.collision_mask = 0
+		# Hide meshes that are just collision visualizations
 		elif child is MeshInstance3D:
 			var mesh_inst = child as MeshInstance3D
-			# Hide meshes that look like collision boxes (small, white, or named "collision")
 			if mesh_inst.name.to_lower().contains("collision") or mesh_inst.name.to_lower().contains("col_"):
 				mesh_inst.visible = false
 
 		# Recurse into children
 		if child.get_child_count() > 0:
 			_hide_collision_shapes(child)
-
-	# Remove collected nodes
-	for n in to_remove:
-		n.queue_free()
 
 
 func _spawn_rocks():

@@ -246,6 +246,9 @@ func start_battle():
 	# Apply weather from campaign (if coming from campaign)
 	_apply_campaign_weather()
 
+	# Set difficulty profile on CombatManager (BattleDebug agent calibration)
+	_apply_difficulty_profile()
+
 	# Setup enemy GeneralAI if strategic AI is enabled
 	# Delay to allow regiments time to initialize their AI controllers (after terrain snap)
 	if AIAutoload and AIAutoload.strategic_ai_enabled:
@@ -582,3 +585,31 @@ func _get_weather_preset_name(weather_type: int) -> String:
 		5:  # BLIZZARD
 			return "blizzard"
 	return "clear"
+
+
+## Apply difficulty profile to CombatManager.
+## Reads difficulty_level from BattleTransition.battle_data if available,
+## otherwise defaults to NORMAL. This enables the BattleDebug agent's
+## calibration system - without this call, difficulty multipliers stay at 1.0.
+const DifficultyProfileScript = preload("res://battle_system/ai/data/difficulty_profile.gd")
+
+func _apply_difficulty_profile() -> void:
+	if not combat_manager:
+		return
+
+	# Default to NORMAL difficulty
+	var profile = DifficultyProfileScript.normal()
+
+	# Check if BattleTransition specifies a difficulty level
+	var transition = get_node_or_null("/root/BattleTransition")
+	if transition and transition.has_method("has_battle_data") and transition.has_battle_data():
+		var level = transition.battle_data.get("difficulty_level", -1)
+		if level >= 0:
+			profile = DifficultyProfileScript.from_level(level)
+
+	# Apply to CombatManager
+	if combat_manager.has_method("set_difficulty_profile"):
+		combat_manager.set_difficulty_profile(profile)
+
+	if DebugFlags.battle_setup:
+		print("[BattleManager] Difficulty profile set: %s" % profile.display_name)

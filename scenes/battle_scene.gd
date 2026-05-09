@@ -18,61 +18,60 @@ var enemy_regiments: Array[Regiment] = []
 @export var auto_start_battle: bool = true  # Auto-start battle after 2s for AI testing
 @export var siege_defense_mode: bool = false  # Spawn defenders at capture points
 
-# Regiment data for stress testing - Player: Cannons, Archers, Spearmen, Swordsmen
+# Regiment data for stress testing - Player: Melee front, Ranged middle, Artillery back
+# ORDER MATTERS: First units spawn in FRONT row, last units spawn in BACK
 const STRESS_TEST_PLAYER_REGIMENTS: Array[String] = [
-	# Artillery (2 units)
-	"res://battle_system/data/regiments/impcanon_regiment.tres",  # Imperial Cannon
-	"res://battle_system/data/regiments/grtcanon_regiment.tres",  # Great Cannon
-	# Ranged (4 units)
-	"res://battle_system/data/regiments/dwxbow_regiment.tres",    # Dwarf Crossbows
-	"res://battle_system/data/regiments/mercxbow_regiment.tres",  # Merc Crossbows
-	"res://battle_system/data/regiments/xbow_regiment.tres",      # Crossbowmen
-	"res://battle_system/data/regiments/engr_regiment.tres",      # Engineers
-	# Spearmen/Halberds (6 units)
-	"res://battle_system/data/regiments/halb_regiment.tres",      # Halberdiers
-	"res://battle_system/data/regiments/nlnhlb_regiment.tres",    # Nuln Halberds
-	"res://battle_system/data/regiments/ironbrks_regiment.tres",  # Ironbreakers
-	"res://battle_system/data/regiments/dwwar_regiment.tres",     # Dwarf Warriors
-	"res://battle_system/data/regiments/hammers_regiment.tres",   # Hammerers
-	"res://battle_system/data/regiments/iron_regiment.tres",      # Ironguard
-	# Swordsmen (8 units)
+	# === FRONT LINE: Melee Infantry (10 units) ===
 	"res://battle_system/data/regiments/grtsword_regiment.tres",  # Greatswords
-	"res://battle_system/data/regiments/reik_regiment.tres",      # Reiksguard
 	"res://battle_system/data/regiments/empsword_regiment.tres",  # Empire Swords
 	"res://battle_system/data/regiments/mcsword_regiment.tres",   # Merc Swords
 	"res://battle_system/data/regiments/bodygrd_regiment.tres",   # Bodyguard
 	"res://battle_system/data/regiments/carlgrd_regiment.tres",   # Carls Guard
-	"res://battle_system/data/regiments/keelers_regiment.tres",   # Keelers
+	"res://battle_system/data/regiments/nlnhlb_regiment.tres",    # Halberdiers
+	"res://battle_system/data/regiments/ironbrks_regiment.tres",  # Ironbreakers
+	"res://battle_system/data/regiments/dwwar_regiment.tres",     # Dwarf Warriors
+	"res://battle_system/data/regiments/hammers_regiment.tres",   # Hammerers
 	"res://battle_system/data/regiments/avengers_regiment.tres",  # Avengers
+	# === SECOND LINE: Ranged Infantry (6 units) ===
+	"res://battle_system/data/regiments/dwxbow_regiment.tres",    # Dwarf Crossbows
+	"res://battle_system/data/regiments/mercxbow_regiment.tres",  # Merc Crossbows
+	"res://battle_system/data/regiments/xbow_regiment.tres",      # Crossbowmen
+	"res://battle_system/data/regiments/engr_regiment.tres",      # Engineers
+	"res://battle_system/data/regiments/mercxbow_regiment.tres",  # Merc Crossbows 2
+	"res://battle_system/data/regiments/dwxbow_regiment.tres",    # Dwarf Crossbows 2
+	# === BACK LINE: Cavalry & Artillery (4 units) ===
+	"res://battle_system/data/regiments/reik_regiment.tres",      # Reiksguard Cavalry
+	"res://battle_system/data/regiments/keelers_regiment.tres",   # Keelers Cavalry
+	"res://battle_system/data/regiments/impcanon_regiment.tres",  # Imperial Cannon
+	"res://battle_system/data/regiments/grtcanon_regiment.tres",  # Great Cannon
 ]
 
-# Enemy: Monsters and foot troops (Orcs, Goblins, Skaven)
+# Enemy: Monsters and foot troops - Melee front, ranged back
+# ORDER MATTERS: First units spawn in FRONT row, last units spawn in BACK
 const STRESS_TEST_ENEMY_REGIMENTS: Array[String] = [
-	# Large Monsters (3 units)
-	"res://battle_system/data/regiments/giant_regiment.tres",     # Giant
-	"res://battle_system/data/regiments/troll_regiment.tres",     # Troll
-	"res://battle_system/data/regiments/ratogre_regiment.tres",   # Rat Ogre
-	# Orc Elites (4 units)
+	# === FRONT LINE: Elite Infantry & Monsters (10 units) ===
 	"res://battle_system/data/regiments/blackorc_regiment.tres",  # Black Orcs
 	"res://battle_system/data/regiments/biguns_regiment.tres",    # Big'Uns
+	"res://battle_system/data/regiments/giant_regiment.tres",     # Giant
+	"res://battle_system/data/regiments/troll_regiment.tres",     # Trolls
+	"res://battle_system/data/regiments/ratogre_regiment.tres",   # Rat Ogres
+	"res://battle_system/data/regiments/stmverm_regiment.tres",   # Stormvermin
+	"res://battle_system/data/regiments/plagmonk_regiment.tres",  # Plague Monks
+	"res://battle_system/data/regiments/orcboyz_regiment.tres",   # Orc Boyz
+	"res://battle_system/data/regiments/orcboyz_regiment.tres",   # Orc Boyz 2
+	"res://battle_system/data/regiments/clanrats_regiment.tres",  # Clanrats
+	# === SECOND LINE: Light Infantry (6 units) ===
+	"res://battle_system/data/regiments/ntgoblin_regiment.tres",  # Night Goblins
+	"res://battle_system/data/regiments/ntgoblin_regiment.tres",  # Night Goblins 2
+	"res://battle_system/data/regiments/ratslave_regiment.tres",  # Rat Slaves
+	"res://battle_system/data/regiments/fanatic_regiment.tres",   # Fanatics
+	"res://battle_system/data/regiments/orcboyz_regiment.tres",   # Orc Boyz 3
+	"res://battle_system/data/regiments/clanrats_regiment.tres",  # Clanrats 2
+	# === BACK LINE: Cavalry & Ranged (4 units) ===
 	"res://battle_system/data/regiments/boarboyz_regiment.tres",  # Boar Boyz
 	"res://battle_system/data/regiments/wolfride_regiment.tres",  # Wolf Riders
-	# Orc Infantry (5 units)
-	"res://battle_system/data/regiments/orcboyz_regiment.tres",   # Orc Boyz
-	"res://battle_system/data/regiments/orcboyz_regiment.tres",   # Orc Boyz
-	"res://battle_system/data/regiments/orcboyz_regiment.tres",   # Orc Boyz
 	"res://battle_system/data/regiments/arraboyz_regiment.tres",  # Arrer Boyz
-	"res://battle_system/data/regiments/arraboyz_regiment.tres",  # Arrer Boyz
-	# Goblins (4 units)
-	"res://battle_system/data/regiments/ntgoblin_regiment.tres",  # Night Goblins
-	"res://battle_system/data/regiments/gob1_regiment.tres",      # Goblins
 	"res://battle_system/data/regiments/gobarch_regiment.tres",   # Goblin Archers
-	"res://battle_system/data/regiments/fanatic_regiment.tres",   # Fanatics
-	# Skaven (4 units)
-	"res://battle_system/data/regiments/clanrats_regiment.tres",  # Clanrats
-	"res://battle_system/data/regiments/stmverm_regiment.tres",   # Stormvermin
-	"res://battle_system/data/regiments/ratslave_regiment.tres",  # Rat Slaves
-	"res://battle_system/data/regiments/plagmonk_regiment.tres",  # Plague Monks
 ]
 
 
@@ -327,23 +326,26 @@ func _setup_stress_test() -> void:
 		push_error("[STRESS TEST] Failed to load regiment resources!")
 		return
 
-	# Calculate grid layout for 300x300 map - 5 rows x 4 columns for wider spacing
-	var units_per_row: int = 5
-	var row_spacing: float = 18.0  # Z spacing between rows (larger for 300x300 map)
-	var col_spacing: float = 20.0  # X spacing between units (wider for formations)
+	# Calculate grid layout - ROWS go across (Z direction), units side by side (X direction)
+	# 10 units per row = front line of melee, then archers, then cavalry/artillery
+	# Scaled 4x for 1200x1200 map (was 300x300)
+	var units_per_row: int = 10
+	var row_spacing: float = 40.0  # X spacing between rows (depth from front to back)
+	var col_spacing: float = 20.0  # Z spacing between units in same row (side by side)
 
-	# Spawn player units on LEFT side (negative X) - deployment zone
-	var player_start_x: float = -120.0  # Far left of 300x300 map
-	var player_start_z: float = -40.0   # Centered vertically
+	# Spawn player units on LEFT side - scaled for 1200x1200 map
+	var player_start_x: float = -320.0   # Was -80 (4x scale)
+	var player_start_z: float = -90.0    # Centered vertically (10 units * 20 spacing = 180 wide)
 
 	for i in range(stress_test_units_per_side):
-		var row: int = i / units_per_row
-		var col: int = i % units_per_row
+		var row: int = i / units_per_row   # 0 = front line, 1 = second line, etc.
+		var col: int = i % units_per_row   # Position within the row (side by side)
 
+		# ROWS layout: X = depth (row pushes back), Z = width (col spreads sideways)
 		var pos := Vector3(
-			player_start_x + col * col_spacing,
+			player_start_x - row * row_spacing,  # Front row at start_x, back rows behind
 			10.0,
-			player_start_z + row * row_spacing
+			player_start_z + col * col_spacing   # Units spread across Z axis
 		)
 
 		# Cycle through regiment types
@@ -351,7 +353,7 @@ func _setup_stress_test() -> void:
 		var regiment := _spawn_regiment_from_data(regiment_data.duplicate(), true)
 		regiment.name = "PlayerUnit_%d" % i
 		regiment.global_position = pos
-		regiment.set_initial_facing(WorldCompassScript.EAST)  # Bug C fix: face enemy
+		regiment.set_initial_facing(WorldCompassScript.EAST)  # Face enemy (to the right)
 		player_regiments.append(regiment)
 
 	# Spawn enemy units
@@ -374,17 +376,19 @@ func _setup_stress_test() -> void:
 
 func _spawn_enemy_units_normal(regiment_resources: Array, units_per_row: int, col_spacing: float, row_spacing: float) -> void:
 	## Spawn enemy units on the right side (normal battle layout)
-	var enemy_start_x: float = 120.0   # Far right of 300x300 map
-	var enemy_start_z: float = -40.0   # Centered vertically
+	## Scaled for 1200x1200 map
+	var enemy_start_x: float = 320.0   # Was 80 (4x scale)
+	var enemy_start_z: float = -90.0   # Centered vertically (matches player)
 
 	for i in range(stress_test_units_per_side):
-		var row: int = i / units_per_row
-		var col: int = i % units_per_row
+		var row: int = i / units_per_row   # 0 = front line, 1 = second line, etc.
+		var col: int = i % units_per_row   # Position within the row (side by side)
 
+		# ROWS layout: X = depth (row pushes back), Z = width (col spreads sideways)
 		var pos := Vector3(
-			enemy_start_x - col * col_spacing,  # Mirror the column placement
+			enemy_start_x + row * row_spacing,  # Front row at start_x, back rows behind
 			10.0,
-			enemy_start_z + row * row_spacing
+			enemy_start_z + col * col_spacing   # Units spread across Z axis
 		)
 
 		# Cycle through regiment types
@@ -392,7 +396,7 @@ func _spawn_enemy_units_normal(regiment_resources: Array, units_per_row: int, co
 		var regiment := _spawn_regiment_from_data(regiment_data.duplicate(), false)
 		regiment.name = "EnemyUnit_%d" % i
 		regiment.global_position = pos
-		regiment.set_initial_facing(WorldCompassScript.WEST)  # Bug C fix: face player
+		regiment.set_initial_facing(WorldCompassScript.WEST)  # Face player (to the left)
 		enemy_regiments.append(regiment)
 
 

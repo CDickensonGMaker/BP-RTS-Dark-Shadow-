@@ -4,6 +4,7 @@ extends Node3D
 # Preload to avoid parse-order issues with class_name
 const TerrainHelperScript = preload("res://battle_system/terrain/terrain_helper.gd")
 const WorldCompassScript = preload("res://battle_system/data/world_compass.gd")
+const FormationTypeScript = preload("res://battle_system/data/formation_type.gd")
 
 ## MultiMesh-based formation manager for efficient sprite soldier rendering.
 ## Replaces SoldierFormation when use_sprite_soldiers is enabled.
@@ -34,6 +35,11 @@ var _parent_regiment: Node = null
 
 ## Faction color tint (not used yet, reserved)
 @export var faction_color: Color = Color.WHITE
+
+## Sprite front direction offset (0-7). Maps which sprite row is the unit's "front".
+## 0 = North sprite is front, 4 = South sprite is front, etc.
+## Most units have their front-facing sprite in the South row, so they use sprite_front_direction=4.
+var sprite_front_direction: int = 0
 
 # Internal state
 var _multimesh_instance: MultiMeshInstance3D
@@ -93,6 +99,48 @@ var _soldier_speed_jitter: PackedFloat32Array  # Per-soldier speed multiplier (�
 var _is_recovering_from_scatter: bool = false
 var _scatter_recovery_timer: float = 0.0
 
+# === COHESION & TOLERANCE SYSTEM (Total War-style formation) ===
+# Formation is a TARGET, not a constraint - soldiers have assigned slots but can deviate within tolerance
+
+enum SlotToleranceMode { LOCKED, TOLERANT, SUSPENDED }
+
+# Tolerance radii (meters)
+const TOLERANCE_LOCKED: float = 0.3       # Strict adherence during march/idle
+const TOLERANCE_TOLERANT: float = 1.5     # Combat flexibility
+const TOLERANCE_RALLY_WIDE: float = 3.0   # Wide tolerance during early rally
+
+# Cohesion thresholds
+const COHESION_FORMED: float = 0.85       # 85%+ = "Formed" - full formation bonuses
+const COHESION_LOOSE: float = 0.50        # 50-85% = "Loose" - linear interpolation
+const COHESION_UPDATE_INTERVAL: float = 0.25  # 4Hz tick (matches morale system)
+
+# Cohesion state
+var _tolerance_mode: SlotToleranceMode = SlotToleranceMode.LOCKED
+var _current_tolerance: float = TOLERANCE_LOCKED
+var _cohesion: float = 1.0                # 0.0-1.0, ratio of soldiers within tolerance
+var _cohesion_update_timer: float = 0.0
+var _soldier_slot_deviation: PackedFloat32Array  # Distance from assigned slot per soldier
+var _last_emitted_cohesion: float = 1.0   # For signal throttling (>5% change)
+
+# Rally reformation state
+var _is_rally_reforming: bool = false
+var _rally_phase: int = 0                 # 0=stopped, 1=centroid, 2=flow-back, 3=tightening
+var _rally_centroid: Vector3 = Vector3.ZERO
+const RALLY_PHASE_STOP: int = 0
+const RALLY_PHASE_CENTROID: int = 1
+const RALLY_PHASE_FLOWBACK: int = 2
+const RALLY_PHASE_TIGHTENING: int = 3
+const RALLY_FLOWBACK_DURATION: float = 2.5  # Soldiers drift to slots over 2.5s
+
+signal cohesion_changed(cohesion: float)
+signal tolerance_mode_changed(mode: SlotToleranceMode)
+
+# === ARTILLERY CREW MODE ===
+# When enabled, crew sprites are positioned in semicircles behind artillery pieces
+var artillery_crew_mode: bool = false
+var artillery_piece_positions: Array[Vector3] = []
+var _crew_per_piece: int = 6  # Default crew count per artillery piece
+
 
 func _ready():
 	_setup_shader()
@@ -106,13 +154,13 @@ func _ready():
 
 
 func _find_parent_regiment():
-	# Find parent Regiment node - use type check like SoldierFormation
+	# Find parent Regiment node - use duck typing to avoid cyclic dependency
 	var parent = get_parent()
 	while parent:
-		if parent is Regiment:
+		if parent.has_method("get_facing_direction") and parent.get("data") != null:
 			_parent_regiment = parent
 			# Apply current formation layout now that we know our parent
-			if _parent_regiment.current_formation != FormationType.Type.LINE:
+			if _parent_regiment.current_formation != FormationTypeScript.Type.LINE:
 				_apply_formation_layout(_parent_regiment.current_formation)
 			break
 		parent = parent.get_parent()
@@ -161,7 +209,7 @@ func set_formation_width(file_count: int, animate: bool = true) -> void:
 	rows = ceili(float(alive_count) / float(file_count))
 
 	# Get current formation type from parent if available
-	var formation_type: int = FormationType.Type.LINE
+	var formation_type: int = FormationTypeScript.Type.LINE
 	if _parent_regiment:
 		formation_type = _parent_regiment.current_formation
 
@@ -196,8 +244,11 @@ func _process(delta: float):
 		_terrain_update_timer = 0.0
 		_update_soldier_terrain_positions()
 
-	# NOTE: Camera rotation pump removed - sprite directions are now world-fixed (PS1-style)
-	# rather than camera-relative (RTS-style). Directions only change when units actually turn.
+	# Update sprite directions when camera rotates
+	_direction_update_timer += delta
+	if _direction_update_timer >= direction_interval:
+		_direction_update_timer = 0.0
+		_update_camera_relative_directions()
 
 	# Handle formation transition animation
 	if _is_transitioning:
@@ -208,9 +259,18 @@ func _process(delta: float):
 		_scatter_recovery_timer -= delta
 		if _scatter_recovery_timer <= 0.0:
 			_is_recovering_from_scatter = false
+			# Restore TOLERANT mode (combat flexibility) after scatter recovery
+			set_tolerance_mode(SlotToleranceMode.TOLERANT)
 			# Trigger formation reform to bring soldiers back to positions
 			if _parent_regiment:
 				_apply_formation_layout(_parent_regiment.current_formation, 2.0)
+
+	# Update cohesion at 4Hz (matches morale system tick rate)
+	_update_cohesion(delta)
+
+	# Handle active rally reformation phases
+	if _is_rally_reforming:
+		_update_rally_reformation(delta)
 
 
 func _update_lod_level() -> void:
@@ -318,6 +378,7 @@ func spawn_formation(count: int):
 	_soldier_time_offsets.resize(max_soldiers)
 	_corpse_world_positions.resize(max_soldiers)
 	_is_corpse.resize(max_soldiers)
+	_soldier_slot_deviation.resize(max_soldiers)  # Cohesion tracking
 
 	var cols := ceili(float(count) / float(rows))
 
@@ -348,10 +409,14 @@ func spawn_formation(count: int):
 		_corpse_world_positions[i] = Vector3.ZERO
 		_is_corpse[i] = 0.0
 		_target_positions[i] = _soldier_positions[i]  # Target = current initially
+		_soldier_slot_deviation[i] = 0.0  # Distance from assigned slot (cohesion tracking)
 
 		# Set MultiMesh instance transform and custom data
 		_update_instance(i)
 
+	# Initialize cohesion to 1.0 (fully formed)
+	_cohesion = 1.0
+	_last_emitted_cohesion = 1.0
 	formation_ready.emit()
 	soldiers_updated.emit(alive_count)
 
@@ -404,26 +469,26 @@ func _apply_formation_layout(formation_type: int, duration: float = -1.0):
 
 		# Apply formation-specific offsets
 		match formation_type:
-			FormationType.Type.WEDGE:
+			FormationTypeScript.Type.WEDGE:
 				# Triangle/wedge shape - narrow at front, wide at back
 				var wedge_offset := float(row) * 0.3
 				x = x * (1.0 + wedge_offset * 0.2)
-			FormationType.Type.COLUMN:
+			FormationTypeScript.Type.COLUMN:
 				# Deep column - tighter lateral spacing
 				x *= 0.7
-			FormationType.Type.LOOSE:
+			FormationTypeScript.Type.LOOSE:
 				# Extra spacing between soldiers
 				x *= 1.3
 				z *= 1.3
-			FormationType.Type.SQUARE:
+			FormationTypeScript.Type.SQUARE:
 				# Equal spacing, slight stagger
 				if row % 2 == 1:
 					x += row_offset * 0.5
-			FormationType.Type.SHIELD_WALL:
+			FormationTypeScript.Type.SHIELD_WALL:
 				# Very tight line
 				x *= 0.6
 				z *= 0.8
-			FormationType.Type.SCHILTRON:
+			FormationTypeScript.Type.SCHILTRON:
 				# Circular formation (approximated)
 				var angle := float(alive_idx) / float(alive_count) * TAU
 				var radius := new_spacing * sqrt(float(alive_count)) * 0.3
@@ -519,23 +584,272 @@ func _ease_in_out_cubic(t: float) -> float:
 	return 1.0 - f * f * f / 2.0
 
 
+# === COHESION CALCULATION ===
+
+func _calculate_cohesion() -> float:
+	"""Calculate formation cohesion as ratio of soldiers within tolerance of their slots.
+	Uses length_squared() to avoid sqrt per soldier for performance."""
+	if alive_count <= 0:
+		return 1.0
+
+	var within_tolerance: int = 0
+	var tolerance_sq: float = _current_tolerance * _current_tolerance
+
+	for i in max_soldiers:
+		if _soldier_alive[i] < 0.5 or _soldier_dead[i] > 0.5:
+			continue
+
+		# Calculate deviation from assigned slot (target position)
+		var deviation: Vector3 = _soldier_positions[i] - _target_positions[i]
+		deviation.y = 0.0  # Only horizontal deviation matters
+		var deviation_sq: float = deviation.length_squared()
+
+		# Track per-soldier deviation for debugging/visualization
+		_soldier_slot_deviation[i] = sqrt(deviation_sq)
+
+		if deviation_sq <= tolerance_sq:
+			within_tolerance += 1
+
+	return float(within_tolerance) / float(alive_count)
+
+
+func _update_cohesion(delta: float) -> void:
+	"""Tick-based cohesion update at 4Hz. Emits signal only if change > 5%."""
+	_cohesion_update_timer += delta
+	if _cohesion_update_timer < COHESION_UPDATE_INTERVAL:
+		return
+	_cohesion_update_timer = 0.0
+
+	var new_cohesion: float = _calculate_cohesion()
+	_cohesion = new_cohesion
+
+	# Only emit signal if cohesion changed by more than 5%
+	if absf(new_cohesion - _last_emitted_cohesion) > 0.05:
+		_last_emitted_cohesion = new_cohesion
+		cohesion_changed.emit(new_cohesion)
+
+
+func get_cohesion() -> float:
+	"""Get current formation cohesion (0.0-1.0).
+	0.85+ = Formed (full bonuses)
+	0.50-0.85 = Loose (linear interpolation)
+	<0.50 = Broken (no bonuses)"""
+	return _cohesion
+
+
+func get_cohesion_state() -> String:
+	"""Get human-readable cohesion state for debug/UI."""
+	if _cohesion >= COHESION_FORMED:
+		return "Formed"
+	elif _cohesion >= COHESION_LOOSE:
+		return "Loose"
+	else:
+		return "Broken"
+
+
+# === TOLERANCE MODE SYSTEM ===
+
+func set_tolerance_mode(mode: SlotToleranceMode) -> void:
+	"""Set the formation slot tolerance mode.
+	LOCKED: Strict adherence (±0.3m) - marching, idle, reformed
+	TOLERANT: Combat flexibility (±1.5m) - engaging
+	SUSPENDED: Unlimited - routing, scattered"""
+	if mode == _tolerance_mode:
+		return
+
+	_tolerance_mode = mode
+	match mode:
+		SlotToleranceMode.LOCKED:
+			_current_tolerance = TOLERANCE_LOCKED
+		SlotToleranceMode.TOLERANT:
+			_current_tolerance = TOLERANCE_TOLERANT
+		SlotToleranceMode.SUSPENDED:
+			_current_tolerance = 999.0  # Effectively unlimited
+	tolerance_mode_changed.emit(mode)
+
+
+func set_tolerance_radius(radius: float) -> void:
+	"""Set a custom tolerance radius (for rally phases)."""
+	_current_tolerance = radius
+
+
+func get_tolerance_mode() -> SlotToleranceMode:
+	"""Get current tolerance mode."""
+	return _tolerance_mode
+
+
+func get_tolerance_radius() -> float:
+	"""Get current tolerance radius in meters."""
+	return _current_tolerance
+
+
+# === RALLY REFORMATION SYSTEM ===
+
+func begin_rally_reformation() -> void:
+	"""Start multi-phase rally reformation process.
+	Called when regiment transitions to RALLYING state."""
+	_is_rally_reforming = true
+	_rally_phase = RALLY_PHASE_STOP
+	# Wide tolerance during early rally
+	set_tolerance_radius(TOLERANCE_RALLY_WIDE)
+	set_tolerance_mode(SlotToleranceMode.TOLERANT)
+
+
+func advance_rally_phase(current_morale: float) -> void:
+	"""Advance rally phase based on morale thresholds.
+	Called from regiment.gd during RALLYING state updates."""
+	if not _is_rally_reforming:
+		return
+
+	match _rally_phase:
+		RALLY_PHASE_STOP:
+			# Phase 0→1: Morale ≥35 - compute centroid
+			if current_morale >= 35.0:
+				_rally_phase = RALLY_PHASE_CENTROID
+				_rally_centroid = compute_rally_centroid()
+				_recompute_slots_around_centroid(_rally_centroid)
+
+		RALLY_PHASE_CENTROID:
+			# Phase 1→2: Morale ≥38 - start flow-back animation
+			if current_morale >= 38.0:
+				_rally_phase = RALLY_PHASE_FLOWBACK
+				_start_rally_flowback()
+
+		RALLY_PHASE_FLOWBACK:
+			# Phase 2→3: After flowback animation + morale ≥40 - tightening
+			if current_morale >= 40.0 and not _is_transitioning:
+				_rally_phase = RALLY_PHASE_TIGHTENING
+				set_tolerance_radius(TOLERANCE_TOLERANT)  # 1.5m
+				# Schedule final tightening to LOCKED
+				_start_final_tightening()
+
+		RALLY_PHASE_TIGHTENING:
+			# Phase 3→complete: Full cohesion
+			if _cohesion >= COHESION_FORMED and not _is_transitioning:
+				complete_rally_reformation()
+
+
+func _update_rally_reformation(_delta: float) -> void:
+	"""Update rally reformation state each frame."""
+	if not _is_rally_reforming:
+		return
+	# Phase advancement is driven by morale changes from regiment.gd
+	# This method handles any per-frame rally-specific updates
+	pass
+
+
+func compute_rally_centroid() -> Vector3:
+	"""Compute center of mass of surviving soldiers (for rally reformation)."""
+	if alive_count == 0:
+		return global_position
+
+	var sum := Vector3.ZERO
+	var count := 0
+
+	for i in max_soldiers:
+		if _soldier_alive[i] > 0.5 and _soldier_dead[i] < 0.5:
+			sum += _soldier_positions[i]
+			count += 1
+
+	if count == 0:
+		return global_position
+
+	return sum / float(count)
+
+
+func _recompute_slots_around_centroid(centroid: Vector3) -> void:
+	"""Recompute target slot positions centered on the rally centroid.
+	Slots are regenerated around the new center point."""
+	var formation_type: int = FormationTypeScript.Type.LINE
+	if _parent_regiment:
+		formation_type = _parent_regiment.current_formation
+
+	var layout := _get_formation_layout(formation_type, alive_count)
+	var target_rows: int = layout.rows
+	var target_spacing: float = layout.spacing
+	var cols := ceili(float(alive_count) / float(target_rows))
+
+	var alive_idx := 0
+	for i in max_soldiers:
+		if _soldier_alive[i] < 0.5 or _soldier_dead[i] > 0.5:
+			continue
+
+		var row := alive_idx / cols
+		var col := alive_idx % cols
+
+		# Calculate slot position relative to centroid
+		var x := (float(col) - cols / 2.0) * target_spacing + centroid.x
+		var z := (float(row) - target_rows / 2.0) * target_spacing + centroid.z
+
+		_target_positions[i] = Vector3(x, _soldier_positions[i].y, z)
+		alive_idx += 1
+
+
+func _start_rally_flowback() -> void:
+	"""Start the flow-back animation where soldiers drift to their new slots.
+	Duration: 2.5 seconds with natural movement."""
+	# Use the existing formation transition system
+	_start_positions.resize(max_soldiers)
+	_soldier_start_delays.resize(max_soldiers)
+	_soldier_speed_jitter.resize(max_soldiers)
+
+	var max_delay: float = RALLY_FLOWBACK_DURATION * 0.2  # Slight stagger
+
+	for i in max_soldiers:
+		_start_positions[i] = _soldier_positions[i]
+		if _soldier_alive[i] > 0.5 and _soldier_dead[i] < 0.5:
+			_soldier_start_delays[i] = randf_range(0.0, max_delay)
+			_soldier_speed_jitter[i] = randf_range(0.85, 1.15)
+		else:
+			_soldier_start_delays[i] = 0.0
+			_soldier_speed_jitter[i] = 1.0
+
+	_is_transitioning = true
+	_transition_time = 0.0
+	_transition_duration = RALLY_FLOWBACK_DURATION
+
+
+func _start_final_tightening() -> void:
+	"""Start final tightening phase - soldiers snap to strict positions."""
+	# Regenerate slots with standard formation (no centroid offset needed anymore)
+	if _parent_regiment:
+		_apply_formation_layout(_parent_regiment.current_formation, 1.0)
+
+
+func complete_rally_reformation() -> void:
+	"""Complete the rally reformation - restore LOCKED mode and full bonuses."""
+	_is_rally_reforming = false
+	_rally_phase = 0
+	set_tolerance_mode(SlotToleranceMode.LOCKED)
+
+
+func is_rally_reforming() -> bool:
+	"""Check if currently in rally reformation process."""
+	return _is_rally_reforming
+
+
+func get_rally_phase() -> int:
+	"""Get current rally phase (0-3)."""
+	return _rally_phase
+
+
 func _get_formation_layout(formation_type: int, soldier_count: int) -> Dictionary:
 	"""Get rows and spacing for a formation type."""
 	match formation_type:
-		FormationType.Type.LINE:
+		FormationTypeScript.Type.LINE:
 			return {"rows": maxi(2, soldier_count / 8), "spacing": spacing}
-		FormationType.Type.COLUMN:
+		FormationTypeScript.Type.COLUMN:
 			return {"rows": maxi(8, soldier_count / 3), "spacing": spacing * 0.9}
-		FormationType.Type.WEDGE:
+		FormationTypeScript.Type.WEDGE:
 			return {"rows": maxi(4, soldier_count / 5), "spacing": spacing}
-		FormationType.Type.SQUARE:
+		FormationTypeScript.Type.SQUARE:
 			var side := ceili(sqrt(float(soldier_count)))
 			return {"rows": side, "spacing": spacing}
-		FormationType.Type.LOOSE:
+		FormationTypeScript.Type.LOOSE:
 			return {"rows": maxi(3, soldier_count / 6), "spacing": spacing * 1.5}
-		FormationType.Type.SHIELD_WALL:
+		FormationTypeScript.Type.SHIELD_WALL:
 			return {"rows": 2, "spacing": spacing * 0.7}
-		FormationType.Type.SCHILTRON:
+		FormationTypeScript.Type.SCHILTRON:
 			return {"rows": soldier_count, "spacing": spacing}  # Circular, rows not used directly
 		_:
 			return {"rows": rows, "spacing": spacing}
@@ -555,17 +869,23 @@ func set_soldier_count(count: int):
 
 
 func kill_soldiers(amount: int):
-	"""Kill soldiers from back of formation - transfer corpses to CorpseField immediately."""
+	"""Kill soldiers from back of formation - transfer corpses to CorpseField immediately.
+	Front-rank casualties trigger instant slot reassignment for combat responsiveness."""
 	# Safety check - arrays must be initialized
 	if _soldier_alive.is_empty() or _soldier_dead.is_empty():
 		return
 
 	var killed := 0
+	var front_rank_deaths: Array[int] = []  # Track front-rank deaths for instant reassignment
+
 	for i in range(max_soldiers - 1, -1, -1):
 		if killed >= amount:
 			break
 		# Only kill soldiers that are alive and not already dead
 		if _soldier_alive[i] > 0.5 and _soldier_dead[i] < 0.5:
+			# Check if this is a front-rank soldier (for instant reassignment)
+			var was_front_rank: bool = _is_front_rank_soldier(i)
+
 			# Calculate world position where soldier died
 			var world_pos: Vector3 = global_position + _soldier_positions[i]
 			# Drop corpse to ground level (Phase 6.4: use helper)
@@ -594,9 +914,17 @@ func kill_soldiers(amount: int):
 			killed += 1
 			alive_count -= 1
 
+			# Queue front-rank deaths for instant reassignment
+			if was_front_rank:
+				front_rank_deaths.append(i)
+
+	# Instant front-rank slot reassignment (prevents gaps in fighting line)
+	for dead_idx in front_rank_deaths:
+		_reassign_front_rank_slot(dead_idx)
+
 	soldiers_updated.emit(alive_count)
 
-	# Consolidate formation - fill gaps in front ranks
+	# Consolidate formation - fill gaps in back ranks (animated)
 	if killed > 0:
 		_consolidate_formation()
 
@@ -608,7 +936,7 @@ func _consolidate_formation() -> void:
 		return
 
 	# Get current formation layout
-	var formation_type: int = FormationType.Type.LINE
+	var formation_type: int = FormationTypeScript.Type.LINE
 	if _parent_regiment:
 		formation_type = _parent_regiment.current_formation
 
@@ -643,21 +971,21 @@ func _consolidate_formation() -> void:
 
 		# Apply formation-specific offsets (same as _apply_formation_layout)
 		match formation_type:
-			FormationType.Type.WEDGE:
+			FormationTypeScript.Type.WEDGE:
 				var wedge_offset := float(row) * 0.3
 				x = x * (1.0 + wedge_offset * 0.2)
-			FormationType.Type.COLUMN:
+			FormationTypeScript.Type.COLUMN:
 				x *= 0.7
-			FormationType.Type.LOOSE:
+			FormationTypeScript.Type.LOOSE:
 				x *= 1.3
 				z *= 1.3
-			FormationType.Type.SQUARE:
+			FormationTypeScript.Type.SQUARE:
 				if row % 2 == 1:
 					x += row_offset * 0.5
-			FormationType.Type.SHIELD_WALL:
+			FormationTypeScript.Type.SHIELD_WALL:
 				x *= 0.6
 				z *= 0.8
-			FormationType.Type.SCHILTRON:
+			FormationTypeScript.Type.SCHILTRON:
 				var angle := float(slot_idx) / float(alive_count) * TAU
 				var radius := target_spacing * sqrt(float(alive_count)) * 0.3
 				x = cos(angle) * radius
@@ -673,6 +1001,109 @@ func _consolidate_formation() -> void:
 	_is_transitioning = true
 	_transition_time = 0.0
 	_transition_duration = 0.8  # Quick consolidation
+
+
+# === FRONT-RANK SLOT REASSIGNMENT (Combat) ===
+
+func _is_front_rank_soldier(idx: int) -> bool:
+	"""Check if soldier at index is in the front rank (lowest Z value, fighting row).
+	Front rank is determined by target position Z being in the first row."""
+	if idx < 0 or idx >= max_soldiers:
+		return false
+	if _soldier_alive[idx] < 0.5 or _soldier_dead[idx] > 0.5:
+		return false
+
+	# Get current formation layout
+	var formation_type: int = FormationTypeScript.Type.LINE
+	if _parent_regiment:
+		formation_type = _parent_regiment.current_formation
+
+	var layout := _get_formation_layout(formation_type, alive_count + 1)  # +1 since we're checking before death
+	var target_rows: int = layout.rows
+	var target_spacing: float = layout.spacing
+
+	# Front rank Z threshold (negative Z is forward/front)
+	var front_rank_z: float = -(float(target_rows - 1) / 2.0) * target_spacing
+	var soldier_z: float = _target_positions[idx].z
+
+	# Within half spacing of front rank Z = front rank
+	return soldier_z <= front_rank_z + target_spacing * 0.5
+
+
+func _get_soldier_file(idx: int) -> int:
+	"""Get the file (column) index of a soldier based on their X position."""
+	if idx < 0 or idx >= max_soldiers:
+		return -1
+
+	var formation_type: int = FormationTypeScript.Type.LINE
+	if _parent_regiment:
+		formation_type = _parent_regiment.current_formation
+
+	var layout := _get_formation_layout(formation_type, alive_count)
+	var target_spacing: float = layout.spacing
+
+	# Calculate file based on X position
+	var soldier_x: float = _target_positions[idx].x
+	var file: int = int(round(soldier_x / target_spacing))
+	return file
+
+
+func _find_soldier_behind(dead_idx: int) -> int:
+	"""Find soldier directly behind (same file, next rank back) to promote forward.
+	Returns -1 if no suitable soldier found."""
+	var dead_file: int = _get_soldier_file(dead_idx)
+	var dead_z: float = _target_positions[dead_idx].z
+
+	var formation_type: int = FormationTypeScript.Type.LINE
+	if _parent_regiment:
+		formation_type = _parent_regiment.current_formation
+
+	var layout := _get_formation_layout(formation_type, alive_count)
+	var _target_spacing: float = layout.spacing  # Used for file calculation
+
+	var best_idx: int = -1
+	var best_z: float = INF
+
+	for i in max_soldiers:
+		if i == dead_idx:
+			continue
+		if _soldier_alive[i] < 0.5 or _soldier_dead[i] > 0.5:
+			continue
+
+		# Same file?
+		var soldier_file: int = _get_soldier_file(i)
+		if soldier_file != dead_file:
+			continue
+
+		# Behind the dead soldier (higher Z = further back)?
+		var soldier_z: float = _target_positions[i].z
+		if soldier_z > dead_z and soldier_z < best_z:
+			best_z = soldier_z
+			best_idx = i
+
+	return best_idx
+
+
+func _reassign_front_rank_slot(dead_idx: int) -> void:
+	"""Instantly promote back-rank soldier to fill front-rank gap.
+	No animation - immediate slot swap for combat responsiveness."""
+	var replacement_idx: int = _find_soldier_behind(dead_idx)
+	if replacement_idx < 0:
+		return  # No soldier behind to promote
+
+	# Instant slot swap - replacement takes dead soldier's target position
+	var old_target: Vector3 = _target_positions[dead_idx]
+
+	# Swap targets (replacement soldier's new slot is the front-rank slot)
+	_target_positions[replacement_idx] = old_target
+
+	# Instant visual snap (no transition during combat)
+	_soldier_positions[replacement_idx] = old_target
+
+	# Update MultiMesh transform
+	var xform := Transform3D()
+	xform.origin = _soldier_positions[replacement_idx]
+	_multimesh.set_instance_transform(replacement_idx, xform)
 
 
 func play_animation_all(anim_name: String):
@@ -729,11 +1160,18 @@ func _apply_camera_relative_direction():
 		camera_y_angle = camera.global_rotation.y
 		_last_camera_rotation = camera_y_angle
 
-	# Sprite atlas row is now locked to the unit's world facing.
-	# Previously this was camera-relative (RTS-style); now it's world-fixed
-	# for a more PS1-era "physical sprite" look.
+	# Convert world-space facing to screen-relative sprite direction
+	# This makes sprites show different sides as camera rotates around units
 	var world_dir_index := int(_world_facing_angle)
-	var new_dir_index := world_dir_index
+
+	# Apply sprite_front_direction offset
+	# This remaps which sprite row represents the unit's "front"
+	# Example: If sprite_front_direction=4 (South), when unit faces North (0),
+	# we offset by 4 to show sprite row 4 (the actual front-facing sprite)
+	var offset_dir_index := (world_dir_index + sprite_front_direction) % 8
+
+	# Then apply camera-relative conversion
+	var new_dir_index := WorldCompassScript.world_to_screen_direction(offset_dir_index, camera_y_angle)
 
 	# Simple change detection (WorldCompass handles the conversion consistently)
 	if new_dir_index == _current_direction_index:
@@ -784,8 +1222,12 @@ func get_formation_bounds() -> AABB:
 
 
 func apply_dramatic_scatter(direction: Vector3, scatter_amount: float, is_monster: bool) -> void:
-	"""Apply dramatic knockback scatter - soldiers thrown in different directions."""
+	"""Apply dramatic knockback scatter - soldiers thrown in different directions.
+	Sets tolerance mode to SUSPENDED so cohesion doesn't penalize scattered soldiers."""
 	var perpendicular: Vector3 = Vector3(-direction.z, 0, direction.x)
+
+	# Set SUSPENDED tolerance during scatter - soldiers can be anywhere
+	set_tolerance_mode(SlotToleranceMode.SUSPENDED)
 
 	for i in range(_soldier_positions.size()):
 		if _soldier_alive[i] > 0.5:
@@ -884,13 +1326,99 @@ func _update_soldier_terrain_positions():
 		if _soldier_alive[i] > 0.5 and _soldier_dead[i] < 0.5:
 			var world_pos: Vector3 = global_position + _soldier_positions[i]
 			var terrain_height: float = terrain.get_height_at(world_pos)
-			var local_y := terrain_height - global_position.y + sprite_scale.y * 0.5
+			# Include height_offset so sprites properly float above terrain slopes
+			var local_y := terrain_height - global_position.y + sprite_scale.y * 0.5 + height_offset
 
 			if absf(_soldier_positions[i].y - local_y) > 0.01:
 				_soldier_positions[i].y = local_y
 				var xform := Transform3D()
 				xform.origin = _soldier_positions[i]
 				_multimesh.set_instance_transform(i, xform)
+
+
+# === ARTILLERY CREW POSITIONING ===
+
+func set_artillery_crew_mode(piece_positions: Array[Vector3]) -> void:
+	"""Enable crew positioning around artillery pieces.
+	Crew are positioned in semicircles behind/beside each cannon."""
+	artillery_crew_mode = true
+	artillery_piece_positions = piece_positions
+	if piece_positions.size() > 0:
+		_crew_per_piece = ceili(float(alive_count) / float(piece_positions.size()))
+	_recalculate_artillery_crew_positions()
+
+
+func _recalculate_artillery_crew_positions() -> void:
+	"""Recalculate crew positions around artillery pieces."""
+	if not artillery_crew_mode or artillery_piece_positions.is_empty():
+		return
+
+	var pieces_count := artillery_piece_positions.size()
+
+	# Update target positions for all alive crew members
+	var alive_idx := 0
+	for i in max_soldiers:
+		if _soldier_alive[i] < 0.5 or _soldier_dead[i] > 0.5:
+			continue
+
+		var new_pos := _calculate_artillery_crew_position(alive_idx, pieces_count)
+		_target_positions[i] = new_pos
+		_soldier_positions[i] = new_pos
+
+		# Update MultiMesh transform
+		var xform := Transform3D()
+		xform.origin = _soldier_positions[i]
+		_multimesh.set_instance_transform(i, xform)
+
+		alive_idx += 1
+
+
+func _calculate_artillery_crew_position(crew_index: int, pieces_count: int) -> Vector3:
+	"""Position crew scattered around each cannon (sides and behind, not front).
+	Creates a more organic, busy look around the artillery pieces."""
+	var crew_per_piece := ceili(float(alive_count) / float(pieces_count))
+	var piece_index := mini(crew_index / crew_per_piece, pieces_count - 1)
+	var local_index := crew_index % crew_per_piece
+
+	var piece_pos := artillery_piece_positions[piece_index]
+
+	# Scatter crew around the cannon in a 270° arc (everything except front)
+	# Front of cannon is at angle 0, we want crew from PI/4 (45°) to 7*PI/4 (315°)
+	# This keeps the front 90° arc clear for the cannon barrel
+	var min_angle := PI * 0.25  # 45° - right side edge
+	var max_angle := PI * 1.75  # 315° - left side edge (wrapping around back)
+	var angle_range := max_angle - min_angle  # 270° arc
+
+	# Distribute crew evenly around the 270° arc, with slight randomization
+	var base_angle := min_angle + (float(local_index) / float(crew_per_piece)) * angle_range
+	# Add small random offset for organic scatter (±15°)
+	var angle := base_angle + randf_range(-0.26, 0.26)
+
+	# Vary the distance from cannon (1.8 to 3.5 units) for depth
+	var min_radius := 1.8
+	var max_radius := 3.5
+	# Alternate between inner and outer ring based on index
+	var radius: float
+	if local_index % 2 == 0:
+		radius = randf_range(min_radius, min_radius + 0.6)  # Inner ring
+	else:
+		radius = randf_range(max_radius - 0.6, max_radius)  # Outer ring
+
+	var offset := Vector3(sin(angle), 0, cos(angle)) * radius
+
+	# Keep same Y as sprite scale
+	var y_pos := sprite_scale.y * 0.5 + height_offset
+
+	return Vector3(piece_pos.x + offset.x, y_pos, piece_pos.z + offset.z)
+
+
+func update_artillery_piece_positions(piece_positions: Array[Vector3]) -> void:
+	"""Update crew positions when artillery pieces move/rotate.
+	Called by ArtilleryFormation when facing changes."""
+	if not artillery_crew_mode:
+		return
+	artillery_piece_positions = piece_positions
+	_recalculate_artillery_crew_positions()
 
 
 # --- COMPATIBILITY METHODS ---

@@ -39,14 +39,23 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+
 
 class AgentOrchestrator:
     """Orchestrates experiment execution between agent and Godot."""
 
+    # Default Godot executable path
+    DEFAULT_GODOT = r"C:\Users\caleb\Downloads\Godot_v4.6.2-stable_win64.exe\Godot_v4.6.2-stable_win64_console.exe"
+
     def __init__(
         self,
         project_path: str,
-        godot_executable: str = "godot",
+        godot_executable: str = None,
         user_data_path: Optional[str] = None,
         timeout_seconds: int = 600,  # 10 minutes default
     ):
@@ -60,7 +69,7 @@ class AgentOrchestrator:
             timeout_seconds: Maximum time to wait for experiment completion
         """
         self.project_path = Path(project_path)
-        self.godot_executable = godot_executable
+        self.godot_executable = godot_executable or self.DEFAULT_GODOT
         self.timeout_seconds = timeout_seconds
 
         # Auto-detect user data path if not provided
@@ -78,7 +87,8 @@ class AgentOrchestrator:
 
     def _detect_user_data_path(self) -> Path:
         """Detect the Godot user:// directory based on OS and project name."""
-        project_name = self.project_path.name
+        # Read actual project name from project.godot (not directory name)
+        project_name = self._get_project_name()
 
         if os.name == 'nt':  # Windows
             appdata = os.environ.get('APPDATA', '')
@@ -90,6 +100,22 @@ class AgentOrchestrator:
                 return Path.home() / '.local' / 'share' / 'godot' / 'app_userdata' / project_name
         else:
             raise RuntimeError(f"Unsupported OS: {os.name}")
+
+    def _get_project_name(self) -> str:
+        """Read the project name from project.godot file."""
+        project_godot = self.project_path / "project.godot"
+        if project_godot.exists():
+            try:
+                with open(project_godot, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if line.startswith('config/name='):
+                            # Extract name from: config/name="BP RTS Dark Shadows"
+                            name = line.split('=', 1)[1].strip().strip('"')
+                            return name
+            except Exception:
+                pass
+        # Fallback to directory name
+        return self.project_path.name
 
     def run_experiment(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -241,6 +267,100 @@ class AgentOrchestrator:
             digest["battles"].append(battle_digest)
 
         return digest
+
+    def run_scenario_file(self, scenario_path: Path) -> Dict[str, Any]:
+        """
+        Load a YAML scenario file and run it.
+
+        Converts scenario YAML format to experiment spec format,
+        runs the experiment, and returns digest + raw events.
+
+        Args:
+            scenario_path: Path to scenario YAML file
+
+        Returns:
+            Dictionary with digest and events
+        """
+        if not YAML_AVAILABLE:
+            return {
+                "status": "error",
+                "error": "PyYAML not installed. Run: pip install pyyaml"
+            }
+
+        scenario_path = Path(scenario_path)
+        if not scenario_path.exists():
+            return {
+                "status": "error",
+                "error": f"Scenario file not found: {scenario_path}"
+            }
+
+        try:
+            with open(scenario_path, 'r', encoding='utf-8') as f:
+                scenario = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            return {
+                "status": "error",
+                "error": f"Failed to parse YAML: {e}"
+            }
+
+        # Convert scenario to experiment spec
+        spec = self._scenario_to_spec(scenario)
+
+        # Run the experiment
+        digest = self.run_experiment(spec)
+
+        # Add scenario metadata to digest
+        digest["scenario_id"] = scenario.get("id", "unknown")
+        digest["scenario_tags"] = scenario.get("tags", [])
+        digest["expectations"] = scenario.get("expectations", [])
+        digest["negative_expectations"] = scenario.get("negative_expectations", [])
+
+        return digest
+
+    def _scenario_to_spec(self, scenario: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert scenario YAML format to experiment spec format."""
+        setup = scenario.get("setup", {})
+
+        # Build player units list
+        player_units = []
+        for unit_def in setup.get("player", []):
+            player_units.append({
+                "unit": unit_def.get("unit", ""),
+                "soldiers": unit_def.get("count", 20),
+                "pos": unit_def.get("pos", []),
+                "facing": unit_def.get("facing", [1, 0, 0]),
+                "order": unit_def.get("order", "hold"),
+                "target": unit_def.get("target", "")
+            })
+
+        # Build enemy units list
+        enemy_units = []
+        for unit_def in setup.get("enemy", []):
+            enemy_units.append({
+                "unit": unit_def.get("unit", ""),
+                "soldiers": unit_def.get("count", 20),
+                "pos": unit_def.get("pos", []),
+                "facing": unit_def.get("facing", [-1, 0, 0]),
+                "order": unit_def.get("order", "hold"),
+                "target": unit_def.get("target", "")
+            })
+
+        # Build spec
+        spec = {
+            "experiment_name": scenario.get("id", "scenario_test"),
+            "hypothesis": scenario.get("description", ""),
+            "battles": [
+                {
+                    "label": scenario.get("id", "scenario_battle"),
+                    "player": player_units,
+                    "enemy": enemy_units,
+                    "duration_sec": setup.get("duration_sec", 30.0),
+                    "repeats": 1  # Scenarios run once by default
+                }
+            ]
+        }
+
+        return spec
 
     def run_stress_test(
         self,

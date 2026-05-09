@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
 [ext_resource type="Resource" path="res://assets/sprites/units/dwxbow_atlas.tres" id="2"]
@@ -8,12 +8,10 @@ script = ExtResource("1")
 regiment_name = "Dwarf Crossbows"
 unit_type = 2
 faction = "dwarf"
-weapon_class = 2
 attack = 6
 defense = 6
 weapon_skill = 6
 ballistic_skill = 12
-strength = 3
 max_soldiers = 30
 current_soldiers = 30
 base_morale = 50.0
@@ -21,10 +19,11 @@ morale_save = 4
 walk_speed = 1.5
 run_speed = 1.8
 charge_speed = 3.0
-charge_speed_distance = 15.0
 charge_bonus = 2
+weapon_class = 2
 max_ammo = 24
 current_ammo = 24
 range_distance = 40.0
 faction_color = Color(0.6, 0.4, 0.2, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

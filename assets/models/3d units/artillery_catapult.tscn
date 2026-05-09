@@ -5,3 +5,4 @@
 [node name="ArtilleryCatapult" type="Node3D"]
 
 [node name="Model" parent="." instance=ExtResource("1_model")]
+transform = Transform3D(5.5, 0, 0, 0, 5.5, 0, 0, 0, 5.5, 0, 1, 0)

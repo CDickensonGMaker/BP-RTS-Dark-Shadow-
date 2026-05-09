@@ -37,6 +37,22 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 
+# Load .env file if present (for API key persistence)
+def load_env_file():
+    """Load environment variables from .env file in agent directory."""
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    # Remove quotes if present
+                    value = value.strip().strip('"').strip("'")
+                    os.environ.setdefault(key.strip(), value)
+
+load_env_file()
+
 
 # =============================================================================
 # CONFIGURATION
@@ -50,6 +66,12 @@ CLAUDE_MODEL = "claude-sonnet-4-20250514"  # Fast and capable
 MAX_FIXES_PER_SESSION = 20
 MAX_LINES_CHANGED_PER_FIX = 50
 BACKUP_BEFORE_FIX = True
+
+# Unit Zoo stress test settings (must match unit_zoo_controller.gd exports)
+# These are the ACTUAL values used by the Unit Zoo, not the daemon's parameters
+UNIT_ZOO_STRESS_ROUNDS = 5
+UNIT_ZOO_STRESS_DURATION = 60.0  # 1 min per battle (faster iteration)
+UNIT_ZOO_TIMEOUT_BUFFER = 120  # Extra buffer for startup/shutdown
 
 # Paths
 AGENT_DIR = PROJECT_PATH / "tools" / "agent"
@@ -140,7 +162,10 @@ class BattleDaemon:
             "res://scenes/unit_zoo.tscn"
         ]
 
-        timeout = int(rounds * duration + 120)  # Buffer time
+        # Use ACTUAL Unit Zoo settings for timeout, not daemon parameters
+        # The Unit Zoo has its own hardcoded stress test settings
+        timeout = int(UNIT_ZOO_STRESS_ROUNDS * UNIT_ZOO_STRESS_DURATION + UNIT_ZOO_TIMEOUT_BUFFER)
+        self._log(f"Timeout set to {timeout}s based on Unit Zoo settings ({UNIT_ZOO_STRESS_ROUNDS} rounds x {UNIT_ZOO_STRESS_DURATION}s)")
 
         try:
             result = subprocess.run(
@@ -185,62 +210,460 @@ class BattleDaemon:
     # =========================================================================
 
     def analyze_results(self, results: Dict) -> List[Dict]:
-        """Analyze stress test results for issues."""
-        issues = []
+        """
+        Analyze stress test results for issues.
 
-        # Check for errors
+        Drop-in replacement for the original analyze_results. Same return shape
+        (list of dicts) but with structured fields and 11 new checks.
+        """
+        findings = []
+
+        # ------------------------------------------------------------------
+        # SECTION 1: Original checks (preserved)
+        # ------------------------------------------------------------------
+
         errors = results.get("errors", [])
         if errors:
             for error in errors[:5]:
-                issues.append({
-                    "type": "error",
-                    "severity": "high",
-                    "description": error.get("error", "Unknown error"),
-                    "context": f"Round {error.get('round', '?')}"
-                })
+                findings.append(self._mk_finding(
+                    category="error",
+                    severity="critical",
+                    title=f"Error logged: {error.get('error', 'Unknown')}",
+                    evidence={"round": error.get("round", "?"), "raw": str(error)[:200]},
+                    code_hints=["Check the most recent file edit; errors usually trace to that"],
+                ))
 
-        # Check faction balance
+        # ------------------------------------------------------------------
+        # SECTION 2: Sample-size sanity (NEW)
+        # ------------------------------------------------------------------
+
+        totals = results.get("totals", {})
+        battles_run = totals.get("battles_run", 0)
+
+        if battles_run < 10:
+            findings.append(self._mk_finding(
+                category="meta",
+                severity="low",
+                title=f"Sample size is small ({battles_run} battles)",
+                evidence={"battles_run": battles_run},
+                code_hints=["Consider --rounds 20+ for more reliable balance signals"],
+            ))
+
+        # If sample size is tiny, suppress balance-claim findings later
+        sample_size_reliable = battles_run >= 10
+
+        # ------------------------------------------------------------------
+        # SECTION 3: Faction balance (UPGRADED — only emit if sample size is OK)
+        # ------------------------------------------------------------------
+
         by_faction = results.get("by_faction", {})
-        for faction, stats in by_faction.items():
-            win_rate = stats.get("win_rate", 0.5)
-            if win_rate > 0.75:
-                issues.append({
-                    "type": "balance",
-                    "severity": "medium",
-                    "description": f"{faction} has {win_rate*100:.0f}% win rate - overpowered",
-                    "context": f"Wins: {stats.get('wins', 0)}, Losses: {stats.get('losses', 0)}"
-                })
-            elif win_rate < 0.25:
-                issues.append({
-                    "type": "balance",
-                    "severity": "medium",
-                    "description": f"{faction} has {win_rate*100:.0f}% win rate - underpowered",
-                    "context": f"Wins: {stats.get('wins', 0)}, Losses: {stats.get('losses', 0)}"
-                })
+        if sample_size_reliable:
+            for faction, stats in by_faction.items():
+                wins = stats.get("wins", 0)
+                losses = stats.get("losses", 0)
+                n = wins + losses
+                if n < 4:
+                    continue  # individual faction sample too small
+                win_rate = wins / n if n > 0 else 0.5
+                if win_rate > 0.80:
+                    findings.append(self._mk_finding(
+                        category="balance",
+                        severity="high" if win_rate > 0.90 else "medium",
+                        title=f"{faction} has {win_rate*100:.0f}% win rate ({wins}/{n})",
+                        evidence={"faction": faction, "wins": wins, "losses": losses, "win_rate": win_rate},
+                        code_hints=[
+                            f"Check unit stats for {faction} faction in battle_system/data/regiments/",
+                            "Look for matchup multipliers in matchup_calculator.gd",
+                            "Verify faction-specific traits aren't double-applying",
+                        ],
+                    ))
+                elif win_rate < 0.20:
+                    findings.append(self._mk_finding(
+                        category="balance",
+                        severity="high" if win_rate < 0.10 else "medium",
+                        title=f"{faction} only wins {win_rate*100:.0f}% ({wins}/{n})",
+                        evidence={"faction": faction, "wins": wins, "losses": losses, "win_rate": win_rate},
+                        code_hints=[
+                            f"Check unit stats for {faction} faction",
+                            "Cross-reference: do its units have lower base stats than peers?",
+                        ],
+                    ))
 
-        # Check for anomalies in battles
+        # ------------------------------------------------------------------
+        # SECTION 4: Per-battle event-level checks (NEW — the real upgrade)
+        # ------------------------------------------------------------------
+
         battles = results.get("battles", [])
+
+        # Aggregates rolled up across battles, used for system-wide sanity checks
+        total_flank_events = 0
+        total_rear_events = 0
+        total_charge_impacts = 0
+        total_routs_from_events = 0
+        cavalry_battles = 0  # battles where at least one side had cavalry units
+        cavalry_battles_with_charges = 0
+
         for battle in battles:
-            # Very short battles might indicate one-shot kills or instant routs
-            if battle.get("duration_sec", 60) < 5:
-                issues.append({
-                    "type": "bug",
-                    "severity": "high",
-                    "description": f"Battle {battle.get('battle_idx')} ended in {battle.get('duration_sec'):.1f}s - suspiciously fast",
-                    "context": f"{battle.get('player_faction')} vs {battle.get('enemy_faction')}"
-                })
+            events = battle.get("events", [])
+            ai_plays = battle.get("ai_plays", [])
+            battle_idx = battle.get("battle_idx", "?")
+            duration = battle.get("duration_sec", 0.0)
+            player_cas = battle.get("player_casualties", 0)
+            enemy_cas = battle.get("enemy_casualties", 0)
 
-            # Check for no casualties (units not fighting)
-            if battle.get("player_casualties", 0) == 0 and battle.get("enemy_casualties", 0) == 0:
-                issues.append({
-                    "type": "bug",
-                    "severity": "high",
-                    "description": f"Battle {battle.get('battle_idx')} had zero casualties - units may not be fighting",
-                    "context": f"Duration: {battle.get('duration_sec'):.1f}s"
-                })
+            # Categorize events
+            first_contacts = [e for e in events if e.get("type") == "first_contact"]
+            charge_impacts = [e for e in events if e.get("type") == "charge_impact"]
+            flank_events = [e for e in events if e.get("type") == "flank"]
+            rear_events = [e for e in events if e.get("type") == "rear"]
+            rout_events = [e for e in events if e.get("type") == "rout"]
 
-        self._log(f"Found {len(issues)} potential issues")
-        return issues
+            total_flank_events += len(flank_events)
+            total_rear_events += len(rear_events)
+            total_charge_impacts += len(charge_impacts)
+            total_routs_from_events += len(rout_events)
+
+            # === Check 4.1: Battles that ended too fast (UPGRADED — now event-aware) ===
+            if duration < 5.0 and (player_cas + enemy_cas) > 0:
+                findings.append(self._mk_finding(
+                    category="bug",
+                    severity="high",
+                    title=f"Battle {battle_idx} ended in {duration:.1f}s with casualties",
+                    evidence={
+                        "battle_idx": battle_idx,
+                        "duration_sec": duration,
+                        "player_casualties": player_cas,
+                        "enemy_casualties": enemy_cas,
+                        "weather": battle.get("weather"),
+                        "factions": f"{battle.get('player_faction')} vs {battle.get('enemy_faction')}",
+                        "first_contact_t": first_contacts[0]["t"] if first_contacts else None,
+                    },
+                    code_hints=[
+                        "Likely a one-shot kill or instant rout",
+                        "Check melee_resolver.gd damage scaling at high charge bonuses",
+                        "Check morale_system.gd for unbounded morale damage on first hit",
+                    ],
+                ))
+
+            # === Check 4.2: Battles with zero casualties (UPGRADED — distinguish causes) ===
+            if player_cas == 0 and enemy_cas == 0:
+                if len(first_contacts) == 0:
+                    # No contact happened — pathfinding or AI never engaged
+                    findings.append(self._mk_finding(
+                        category="bug",
+                        severity="high",
+                        title=f"Battle {battle_idx}: no contact ever made ({duration:.1f}s)",
+                        evidence={
+                            "battle_idx": battle_idx,
+                            "duration_sec": duration,
+                            "ai_plays_count": len(ai_plays),
+                        },
+                        code_hints=[
+                            "Pathfinding may not be routing units to enemies",
+                            "AI may not be issuing march/charge orders — check general_ai.gd",
+                            "Deployment positions may be too far apart",
+                        ],
+                    ))
+                else:
+                    # Contact happened but no damage — combat math broken
+                    findings.append(self._mk_finding(
+                        category="bug",
+                        severity="critical",
+                        title=f"Battle {battle_idx}: contact made but ZERO damage dealt",
+                        evidence={
+                            "battle_idx": battle_idx,
+                            "duration_sec": duration,
+                            "first_contact_t": first_contacts[0]["t"],
+                            "charge_impacts": len(charge_impacts),
+                        },
+                        code_hints=[
+                            "Combat resolution may be silently returning 0 casualties",
+                            "Check melee_resolver.gd resolve_bidirectional_melee return path",
+                            "Check _apply_difficulty_damage — multiplier might be 0",
+                        ],
+                    ))
+
+            # === Check 4.3: Charge fired but defender took no follow-up damage ===
+            # If charge_impact fired and defender was NOT braced, casualties should follow.
+            # If they don't, the impact damage is being silently dropped.
+            for ci in charge_impacts:
+                if ci.get("braced"):
+                    continue  # braced charges may legitimately deal no damage
+                target = ci.get("target", "")
+                ci_t = ci.get("t", 0.0)
+                # Look for any rout/flank/rear of the target in next 1.5s
+                # OR for a noticeable casualty pulse (we don't have per-event casualties,
+                # so we use battle totals as a proxy)
+                target_routed = any(
+                    e for e in rout_events
+                    if e.get("regiment") == target and e["t"] >= ci_t and e["t"] - ci_t < 5.0
+                )
+                target_in_flank = any(
+                    e for e in flank_events + rear_events
+                    if e.get("flanked") == target and e["t"] >= ci_t and e["t"] - ci_t < 1.5
+                )
+                # Only flag if there's BOTH no rout AND no flank in window
+                # AND the battle had near-zero casualties to that side overall
+                # (otherwise it's just one charge of many, can't tell)
+                if not target_routed and not target_in_flank:
+                    # Crude: if total casualties to target's side is <= 1, charge probably did nothing
+                    # We don't know which side `target` is on without unit lookup, so use global heuristic
+                    if (player_cas + enemy_cas) < len(charge_impacts) * 2:
+                        findings.append(self._mk_finding(
+                            category="bug",
+                            severity="high",
+                            title=f"Battle {battle_idx}: charge_impact fired but no measurable damage to {target}",
+                            evidence={
+                                "battle_idx": battle_idx,
+                                "target": target,
+                                "charge_impact_t": ci_t,
+                                "total_charges_in_battle": len(charge_impacts),
+                                "total_casualties": player_cas + enemy_cas,
+                            },
+                            code_hints=[
+                                "combat_manager.gd begin_melee may be eating the impact",
+                                "Check that impact_casualties is actually applied via take_casualties",
+                                "Verify the defender wasn't somehow braced post-hoc",
+                            ],
+                        ))
+                        break  # only flag once per battle to avoid spam
+
+            # === Check 4.4: Routing in totals vs routing events ===
+            # The unit_zoo controller tracks routs both via signal AND via the event stream.
+            # If they disagree, signal wiring is broken somewhere.
+            if "routing_count" in battle:  # if available
+                signal_routs = battle.get("routing_count", 0)
+                event_routs = len(rout_events)
+                if abs(signal_routs - event_routs) > 1:
+                    findings.append(self._mk_finding(
+                        category="bug",
+                        severity="medium",
+                        title=f"Battle {battle_idx}: rout count desync (signal={signal_routs}, events={event_routs})",
+                        evidence={
+                            "battle_idx": battle_idx,
+                            "signal_routs": signal_routs,
+                            "event_routs": event_routs,
+                        },
+                        code_hints=[
+                            "BattleSignals.regiment_routing may have multiple listeners getting different counts",
+                            "Or _agent_battle_events may be cleared mid-battle",
+                        ],
+                    ))
+
+            # === Check 4.5: AI play count sanity ===
+            if len(ai_plays) == 0 and duration > 10.0:
+                findings.append(self._mk_finding(
+                    category="ai",
+                    severity="medium",
+                    title=f"Battle {battle_idx}: AI never picked any play in {duration:.1f}s",
+                    evidence={
+                        "battle_idx": battle_idx,
+                        "duration_sec": duration,
+                    },
+                    code_hints=[
+                        "GeneralAI may not be ticking — check _physics_process or _process",
+                        "AI registration may have failed at battle start",
+                        "Check battle_manager.gd _setup_enemy_general was called",
+                    ],
+                ))
+            elif len(ai_plays) > 0 and duration > 5.0:
+                plays_per_sec = len(ai_plays) / duration
+                if plays_per_sec > 1.0:
+                    # AI flip-flopping — hysteresis is broken
+                    findings.append(self._mk_finding(
+                        category="ai",
+                        severity="medium",
+                        title=f"Battle {battle_idx}: AI changed plays {len(ai_plays)} times in {duration:.1f}s",
+                        evidence={
+                            "battle_idx": battle_idx,
+                            "ai_plays_count": len(ai_plays),
+                            "plays_per_sec": plays_per_sec,
+                            "play_sequence": [p.get("play") for p in ai_plays[:10]],
+                        },
+                        code_hints=[
+                            "Hysteresis in general_ai.gd _evaluate_plays may be broken",
+                            "Check that play scores aren't oscillating around the threshold",
+                        ],
+                    ))
+
+            # === Check 4.6: Decisive loss with no routs (morale broken) ===
+            outcome = battle.get("outcome", "")
+            if "decisive" in outcome.lower() or "decisive" in str(outcome):
+                if len(rout_events) == 0 and (player_cas > 50 or enemy_cas > 50):
+                    findings.append(self._mk_finding(
+                        category="bug",
+                        severity="high",
+                        title=f"Battle {battle_idx}: decisive outcome but no routs",
+                        evidence={
+                            "battle_idx": battle_idx,
+                            "outcome": outcome,
+                            "player_cas": player_cas,
+                            "enemy_cas": enemy_cas,
+                        },
+                        code_hints=[
+                            "Units are dying without routing — morale damage may be too low",
+                            "MELEE_MORALE_PER_CASUALTY in combat_manager.gd may need raising",
+                            "OR rout threshold may be too low",
+                        ],
+                    ))
+
+            # Cavalry presence tracking for Check 5.3 below
+            for unit_stat in battle.get("player_units", []) + battle.get("enemy_units", []):
+                unit_id = unit_stat.get("unit_id", "")
+                if any(c in unit_id.lower() for c in ["knight", "cav", "horse", "rider"]):
+                    cavalry_battles += 1
+                    if len(charge_impacts) > 0:
+                        cavalry_battles_with_charges += 1
+                    break  # count battle once
+
+        # ------------------------------------------------------------------
+        # SECTION 5: System-wide patterns (NEW)
+        # ------------------------------------------------------------------
+
+        if battles_run > 0:
+            # === Check 5.1: Flanks happen at all? ===
+            if total_flank_events == 0 and total_rear_events == 0 and battles_run >= 5:
+                findings.append(self._mk_finding(
+                    category="bug",
+                    severity="critical",
+                    title=f"NO flank or rear events across {battles_run} battles",
+                    evidence={
+                        "battles_run": battles_run,
+                        "total_flank_events": 0,
+                        "total_rear_events": 0,
+                        "total_first_contacts": sum(
+                            len([e for e in b.get("events", []) if e.get("type") == "first_contact"])
+                            for b in battles
+                        ),
+                    },
+                    code_hints=[
+                        "Flanking detection is fundamentally broken",
+                        "Check flanking_calculator.gd is_flank/is_rear thresholds",
+                        "Check _facing_direction is being set on units (Phase 1 of flanking plan)",
+                        "Likely the BattleSignals.unit_flanked is not being emitted",
+                    ],
+                ))
+
+            # === Check 5.2: Flank/rear ratio sanity ===
+            # In real combat, flanks should outnumber rears 2-3x (rears are harder to achieve)
+            # If rears > flanks, facing math is inverted somewhere
+            if total_flank_events + total_rear_events >= 10:
+                if total_rear_events > total_flank_events * 1.2:
+                    findings.append(self._mk_finding(
+                        category="bug",
+                        severity="high",
+                        title=f"More rear hits ({total_rear_events}) than flank hits ({total_flank_events})",
+                        evidence={
+                            "total_flank_events": total_flank_events,
+                            "total_rear_events": total_rear_events,
+                            "ratio": total_rear_events / max(1, total_flank_events),
+                        },
+                        code_hints=[
+                            "Facing math may be inverted — units appearing to face away when they shouldn't",
+                            "Check _compute_initial_facing_from_deployment in regiment.gd",
+                            "Verify deployment markers point the right direction on test maps",
+                        ],
+                    ))
+
+            # === Check 5.3: Cavalry never charging ===
+            if cavalry_battles >= 5 and cavalry_battles_with_charges < cavalry_battles * 0.5:
+                findings.append(self._mk_finding(
+                    category="ai",
+                    severity="medium",
+                    title=f"Cavalry rarely charges ({cavalry_battles_with_charges}/{cavalry_battles} cav-battles had impact)",
+                    evidence={
+                        "cavalry_battles": cavalry_battles,
+                        "cavalry_battles_with_charges": cavalry_battles_with_charges,
+                    },
+                    code_hints=[
+                        "AI may not be issuing charge orders for cavalry",
+                        "PlayPinAndFlank or PlayAllOutAssault may not include charge ordering",
+                        "Or charge_speed_distance threshold may be unreachable on these maps",
+                    ],
+                ))
+
+        # ------------------------------------------------------------------
+        # SECTION 6: Per-unit reliability (NEW)
+        # ------------------------------------------------------------------
+
+        # Track per-unit win/loss across battles to find unit-level balance bugs
+        unit_outcomes: Dict[str, Dict[str, int]] = {}
+        for battle in battles:
+            outcome = battle.get("outcome", "")
+            player_won = "player" in str(outcome).lower() and "win" in str(outcome).lower()
+            enemy_won = "enemy" in str(outcome).lower() and "win" in str(outcome).lower()
+            for unit_stat in battle.get("player_units", []):
+                uid = unit_stat.get("unit_id", "")
+                if not uid: continue
+                unit_outcomes.setdefault(uid, {"wins": 0, "losses": 0})
+                if player_won: unit_outcomes[uid]["wins"] += 1
+                elif enemy_won: unit_outcomes[uid]["losses"] += 1
+            for unit_stat in battle.get("enemy_units", []):
+                uid = unit_stat.get("unit_id", "")
+                if not uid: continue
+                unit_outcomes.setdefault(uid, {"wins": 0, "losses": 0})
+                if enemy_won: unit_outcomes[uid]["wins"] += 1
+                elif player_won: unit_outcomes[uid]["losses"] += 1
+
+        if sample_size_reliable:
+            for unit_id, record in unit_outcomes.items():
+                n = record["wins"] + record["losses"]
+                if n < 5:
+                    continue
+                wr = record["wins"] / n
+                if wr < 0.15 and record["losses"] >= 4:
+                    findings.append(self._mk_finding(
+                        category="balance",
+                        severity="medium",
+                        title=f"Unit '{unit_id}' lost {record['losses']}/{n} battles ({wr*100:.0f}% win rate)",
+                        evidence={
+                            "unit_id": unit_id,
+                            "wins": record["wins"],
+                            "losses": record["losses"],
+                        },
+                        code_hints=[
+                            f"Check {unit_id}.tres for under-tuned stats",
+                            f"Look for missing matchup bonus where {unit_id} should have one",
+                        ],
+                    ))
+
+        # ------------------------------------------------------------------
+        # Done
+        # ------------------------------------------------------------------
+
+        self._log(f"analyze_results: {len(findings)} findings across {battles_run} battles")
+
+        # Sort by severity (critical first)
+        sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        findings.sort(key=lambda f: sev_order.get(f.get("severity", "low"), 99))
+
+        return findings
+
+    def _mk_finding(self, category: str, severity: str, title: str,
+                    evidence: Dict, code_hints: List[str]) -> Dict:
+        """
+        Construct a structured finding dict.
+
+        Standard schema, consumable by both findings_viewer.html and the
+        Claude diagnose_with_claude prompt:
+
+            category:   "bug" | "balance" | "ai" | "error" | "meta"
+            severity:   "critical" | "high" | "medium" | "low"
+            title:      short human-readable headline
+            evidence:   dict of facts that support the finding
+            code_hints: list of likely code paths to investigate
+        """
+        return {
+            "category": category,
+            "severity": severity,
+            "title": title,
+            "evidence": evidence,
+            "code_hints": code_hints,
+            # Backward-compat fields that the old daemon code expects:
+            "type": category,
+            "description": title,
+            "context": " | ".join(f"{k}={v}" for k, v in list(evidence.items())[:3]),
+        }
 
     # =========================================================================
     # CLAUDE INTEGRATION

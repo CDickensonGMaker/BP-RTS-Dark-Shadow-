@@ -30,6 +30,11 @@ signal pieces_updated(count: int)
 @export var recoil_duration: float = 0.1  ## How fast the kickback happens
 @export var recoil_recovery: float = 0.4  ## How long to return to position
 
+## Model front direction offset (0-7). Maps which direction the 3D model's "front" faces.
+## 0 = Model front is North, 4 = Model front is South, etc.
+## This adds a rotation offset so the model visually faces the correct direction.
+var model_front_direction: int = 0
+
 ## Array of spawned artillery piece nodes
 var pieces: Array[Node3D] = []
 ## Original local positions for each piece (for recoil recovery)
@@ -84,7 +89,7 @@ func _process(delta: float):
 
 
 func spawn_formation(count: int):
-	"""Spawn artillery pieces in a line formation."""
+	"""Spawn artillery pieces in a line formation perpendicular to facing direction."""
 	clear_formation()
 
 	if not artillery_model:
@@ -93,14 +98,13 @@ func spawn_formation(count: int):
 
 	var actual_count = mini(count, max_pieces)
 
-	# Artillery arranged in a line (side by side)
-	var total_width = (actual_count - 1) * spacing
-	var start_x = -total_width / 2.0
-
 	# Clear recoil tracking arrays
 	_piece_base_positions.clear()
 	_piece_recoil_state.clear()
 	_piece_recoil_progress.clear()
+
+	# Calculate positions perpendicular to facing direction
+	var positions := _calculate_piece_positions(actual_count)
 
 	for i in actual_count:
 		var piece = artillery_model.instantiate()
@@ -108,9 +112,8 @@ func spawn_formation(count: int):
 			push_error("ArtilleryFormation: Failed to instantiate artillery model")
 			continue
 
-		# Position in line formation
-		var x_pos = start_x + (i * spacing)
-		var base_pos = Vector3(x_pos, height_offset, 0)
+		# Position perpendicular to facing (side by side)
+		var base_pos = positions[i]
 		piece.position = base_pos
 
 		# Store base position for recoil recovery
@@ -121,8 +124,10 @@ func spawn_formation(count: int):
 		# Apply scale
 		piece.scale = model_scale
 
-		# Apply initial facing
-		piece.rotation.y = _current_facing
+		# Apply initial facing with model_front_direction offset
+		# Add PI to flip models 180° (most 3D models are exported with +Z forward, but Godot uses -Z)
+		var offset_angle := model_front_direction * (PI / 4.0)
+		piece.rotation.y = _current_facing + offset_angle + PI
 
 		# Add collision if enabled and not already present
 		if enable_collision:
@@ -137,6 +142,40 @@ func spawn_formation(count: int):
 
 	# Initial terrain snap
 	call_deferred("_update_piece_terrain_positions")
+
+
+func _calculate_piece_positions(count: int) -> Array[Vector3]:
+	"""Calculate positions for artillery pieces perpendicular to facing direction."""
+	var positions: Array[Vector3] = []
+
+	# Get the right vector (perpendicular to facing)
+	# _current_facing is radians where 0 = North (-Z), PI/2 = East (+X)
+	var facing_vec := Vector3(sin(_current_facing), 0, cos(_current_facing))
+	var right_vec := facing_vec.cross(Vector3.UP).normalized()
+
+	# Position pieces along the right vector (side by side)
+	var total_width = (count - 1) * spacing
+	var start_offset = -total_width / 2.0
+
+	for i in count:
+		var offset = start_offset + (i * spacing)
+		var pos = right_vec * offset + Vector3(0, height_offset, 0)
+		positions.append(pos)
+
+	return positions
+
+
+func _reposition_pieces():
+	"""Reposition all pieces based on current facing direction."""
+	if pieces.is_empty():
+		return
+
+	var positions := _calculate_piece_positions(pieces.size())
+
+	for i in pieces.size():
+		if i < positions.size() and is_instance_valid(pieces[i]):
+			pieces[i].position = positions[i]
+			_piece_base_positions[i] = positions[i]
 
 
 func _ensure_collision(piece: Node3D):
@@ -165,9 +204,14 @@ func _ensure_collision(piece: Node3D):
 		body.add_child(collision_shape)
 		piece.add_child(body)
 
-		# Set collision layer (Layer 2 = Units)
-		body.collision_layer = 2
-		body.collision_mask = 0  # Don't detect other units
+		# Store regiment reference in metadata for collision detection fallback
+		# This allows _on_melee_area_contact to find the owning Regiment
+		body.set_meta("regiment", _parent_regiment)
+
+		# Artillery pieces should NOT be on unit collision layer
+		# Only the regiment's MeleeArea matters for melee detection
+		body.collision_layer = 0
+		body.collision_mask = 0
 
 
 func clear_formation():
@@ -209,10 +253,19 @@ func set_facing_immediate(direction: Vector3):
 
 
 func _apply_facing_to_pieces():
-	"""Apply current facing rotation to all pieces."""
+	"""Apply current facing rotation and reposition all pieces."""
+	# Reposition pieces perpendicular to new facing direction
+	_reposition_pieces()
+
+	# Apply model_front_direction offset for rotation
+	# Each direction step (0-7) is 45 degrees (PI/4 radians)
+	# Add PI to flip models 180° (most 3D models are exported with +Z forward, but Godot uses -Z)
+	var offset_angle := model_front_direction * (PI / 4.0)
+	var final_facing := _current_facing + offset_angle + PI
+
 	for piece in pieces:
 		if is_instance_valid(piece) and piece.visible:
-			piece.rotation.y = _current_facing
+			piece.rotation.y = final_facing
 
 
 func _update_piece_terrain_positions():
@@ -331,6 +384,78 @@ func play_idle_animation():
 	"""Play idle animation on all pieces."""
 	# Try multiple common idle animation names
 	_play_animation_with_fallbacks(["idle", "Idle", "RESET", "default"])
+
+
+## --- VISUAL STATE FOR AIMING/RELOADING ---
+
+## Current visual firing state
+enum VisualFiringState { IDLE, AIMING, RELOADING }
+var _current_visual_state: VisualFiringState = VisualFiringState.IDLE
+
+## Signal emitted when visual state changes
+signal firing_state_changed(new_state: VisualFiringState)
+
+
+func set_visual_firing_state(new_state: int) -> void:
+	"""Update the visual state of artillery pieces (IDLE, AIMING, or RELOADING).
+	   Call this from Regiment when firing state changes."""
+	if new_state == _current_visual_state:
+		return
+
+	_current_visual_state = new_state
+	firing_state_changed.emit(_current_visual_state)
+
+	match _current_visual_state:
+		VisualFiringState.AIMING:
+			# Artillery is aimed and ready to fire
+			_play_animation_with_fallbacks(["aim", "ready", "Aim", "Ready", "idle"])
+			_apply_aiming_visual()
+		VisualFiringState.RELOADING:
+			# Artillery is being reloaded
+			_play_animation_with_fallbacks(["reload", "Reload", "load", "Load"])
+			_apply_reloading_visual()
+		_:
+			# Idle state
+			play_idle_animation()
+			_clear_state_visual()
+
+
+func _apply_aiming_visual():
+	"""Apply visual effects when aiming (ready to fire)."""
+	# Slight forward tilt to indicate readiness
+	for piece in pieces:
+		if is_instance_valid(piece) and piece.visible:
+			# Could add a glow effect or particle here
+			pass
+
+
+func _apply_reloading_visual():
+	"""Apply visual effects when reloading."""
+	# Could show crew animation, smoke clearing, etc.
+	for piece in pieces:
+		if is_instance_valid(piece) and piece.visible:
+			pass
+
+
+func _clear_state_visual():
+	"""Clear any state-specific visual effects."""
+	pass
+
+
+func get_visual_firing_state() -> VisualFiringState:
+	"""Get the current visual firing state."""
+	return _current_visual_state
+
+
+func get_visual_firing_state_name() -> String:
+	"""Get human-readable name of current visual state."""
+	match _current_visual_state:
+		VisualFiringState.AIMING:
+			return "AIMING"
+		VisualFiringState.RELOADING:
+			return "RELOADING"
+		_:
+			return "IDLE"
 
 
 ## --- RECOIL SYSTEM ---

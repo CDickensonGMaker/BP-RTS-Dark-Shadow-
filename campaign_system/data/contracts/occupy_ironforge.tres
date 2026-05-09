@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://campaign_system/data/contract_data.gd" id="1"]
 [ext_resource type="Resource" path="res://battle_system/data/regiments/dwwar_regiment.tres" id="2"]
-[ext_resource type="Resource" path="res://battle_system/data/regiments/iron_regiment.tres" id="3"]
+[ext_resource type="Resource" path="res://battle_system/data/regiments/ironbrks_regiment.tres" id="3"]
 [ext_resource type="Resource" path="res://battle_system/data/regiments/dwxbow_regiment.tres" id="4"]
 
 [resource]

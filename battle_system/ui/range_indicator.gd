@@ -97,7 +97,7 @@ func _ready() -> void:
 	_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_material.albedo_color = indicator_color
-	_material.no_depth_test = false
+	_material.no_depth_test = true  # Always render on top of terrain
 	_mesh_instance.material_override = _material
 
 	# Create outline material (slightly more opaque)
@@ -106,6 +106,7 @@ func _ready() -> void:
 	_outline_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_outline_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_outline_material.albedo_color = Color(indicator_color.r, indicator_color.g, indicator_color.b, 0.6)
+	_outline_material.no_depth_test = true  # Always render on top of terrain
 	_outline_mesh.material_override = _outline_material
 
 	# Start hidden
@@ -231,11 +232,8 @@ func update_facing(direction: Vector3) -> void:
 
 	_current_facing = direction.normalized()
 
-	# Use WorldCompass for consistent angle calculation
-	# This aligns the LOS cone with sprite direction (snapped to 8 directions)
-	var dir_index := WorldCompassScript.direction_from_vector(_current_facing)
-	var angle: float = WorldCompassScript.angle_from_direction(dir_index)
-	rotation.y = angle
+	# Continuous rotation based on facing vector
+	rotation.y = atan2(_current_facing.x, _current_facing.z)
 
 
 ## Get the current indicator type.

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
 [ext_resource type="Resource" path="res://assets/sprites/units/orcboyz_atlas.tres" id="2"]
@@ -6,25 +6,15 @@
 [resource]
 script = ExtResource("1")
 regiment_name = "Orc Boyz"
-unit_type = 0
 faction = "greenskin"
 attack = 12
 defense = 8
-weapon_skill = 10
-ballistic_skill = 0
 strength = 4
 armor = 3
-max_soldiers = 40
-current_soldiers = 40
 base_morale = 70.0
-morale_save = 5
 walk_speed = 1.7
 run_speed = 2.1
 charge_speed = 3.4
-charge_speed_distance = 15.0
-charge_bonus = 6
-max_ammo = 0
-current_ammo = 0
-range_distance = 0.0
 faction_color = Color(0.3, 0.6, 0.2, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

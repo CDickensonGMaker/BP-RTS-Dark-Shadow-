@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
 [ext_resource type="Resource" path="res://assets/sprites/units/keelers_atlas.tres" id="2"]
@@ -9,9 +9,7 @@ regiment_name = "Ironhoof Lancers"
 unit_type = 1
 faction = "empire"
 attack = 16
-defense = 10
 weapon_skill = 14
-ballistic_skill = 0
 strength = 5
 max_soldiers = 16
 current_soldiers = 16
@@ -23,8 +21,6 @@ charge_speed = 6.0
 charge_speed_distance = 18.0
 charge_bonus = 10
 mass = 2.5
-max_ammo = 0
-current_ammo = 0
-range_distance = 0.0
 faction_color = Color(0.2, 0.4, 0.8, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

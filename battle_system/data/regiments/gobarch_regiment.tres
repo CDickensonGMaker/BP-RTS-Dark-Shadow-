@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
 [ext_resource type="Resource" path="res://assets/sprites/units/gobarch_atlas.tres" id="2"]
@@ -8,24 +8,21 @@ script = ExtResource("1")
 regiment_name = "Goblin Archers"
 unit_type = 2
 faction = "greenskin"
-weapon_class = 1
 attack = 4
 defense = 4
 weapon_skill = 4
 ballistic_skill = 10
 strength = 2
 armor = 1
-max_soldiers = 40
-current_soldiers = 40
 base_morale = 40.0
 morale_save = 3
 walk_speed = 1.6
-run_speed = 2.0
 charge_speed = 3.2
-charge_speed_distance = 15.0
 charge_bonus = 0
+weapon_class = 1
 max_ammo = 20
 current_ammo = 20
 range_distance = 35.0
 faction_color = Color(0.3, 0.6, 0.2, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

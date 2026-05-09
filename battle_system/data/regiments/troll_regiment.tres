@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
 [ext_resource type="Resource" path="res://assets/sprites/units/troll_atlas.tres" id="2"]
@@ -8,15 +8,14 @@ script = ExtResource("1")
 regiment_name = "Trolls"
 unit_type = 5
 faction = "greenskin"
-attack = 32
-defense = 22
-weapon_skill = 10
-ballistic_skill = 0
-strength = 14
-armor = 2
+attack = 38
+defense = 28
+weapon_skill = 16
+strength = 16
+armor = 5
 max_soldiers = 12
 current_soldiers = 12
-base_morale = 78.0
+base_morale = 85.0
 morale_save = 4
 walk_speed = 1.0
 run_speed = 1.5
@@ -25,8 +24,6 @@ charge_speed_distance = 12.0
 charge_bonus = 14
 mass = 4.0
 turn_rate = 1.5
-max_ammo = 0
-current_ammo = 0
-range_distance = 0.0
 faction_color = Color(0.3, 0.5, 0.2, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

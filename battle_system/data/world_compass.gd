@@ -107,11 +107,11 @@ static func direction_from_vector(dir: Vector3) -> int:
 	if dir.length_squared() < 0.001:
 		return DIR_NORTH  # Default to north if no direction
 
-	# atan2(-z, x) gives angle from +X axis going CCW, but we want CW from -Z (North)
-	# We use atan2(x, -z) to get angle from North (-Z axis)
-	# Then negate to convert CCW to CW
+	# atan2(x, -z) gives angle from North (-Z axis)
+	# The result is already in clockwise convention (positive = clockwise from North)
+	# because we swapped the arguments: atan2(x, -z) instead of atan2(-z, x)
 	var angle := atan2(dir.x, -dir.z)
-	return direction_from_angle(-angle)  # Negate to convert CCW to CW
+	return direction_from_angle(angle)
 
 
 static func direction_from_angle(angle_rad: float) -> int:
@@ -133,15 +133,18 @@ static func direction_from_angle(angle_rad: float) -> int:
 
 
 static func angle_from_direction(dir_index: int) -> float:
-	"""Convert a sprite direction index to world-space angle.
+	"""Convert a sprite direction index to Godot rotation.y angle.
 
 	Args:
 		dir_index: Direction index 0-7
 
 	Returns:
-		Angle in radians where 0 = facing North (-Z), clockwise
+		Angle in radians for Godot's rotation.y (CCW positive convention)
+		0 = facing North (-Z), negative = clockwise rotation
 	"""
-	return float(dir_index) * (PI / 4.0)
+	# WorldCompass uses CW from North, Godot uses CCW positive
+	# Negate to convert: CW angle -> CCW rotation.y
+	return -float(dir_index) * (PI / 4.0)
 
 
 static func vector_from_direction(dir_index: int) -> Vector3:
@@ -209,15 +212,16 @@ static func world_to_screen_direction(world_dir_index: int, camera_y_rotation: f
 
 	Args:
 		world_dir_index: The unit's actual facing in world space (0-7)
-		camera_y_rotation: Camera's Y rotation in radians
+		camera_y_rotation: Camera's Y rotation in radians (Godot CCW positive)
 
 	Returns:
 		Screen-relative direction index for sprite selection
 	"""
-	# Convert camera rotation to direction steps (each step = 45 degrees)
-	# Add PI because we want the direction the camera is looking FROM, not TO
-	var camera_offset := int(round((camera_y_rotation + PI) / (PI / 4.0))) % 8
-	return (world_dir_index - camera_offset + 8) % 8
+	# Convert camera rotation (CCW radians) to direction steps (45° each)
+	# Godot: positive rotation.y = CCW when viewed from above
+	# Adding camera_steps rotates the sprite to compensate for camera rotation
+	var camera_steps := int(round(camera_y_rotation / (PI / 4.0)))
+	return ((world_dir_index + camera_steps) % 8 + 8) % 8
 
 
 static func screen_to_world_direction(screen_dir_index: int, camera_y_rotation: float) -> int:
@@ -228,13 +232,13 @@ static func screen_to_world_direction(screen_dir_index: int, camera_y_rotation: 
 
 	Args:
 		screen_dir_index: How the unit appears on screen (0-7)
-		camera_y_rotation: Camera's Y rotation in radians
+		camera_y_rotation: Camera's Y rotation in radians (Godot CCW positive)
 
 	Returns:
 		World-space direction index
 	"""
-	var camera_offset := int(round((camera_y_rotation + PI) / (PI / 4.0))) % 8
-	return (screen_dir_index + camera_offset) % 8
+	var camera_steps := int(round(camera_y_rotation / (PI / 4.0)))
+	return ((screen_dir_index - camera_steps) % 8 + 8) % 8
 
 
 # === UTILITY FUNCTIONS ===

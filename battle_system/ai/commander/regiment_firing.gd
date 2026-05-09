@@ -246,3 +246,51 @@ func get_fire_pattern_name() -> String:
 		WeaponClassDataScript.FirePattern.SINGLE:
 			return "SINGLE"
 	return "UNKNOWN"
+
+
+## Firing state for artillery units (AIMING when ready to fire, RELOADING after shot)
+enum FiringState { IDLE, AIMING, RELOADING }
+
+var _has_fired_first_shot: bool = false
+
+func get_firing_state() -> FiringState:
+	## Returns current firing state for artillery display.
+	## AIMING = ready to fire, waiting for target or final aim
+	## RELOADING = weapon discharged, loading next round
+	if not weapon_def:
+		return FiringState.IDLE
+
+	# Only applies to SINGLE pattern (artillery)
+	if weapon_def.fire_pattern != WeaponClassDataScript.FirePattern.SINGLE:
+		return FiringState.IDLE
+
+	var reload_time: float = _get_reload_time()
+	var progress: float = _shared_timer / reload_time if reload_time > 0 else 0.0
+
+	# Before first shot: timer is at 80%+ so we're AIMING
+	# After firing: timer resets to 0 and counts up = RELOADING until ~80%
+	if progress >= 0.8:
+		return FiringState.AIMING
+	else:
+		# After first shot, we're reloading
+		if _has_fired_first_shot:
+			return FiringState.RELOADING
+		else:
+			# Still pre-battle loading
+			return FiringState.AIMING
+
+
+func get_firing_state_name() -> String:
+	## Returns human-readable firing state for UI.
+	match get_firing_state():
+		FiringState.AIMING:
+			return "AIMING"
+		FiringState.RELOADING:
+			return "RELOADING"
+		_:
+			return ""
+
+
+func mark_shot_fired() -> void:
+	## Called when a shot is actually fired - tracks that we've fired at least once.
+	_has_fired_first_shot = true

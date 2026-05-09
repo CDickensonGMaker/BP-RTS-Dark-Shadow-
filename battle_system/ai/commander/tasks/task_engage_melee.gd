@@ -77,8 +77,10 @@ func tick(_delta: float) -> Status:
 		_initiate_charge(target)
 		return Status.RUNNING
 
-	# Need to get closer - but only if not already marching toward target
-	if regiment.state != Regiment.State.MARCHING:
+	# Need to get closer - re-issue move if stopped but still outside melee range
+	# Previously only checked != MARCHING, causing deadlock when infantry
+	# reached destination (state -> IDLE) but was still outside MELEE_RANGE
+	if regiment.state == Regiment.State.IDLE:
 		commander.issue_move_order(target.global_position)
 	return Status.RUNNING
 

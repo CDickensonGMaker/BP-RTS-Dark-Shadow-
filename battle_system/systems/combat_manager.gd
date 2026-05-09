@@ -498,6 +498,13 @@ func begin_melee(attacker: Regiment, defender: Regiment) -> void:
 		"defender_damage_acc": 0.0
 	})
 
+	# DEBUG: Confirm melee added
+	print("[MELEE BEGIN] %s vs %s added to active_melees (total: %d)" % [
+		attacker.data.regiment_name if attacker.data else attacker.name,
+		defender.data.regiment_name if defender.data else defender.name,
+		active_melees.size()
+	])
+
 	# Emit signal
 	combat_started.emit(attacker, defender, "melee")
 
@@ -724,6 +731,14 @@ func _resolve_melee_tick(melee: Dictionary) -> void:
 		weather_charge_mod,
 		formation_charge_mod
 	)
+
+	# DEBUG: Trace melee tick results
+	print("[MELEE TICK] %s vs %s: att_hit=%s att_cas=%d def_hit=%s def_cas=%d" % [
+		att.data.regiment_name if att.data else att.name,
+		def.data.regiment_name if def.data else def.name,
+		result.attacker.hit, result.attacker.casualties,
+		result.defender_counter.hit, result.defender_counter.casualties
+	])
 
 	# Apply high ground morale modifier
 	casualty_processor.apply_height_morale_modifier(att, def, melee_resolver.HEIGHT_ADVANTAGE_THRESHOLD)
@@ -988,11 +1003,23 @@ func fire_ranged(attacker: Regiment, target: Regiment) -> void:
 ## Each soldier fires independently, creating N projectiles with slight position offsets.
 ## Uses weapon class data for projectile configuration.
 func fire_ranged_multi(attacker: Regiment, target: Regiment, shot_count: int) -> void:
+	# DEBUG: Trace artillery firing
+	var is_artillery: bool = attacker.data and attacker.data.unit_type == UnitType.Type.ARTILLERY
+	if is_artillery:
+		print("[COMBAT DEBUG] fire_ranged_multi called: %s -> %s, shots=%d" % [
+			attacker.data.regiment_name if attacker.data else "?",
+			target.data.regiment_name if target and target.data else "?",
+			shot_count
+		])
+
 	if shot_count <= 0:
+		if is_artillery: print("[COMBAT DEBUG] REJECTED: shot_count <= 0")
 		return
 	if attacker.current_ammo <= 0:
+		if is_artillery: print("[COMBAT DEBUG] REJECTED: no ammo")
 		return
 	if attacker.data.ballistic_skill == 0:
+		if is_artillery: print("[COMBAT DEBUG] REJECTED: no ballistic skill")
 		return
 
 	# Check for breath weapons - handled by dedicated function (no multi-shot)
@@ -1003,16 +1030,22 @@ func fire_ranged_multi(attacker: Regiment, target: Regiment, shot_count: int) ->
 
 	# Weather LOS check
 	if WeatherSystem.blocks_los(attacker.global_position.distance_to(target.global_position)):
+		if is_artillery: print("[COMBAT DEBUG] REJECTED: weather blocks LOS")
 		return
 
 	# LoS check
 	if not _has_line_of_sight(attacker, target):
+		if is_artillery: print("[COMBAT DEBUG] REJECTED: no line of sight")
 		return
 
 	# Range check
 	var dist: float = attacker.global_position.distance_to(target.global_position)
 	if dist > attacker.data.range_distance:
+		if is_artillery: print("[COMBAT DEBUG] REJECTED: out of range (dist=%.1f, max=%.1f)" % [dist, attacker.data.range_distance])
 		return
+
+	if is_artillery:
+		print("[COMBAT DEBUG] PASSED all checks, spawning %d projectiles" % shot_count)
 
 	# Consume ammo (1 per shot, but cap to available ammo)
 	var actual_shots: int = mini(shot_count, attacker.current_ammo)
@@ -1264,23 +1297,100 @@ func _on_incendiary_impact(impact_pos: Vector3, _radius: float, projectile: Node
 		get_tree().current_scene.add_child(hazard)
 
 
+## Check if target is within the unit's firing arc based on facing direction.
+## Artillery has a narrow 90° arc, ranged infantry has a wide 180° arc.
+func _is_within_firing_arc(from: Regiment, to: Regiment) -> bool:
+	if not from or not to:
+		return false
+
+	# Get the unit's facing direction
+	var facing: Vector3 = from.get_facing_direction()
+	facing.y = 0
+	if facing.length_squared() < 0.001:
+		# No facing set - allow fire in any direction (fallback)
+		return true
+
+	# Calculate direction to target
+	var to_target: Vector3 = to.global_position - from.global_position
+	to_target.y = 0
+	if to_target.length_squared() < 0.001:
+		return true  # Target at same position
+
+	to_target = to_target.normalized()
+	facing = facing.normalized()
+
+	# Calculate angle between facing and target direction
+	var dot: float = facing.dot(to_target)
+	var angle_rad: float = acos(clampf(dot, -1.0, 1.0))
+	var angle_deg: float = rad_to_deg(angle_rad)
+
+	# Determine firing arc based on unit type
+	var max_arc_half: float = 90.0  # Default: 180° total arc (90° each side)
+
+	if from.data:
+		if from.data.unit_type == UnitType.Type.ARTILLERY:
+			max_arc_half = 45.0  # 90° total arc for artillery (limited traverse)
+		# Breath weapons use cone_angle from weapon definition
+		var weapon_class: int = from.data.weapon_class
+		if weapon_class in [RegimentData.WeaponClass.BREATH_FIRE, RegimentData.WeaponClass.BREATH_POISON]:
+			var weapon_def = WeaponClassDataScript.get_def(weapon_class)
+			if weapon_def and weapon_def.cone_angle > 0:
+				max_arc_half = weapon_def.cone_angle / 2.0
+
+	# DEBUG: Log arc check for artillery
+	var is_artillery: bool = from.data and from.data.unit_type == UnitType.Type.ARTILLERY
+	if is_artillery:
+		print("[ARC DEBUG] %s -> %s: angle=%.1f° max=%.1f° %s" % [
+			from.data.regiment_name,
+			to.data.regiment_name if to.data else "?",
+			angle_deg,
+			max_arc_half,
+			"PASS" if angle_deg <= max_arc_half else "FAIL"
+		])
+
+	return angle_deg <= max_arc_half
+
+
 ## Check line of sight between two units
 func _has_line_of_sight(from: Regiment, to: Regiment) -> bool:
-	# First check physics raycast for terrain/buildings
+	# Check firing arc first - target must be in front of the unit
+	if not _is_within_firing_arc(from, to):
+		var is_artillery: bool = from.data and from.data.unit_type == UnitType.Type.ARTILLERY
+		if is_artillery:
+			print("[LOS DEBUG] %s -> %s: REJECTED - outside firing arc" % [
+				from.data.regiment_name, to.data.regiment_name if to.data else "?"])
+		return false
+
+	# Check physics raycast for terrain/buildings
 	var space: PhysicsDirectSpaceState3D = from.get_world_3d().direct_space_state
-	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
-		from.global_position + Vector3.UP,
-		to.global_position + Vector3.UP
-	)
+	var from_pos: Vector3 = from.global_position + Vector3.UP * 2.0  # Raise higher to clear terrain
+	var to_pos: Vector3 = to.global_position + Vector3.UP * 1.5
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from_pos, to_pos)
 	query.exclude = [from]
 	query.collision_mask = 1  # World layer only
 
 	var result: Dictionary = space.intersect_ray(query)
+
+	# DEBUG: Log LOS check for artillery
+	var is_artillery: bool = from.data and from.data.unit_type == UnitType.Type.ARTILLERY
+	if is_artillery:
+		if result.is_empty():
+			print("[LOS DEBUG] %s -> %s: CLEAR (no hit)" % [from.data.regiment_name, to.data.regiment_name if to.data else "?"])
+		else:
+			print("[LOS DEBUG] %s -> %s: HIT %s at %s" % [
+				from.data.regiment_name,
+				to.data.regiment_name if to.data else "?",
+				result.collider.name if result.collider else "null",
+				str(result.position) if result.has("position") else "?"
+			])
+
 	if not (result.is_empty() or result.collider == to):
 		return false  # Blocked by terrain
 
 	# Also check cover objects that block LOS
 	if _is_blocked_by_cover(from.global_position, to.global_position):
+		if is_artillery:
+			print("[LOS DEBUG] %s -> %s: BLOCKED by cover" % [from.data.regiment_name, to.data.regiment_name if to.data else "?"])
 		return false
 
 	return true

@@ -73,8 +73,12 @@ var _selected_regiments: Array[Node] = []
 var _is_dragging_formation: bool = false
 var _formation_drag_start: Vector3 = Vector3.ZERO
 
+# AI controller initialization retry tracking
+var _aggressive_retry_counts: Dictionary = {}  # regiment -> int
+const MAX_AGGRESSIVE_RETRIES: int = 10
+
 # Default starting units
-const DEFAULT_PLAYER_UNIT: String = "grtsword"
+const DEFAULT_PLAYER_UNIT: String = "grtcanon"  # Changed for testing artillery melee
 const DEFAULT_ENEMY_UNIT: String = "orcboyz"
 
 # Auto-test state
@@ -94,21 +98,26 @@ var _stress_test_counter_label: Label = null
 @export var auto_start_test: bool = false
 
 # Auto-start battle stress test on load (for automated testing while away)
-@export var auto_start_battle_stress: bool = true
+@export var auto_start_battle_stress: bool = false
 @export var battle_stress_rounds: int = 5
-@export var battle_stress_duration: float = 300.0  # 5 min per battle - let fights resolve naturally
+@export var battle_stress_duration: float = 60.0  # 1 min per battle - faster iteration for daemon
+
+# Debug: Melee position tracking
+var _melee_debug_timer: float = 0.0
+const MELEE_DEBUG_INTERVAL: float = 2.0
 @export var battle_stress_units_per_side: int = 6
 @export var stress_test_basic_infantry_only: bool = false  # Only use melee infantry for core loop testing
 @export var stress_test_faction_based: bool = true  # Use faction-specific unit pools
 @export var stress_test_headless: bool = false  # Enable sprites so you can see the battles
-@export var stress_test_exclude_artillery: bool = true  # Exclude artillery/siege units
-@export var stress_test_weather_variation: bool = true  # Change weather every 2 battles
-@export var stress_test_attacker_defender_objectives: bool = true  # Use BattleObjective asymmetry
-@export var stress_test_always_include_general: bool = true  # Always include a general/hero for player side
-@export var stress_test_include_capture_point: bool = true  # Add a siege capture point in the center
-@export var stress_test_include_buildings: bool = true  # Spawn buildings around the battlefield
-@export var stress_test_siege_mode: bool = true  # Use full town layout with chokepoints
-@export var stress_test_3x_map: bool = true  # Use 3x larger map for siege battles
+@export var stress_test_exclude_artillery: bool = false  # Exclude artillery/siege units
+@export var stress_test_weather_variation: bool = false  # Change weather every 2 battles
+@export var stress_test_attacker_defender_objectives: bool = false  # Use BattleObjective asymmetry
+@export var stress_test_always_include_general: bool = false  # Always include a general/hero for player side
+@export var stress_test_include_capture_point: bool = false  # Add a siege capture point in the center
+@export var stress_test_include_buildings: bool = false  # Spawn buildings around the battlefield
+@export var stress_test_siege_mode: bool = false  # Use full town layout with chokepoints
+@export var stress_test_3x_map: bool = false  # Use 3x larger map for siege battles
+@export var stress_test_quit_when_done: bool = false  # Quit Godot after stress tests (for daemon/headless)
 
 # Siege mode spawn positions (3x larger map)
 const SIEGE_PLAYER_SPAWN_X: float = -75.0  # Attacker spawn (west)
@@ -261,6 +270,19 @@ const ENEMY_RANGED_PRESETS: Dictionary = {
 
 
 func _ready() -> void:
+	# Detect headless mode (daemon/automated testing)
+	var is_headless: bool = DisplayServer.get_name() == "headless"
+	if is_headless:
+		print("[UnitZoo] Running in HEADLESS mode - skipping UI initialization")
+		# In headless mode, skip UI setup and go straight to stress tests
+		# Enable combat debugging
+		if CombatManager:
+			CombatManager.debug_combat = true
+		# Auto-start stress tests immediately in headless mode
+		if auto_start_battle_stress:
+			call_deferred("_auto_start_battle_stress_after_delay")
+		return  # Skip all UI initialization
+
 	_populate_filters()
 	_populate_unit_dropdowns()
 	_populate_formation_dropdown()
@@ -1088,9 +1110,30 @@ func _spawn_initial_units() -> void:
 	_spawn_player_unit(DEFAULT_PLAYER_UNIT)
 	_spawn_enemy_unit(DEFAULT_ENEMY_UNIT)
 
+	# Auto-target player ranged units at the enemy (for artillery/ranged testing)
+	call_deferred("_setup_player_ranged_targeting")
+
 	# Combat phase is now started manually via the Start Battle button
 	# This allows positioning units before combat begins
 	_update_battle_button_state()
+
+
+func _setup_player_ranged_targeting() -> void:
+	"""Auto-target player ranged/artillery at enemy for fire testing."""
+	if not player_regiment or not is_instance_valid(player_regiment):
+		return
+	if not enemy_regiment or not is_instance_valid(enemy_regiment):
+		return
+	# Only auto-target if player has ranged capability
+	if player_regiment.data and player_regiment.data.ballistic_skill > 0:
+		# Wait for AI to initialize
+		await get_tree().create_timer(0.2).timeout
+		if player_regiment.ai_controller:
+			player_regiment.ai_controller.set_target(enemy_regiment)
+			print("[UnitZoo] Auto-targeted player %s at enemy %s (ranged unit)" % [
+				player_regiment.data.regiment_name if player_regiment.data else player_regiment.name,
+				enemy_regiment.data.regiment_name if enemy_regiment.data else enemy_regiment.name
+			])
 
 
 func _ensure_combat_phase() -> void:
@@ -1178,10 +1221,11 @@ func _spawn_player_unit(unit_id: String) -> void:
 	unit_container.add_child(player_regiment)
 
 	# Sync all positions after added to tree (prevents rubber-banding)
-	player_regiment.sync_all_positions(Vector3(-15, 0, 0))
-	# Set facing direction toward the enemy (East) - this updates sprites properly
+	# Use wider separation (120 units total) to give ranged units time to fire
+	player_regiment.sync_all_positions(Vector3(-60, 0, 0))
+	# Set initial facing toward the enemy (East) - uses immediate facing to avoid spin
 	var facing_toward_enemy := Vector3(1, 0, 0)  # East (+X)
-	player_regiment.set_facing_direction(facing_toward_enemy)
+	player_regiment.set_initial_facing(facing_toward_enemy)
 
 	# Note: AIAutoload registration happens in Regiment._ready(), no need to duplicate
 
@@ -1229,7 +1273,7 @@ func _add_player_unit(unit_id: String, spawn_offset: Vector3) -> void:
 	# Position with offset
 	var base_pos: Vector3 = Vector3(-15, 0, 0) + spawn_offset
 	new_regiment.sync_all_positions(base_pos)
-	new_regiment.look_at(Vector3(15, 0, 0))
+	new_regiment.set_initial_facing(Vector3(1, 0, 0))  # Face east toward enemy
 
 	new_regiment.enable_ai_assist(true)
 	new_regiment.add_to_group("player_regiments")
@@ -1280,10 +1324,11 @@ func _spawn_enemy_unit(unit_id: String) -> void:
 	unit_container.add_child(enemy_regiment)
 
 	# Sync all positions after added to tree (prevents rubber-banding)
-	enemy_regiment.sync_all_positions(Vector3(15, 0, 0))
-	# Set facing direction toward the player (West) - this updates sprites properly
+	# Use wider separation (120 units total) to give ranged units time to fire
+	enemy_regiment.sync_all_positions(Vector3(60, 0, 0))
+	# Set initial facing toward the player (West) - uses immediate facing to avoid spin
 	var facing_toward_player := Vector3(-1, 0, 0)  # West (-X)
-	enemy_regiment.set_facing_direction(facing_toward_player)
+	enemy_regiment.set_initial_facing(facing_toward_player)
 
 	# Note: AIAutoload registration happens in Regiment._ready(), no need to duplicate
 
@@ -1293,6 +1338,11 @@ func _spawn_enemy_unit(unit_id: String) -> void:
 	# Apply lock state if toggle is on
 	if lock_enemy_toggle and lock_enemy_toggle.button_pressed:
 		enemy_regiment.is_position_locked = true
+		# Locked enemies stay defensive and don't attack - useful for testing ranged
+		call_deferred("_set_enemy_defensive_locked", enemy_regiment)
+	else:
+		# Set enemy to aggressive stance so they auto-engage (40 unit radius vs 15 for defensive)
+		call_deferred("_set_enemy_aggressive", enemy_regiment)
 
 	# Track in array
 	enemy_regiments.append(enemy_regiment)
@@ -1301,6 +1351,51 @@ func _spawn_enemy_unit(unit_id: String) -> void:
 
 	# Update stat labels to reflect new unit
 	_update_stat_labels()
+
+
+func _set_enemy_aggressive(reg: Node) -> void:
+	"""Set enemy unit to aggressive stance so they auto-engage (called deferred after AI init)."""
+	if not is_instance_valid(reg):
+		print("[UnitZoo] _set_enemy_aggressive: regiment invalid")
+		_aggressive_retry_counts.erase(reg)
+		return
+	if not reg.ai_controller:
+		# Track retry count
+		var reg_id: int = reg.get_instance_id()
+		var retries: int = _aggressive_retry_counts.get(reg_id, 0)
+		if retries >= MAX_AGGRESSIVE_RETRIES:
+			push_warning("[UnitZoo] _set_enemy_aggressive: gave up after %d retries for %s" % [retries, reg.name])
+			_aggressive_retry_counts.erase(reg_id)
+			return
+		_aggressive_retry_counts[reg_id] = retries + 1
+		# Use timer instead of call_deferred for better spacing
+		get_tree().create_timer(0.1).timeout.connect(func(): _set_enemy_aggressive(reg))
+		return
+	# Clear retry tracking
+	_aggressive_retry_counts.erase(reg.get_instance_id())
+	# Set to AGGRESSIVE stance (index 1) for 120m acquisition range
+	reg.ai_controller.set_stance(CommanderAI.Stance.AGGRESSIVE)
+	print("[UnitZoo] Set enemy %s to AGGRESSIVE stance" % (reg.data.regiment_name if reg.data else reg.name))
+	# Also issue an attack order to ensure they start moving
+	if player_regiment and is_instance_valid(player_regiment):
+		reg.ai_controller.set_target(player_regiment)
+		reg.ai_controller.issue_attack_order(player_regiment)
+		print("[UnitZoo] Issued attack order to %s targeting %s" % [reg.data.regiment_name if reg.data else reg.name, player_regiment.data.regiment_name if player_regiment.data else player_regiment.name])
+
+
+func _set_enemy_defensive_locked(reg: Node) -> void:
+	"""Set locked enemy to defensive stance - they won't move or attack (for ranged testing)."""
+	if not is_instance_valid(reg):
+		return
+	if not reg.ai_controller:
+		# Retry if AI not ready yet
+		get_tree().create_timer(0.1).timeout.connect(func(): _set_enemy_defensive_locked(reg))
+		return
+	# Set to DEFENSIVE stance (index 0 = DEFENSIVE in CommanderAI.Stance)
+	reg.ai_controller.set_stance(CommanderAI.Stance.DEFENSIVE)
+	# Clear any target so they don't try to engage
+	reg.ai_controller.set_target(null)
+	print("[UnitZoo] Set enemy %s to DEFENSIVE stance (LOCKED - won't attack)" % (reg.data.regiment_name if reg.data else reg.name))
 
 
 func _add_enemy_unit(unit_id: String, spawn_offset: Vector3) -> void:
@@ -1326,7 +1421,7 @@ func _add_enemy_unit(unit_id: String, spawn_offset: Vector3) -> void:
 	# Position with offset
 	var base_pos: Vector3 = Vector3(15, 0, 0) + spawn_offset
 	new_regiment.sync_all_positions(base_pos)
-	new_regiment.look_at(Vector3(-15, 0, 0))
+	new_regiment.set_initial_facing(Vector3(-1, 0, 0))  # Face west toward player
 
 	new_regiment.add_to_group("enemy_regiments")
 
@@ -1420,6 +1515,7 @@ func _process(_delta: float) -> void:
 	_update_weather_info()
 	_update_projectile_debug()
 	_update_compass_debug()
+	_debug_melee_positions(_delta)
 
 
 func _update_compass_debug() -> void:
@@ -1474,6 +1570,56 @@ func _update_compass_debug() -> void:
 		]
 	else:
 		_compass_debug_label.text = "No unit selected | Cam: %.0f°" % camera_rot_deg
+
+
+func _debug_melee_positions(delta: float) -> void:
+	"""Debug: Print MeleeArea positions every 2 seconds to diagnose collision detection."""
+	_melee_debug_timer += delta
+	if _melee_debug_timer < MELEE_DEBUG_INTERVAL:
+		return
+	_melee_debug_timer = 0.0
+
+	if not player_regiment or not is_instance_valid(player_regiment):
+		return
+	if not enemy_regiment or not is_instance_valid(enemy_regiment):
+		return
+
+	# Get melee areas
+	var player_melee: Area3D = player_regiment.melee_area if "melee_area" in player_regiment else null
+	var enemy_melee: Area3D = enemy_regiment.melee_area if "melee_area" in enemy_regiment else null
+
+	if not player_melee or not enemy_melee:
+		print("[MELEE POS] MeleeArea not found on regiments")
+		return
+
+	var player_pos: Vector3 = player_melee.global_position
+	var enemy_pos: Vector3 = enemy_melee.global_position
+	var distance: float = player_pos.distance_to(enemy_pos)
+	var xz_distance: float = Vector2(player_pos.x, player_pos.z).distance_to(Vector2(enemy_pos.x, enemy_pos.z))
+	var y_diff: float = abs(player_pos.y - enemy_pos.y)
+
+	# Check monitoring state
+	var p_monitoring: bool = player_melee.monitoring
+	var p_monitorable: bool = player_melee.monitorable
+	var e_monitoring: bool = enemy_melee.monitoring
+	var e_monitorable: bool = enemy_melee.monitorable
+
+	# Get collision layer/mask
+	var p_layer: int = player_melee.collision_layer
+	var p_mask: int = player_melee.collision_mask
+	var e_layer: int = enemy_melee.collision_layer
+	var e_mask: int = enemy_melee.collision_mask
+
+	# Get states
+	var p_state: String = player_regiment.state_name() if player_regiment.has_method("state_name") else str(player_regiment.state)
+	var e_state: String = enemy_regiment.state_name() if enemy_regiment.has_method("state_name") else str(enemy_regiment.state)
+
+	print("[MELEE POS] Player: pos=%s, state=%s, layer=%d, mask=%d, monitoring=%s, monitorable=%s" % [
+		player_pos, p_state, p_layer, p_mask, p_monitoring, p_monitorable])
+	print("[MELEE POS] Enemy:  pos=%s, state=%s, layer=%d, mask=%d, monitoring=%s, monitorable=%s" % [
+		enemy_pos, e_state, e_layer, e_mask, e_monitoring, e_monitorable])
+	print("[MELEE POS] Distance: %.2f (XZ: %.2f, Y diff: %.2f) - Capsule radius=8, should overlap if XZ < 16" % [
+		distance, xz_distance, y_diff])
 
 
 func _update_info_panels() -> void:
@@ -1639,6 +1785,15 @@ func _on_lock_enemy_toggled(pressed: bool) -> void:
 	for reg in enemy_regiments:
 		if is_instance_valid(reg):
 			reg.is_position_locked = pressed
+			if pressed:
+				# IMMEDIATELY stop movement and set defensive
+				if reg.leader:
+					reg.leader.stop_movement()
+				reg.set_state(Regiment.State.IDLE)
+				if reg.ai_controller:
+					reg.ai_controller.set_stance(CommanderAI.Stance.DEFENSIVE)
+					reg.ai_controller.clear_target()
+				print("[UnitZoo] Locked %s - stopped movement, set DEFENSIVE" % (reg.data.regiment_name if reg.data else reg.name))
 	print("[UnitZoo] All enemies position %s (can still route/flee)" % ("LOCKED" if pressed else "UNLOCKED"))
 
 
@@ -2537,7 +2692,7 @@ func _spawn_stress_player_unit(unit_id: String, spawn_offset: Vector3) -> void:
 
 	var base_pos: Vector3 = Vector3(spawn_x, 0, 0) + scaled_offset
 	new_regiment.sync_all_positions(base_pos)
-	new_regiment.set_facing_direction(Vector3(1, 0, 0))  # Face east
+	new_regiment.set_initial_facing(Vector3(1, 0, 0))  # Face east
 	new_regiment.enable_ai_assist(true)
 	new_regiment.add_to_group("player_regiments")
 
@@ -2574,7 +2729,7 @@ func _spawn_stress_enemy_unit(unit_id: String, spawn_offset: Vector3) -> void:
 
 	var base_pos: Vector3 = Vector3(spawn_x, 0, 0) + scaled_offset
 	new_regiment.sync_all_positions(base_pos)
-	new_regiment.set_facing_direction(Vector3(-1, 0, 0))  # Face west
+	new_regiment.set_initial_facing(Vector3(-1, 0, 0))  # Face west
 	new_regiment.enable_ai_assist(true)
 	new_regiment.add_to_group("enemy_regiments")
 
@@ -3170,6 +3325,12 @@ func _complete_battle_stress_test() -> void:
 		_write_agent_run_report()
 
 	print(sep + "\n")
+
+	# Auto-quit for daemon/headless mode
+	if stress_test_quit_when_done:
+		print("[BATTLE STRESS TEST] Quitting Godot (stress_test_quit_when_done=true)")
+		await get_tree().create_timer(0.5).timeout  # Brief delay to flush output
+		get_tree().quit(0)
 
 
 func _write_agent_run_report() -> void:

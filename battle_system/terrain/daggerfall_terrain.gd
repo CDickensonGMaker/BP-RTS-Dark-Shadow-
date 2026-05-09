@@ -147,12 +147,16 @@ func _setup_navigation():
 
 	var nav_mesh = NavigationMesh.new()
 	nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
-	nav_mesh.cell_size = 0.5
-	nav_mesh.cell_height = 0.25
-	nav_mesh.agent_height = 2.0
-	nav_mesh.agent_radius = 0.5
-	nav_mesh.agent_max_climb = 1.0
+	# Cell size affects bake precision and performance - 1.0 is good for large maps
+	nav_mesh.cell_size = 1.0
+	nav_mesh.cell_height = 0.5
+	# Agent parameters for regiment-sized units
+	nav_mesh.agent_height = 3.0
+	nav_mesh.agent_radius = 5.0  # Match regiment avoidance radius + margin
+	nav_mesh.agent_max_climb = 2.0
 	nav_mesh.agent_max_slope = 45.0
+	# Set filter bounds for 1200x1200 map (larger than default)
+	nav_mesh.filter_baking_aabb = AABB(Vector3(-650, -50, -650), Vector3(1300, 100, 1300))
 
 	nav_region.navigation_mesh = nav_mesh
 	# Bake after a frame to ensure collision is ready
@@ -160,6 +164,15 @@ func _setup_navigation():
 
 
 func _bake_navigation():
+	nav_region.bake_navigation_mesh()
+
+
+## Rebake navigation mesh to include dynamically spawned obstacles (buildings, etc.)
+## Call this after spawning static obstacles that should affect pathfinding.
+## Buildings must be added to "navigation_geometry" group before calling this.
+func rebake_navigation() -> void:
+	if not nav_region or not nav_region.navigation_mesh:
+		return
 	nav_region.bake_navigation_mesh()
 
 

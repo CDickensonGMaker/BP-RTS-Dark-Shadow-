@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
 [ext_resource type="Resource" path="res://assets/sprites/units/dragon_atlas.tres" id="2"]
@@ -8,7 +8,6 @@ script = ExtResource("1")
 regiment_name = "Dragon"
 unit_type = 5
 faction = "empire"
-weapon_class = 8
 attack = 45
 defense = 32
 weapon_skill = 18
@@ -25,9 +24,11 @@ charge_speed = 8.0
 charge_speed_distance = 25.0
 charge_bonus = 18
 mass = 10.0
+weapon_class = 8
 max_ammo = 6
 current_ammo = 6
 range_distance = 25.0
 breath_cooldown = 10.0
 faction_color = Color(0.5, 0.5, 0.5, 1)
+sprite_front_direction = 3
 sprite_atlas = ExtResource("2")

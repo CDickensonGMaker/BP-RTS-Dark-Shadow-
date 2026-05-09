@@ -1,71 +1,81 @@
 {
-  "session_start": "2026-05-07T22:40:44.485990",
+  "session_start": "2026-05-08T17:43:42.702182",
   "cycles_run": 1,
   "fixes_applied": 0,
   "findings_count": 0,
   "entries": [
     {
-      "timestamp": "2026-05-07T22:40:44.486288",
+      "timestamp": "2026-05-08T17:43:43.028950",
       "level": "info",
-      "message": "WARNING: No ANTHROPIC_API_KEY - will run in analysis-only mode"
+      "message": "Claude API initialized"
     },
     {
-      "timestamp": "2026-05-07T22:40:44.486308",
+      "timestamp": "2026-05-08T17:43:43.028976",
       "level": "info",
       "message": "BattleDaemon starting"
     },
     {
-      "timestamp": "2026-05-07T22:40:44.486322",
+      "timestamp": "2026-05-08T17:43:43.028998",
       "level": "info",
       "message": "   Project: C:\\Users\\caleb\\BP_RTS_Dark_Shadows"
     },
     {
-      "timestamp": "2026-05-07T22:40:44.486348",
+      "timestamp": "2026-05-08T17:43:43.029025",
       "level": "info",
-      "message": "   Max runtime: 8.0 hours (until 06:40)"
+      "message": "   Max runtime: 8.0 hours (until 01:43)"
     },
     {
-      "timestamp": "2026-05-07T22:40:44.486354",
+      "timestamp": "2026-05-08T17:43:43.029031",
       "level": "info",
       "message": "   Dry run: True"
     },
     {
-      "timestamp": "2026-05-07T22:40:44.486358",
+      "timestamp": "2026-05-08T17:43:43.029035",
       "level": "info",
-      "message": "   Claude API: disabled"
+      "message": "   Claude API: enabled"
     },
     {
-      "timestamp": "2026-05-07T22:40:44.486363",
+      "timestamp": "2026-05-08T17:43:43.029040",
       "level": "info",
       "message": "\n=================================================="
     },
     {
-      "timestamp": "2026-05-07T22:40:44.486366",
+      "timestamp": "2026-05-08T17:43:43.029044",
       "level": "info",
       "message": "CYCLE 1"
     },
     {
-      "timestamp": "2026-05-07T22:40:44.486374",
+      "timestamp": "2026-05-08T17:43:43.029046",
       "level": "info",
       "message": "=================================================="
     },
     {
-      "timestamp": "2026-05-07T22:40:44.486379",
+      "timestamp": "2026-05-08T17:43:43.029051",
       "level": "info",
-      "message": "Running stress test: 2 rounds, 60.0s each"
+      "message": "Running stress test: 10 rounds, 60.0s each"
     },
     {
-      "timestamp": "2026-05-07T22:44:44.548795",
+      "timestamp": "2026-05-08T17:43:43.029323",
+      "level": "info",
+      "message": "Timeout set to 420s based on Unit Zoo settings (5 rounds x 60.0s)"
+    },
+    {
+      "timestamp": "2026-05-08T17:43:46.025781",
+      "level": "warning",
+      "message": "Godot exited with code 1"
+    },
+    {
+      "timestamp": "2026-05-08T17:43:46.025923",
       "level": "error",
-      "message": "Stress test timed out after 240s"
+      "message": "No results file generated"
     },
     {
-      "timestamp": "2026-05-07T22:44:44.549077",
+      "timestamp": "2026-05-08T17:43:46.025934",
       "level": "info",
       "message": "Stress test failed - waiting 60s before retry"
     },
     {
-      "timestamp": "2026-05-07T22:45:44.549425",
+      "timestamp": "2026-05-08T17:44:46.026327",
       "level": "info",
       "message": "Reached max cycles (1)"
     }

@@ -102,6 +102,11 @@ enum WeaponClass {
 @export var unit_card_portrait: Texture2D
 @export var faction_color: Color = Color.BLUE
 
+# Sprite direction mapping - which sprite row (0-7) represents the unit's "front"
+# When unit faces formation front, this sprite direction will be displayed
+# Default 0 = North sprite row is the front. Set to 4 if South sprite is the front, etc.
+@export var sprite_front_direction: int = 0
+
 # Batched sprite soldiers (for use_sprite_soldiers mode)
 @export var sprite_atlas: SpriteUnitAtlas
 
@@ -109,6 +114,11 @@ enum WeaponClass {
 @export var artillery_model: PackedScene
 @export var artillery_model_scale: Vector3 = Vector3(0.5, 0.5, 0.5)
 @export var artillery_pieces_count: int = 4  # Number of guns in the battery
+
+## Artillery model front direction (0-7). Controls 3D cannon rotation offset.
+## Separate from sprite_front_direction to allow independent control.
+## Default 0 = cannon model faces North when regiment faces North.
+@export var artillery_model_direction: int = 0
 
 # Hero trait (for GENERAL units - defines weakness)
 @export var hero_trait: HeroTrait = HeroTrait.NONE

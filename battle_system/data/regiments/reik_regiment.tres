@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="RegimentData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="RegimentData" format=3]
 
 [ext_resource type="Script" path="res://battle_system/data/regiment_data.gd" id="1"]
-[ext_resource type="Resource" path="res://assets/sprites/units/reik_atlas.tres" id="2"]
+[ext_resource type="Resource" path="res://assets/sprites/units/brdhrs_atlas.tres" id="2"]
 
 [resource]
 script = ExtResource("1")
@@ -11,7 +11,6 @@ faction = "empire"
 attack = 14
 defense = 14
 weapon_skill = 14
-ballistic_skill = 0
 strength = 4
 armor = 8
 max_soldiers = 16
@@ -23,8 +22,6 @@ run_speed = 4.0
 charge_speed = 6.0
 charge_speed_distance = 20.0
 charge_bonus = 16
-max_ammo = 0
-current_ammo = 0
-range_distance = 0.0
 faction_color = Color(0.2, 0.4, 0.8, 1)
+sprite_front_direction = 4
 sprite_atlas = ExtResource("2")

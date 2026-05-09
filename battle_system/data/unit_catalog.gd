@@ -17,7 +17,7 @@ var _regiment_cache: Dictionary = {}
 # Cavalry: Reiksguard
 # Artillery: Imperial Cannon
 const EMPIRE_UNITS: Dictionary = {
-	"halb": "res://battle_system/data/regiments/halb_regiment.tres",
+	"halb": "res://battle_system/data/regiments/nlnhlb_regiment.tres",
 	"mcsword": "res://battle_system/data/regiments/mcsword_regiment.tres",
 	"empsword": "res://battle_system/data/regiments/empsword_regiment.tres",
 	"grtsword": "res://battle_system/data/regiments/grtsword_regiment.tres",
@@ -33,7 +33,7 @@ const EMPIRE_UNITS: Dictionary = {
 # Special: Gyrocopter
 const DWARF_UNITS: Dictionary = {
 	"dwwar": "res://battle_system/data/regiments/dwwar_regiment.tres",
-	"iron": "res://battle_system/data/regiments/iron_regiment.tres",
+	"iron": "res://battle_system/data/regiments/ironbrks_regiment.tres",
 	"ironbrks": "res://battle_system/data/regiments/ironbrks_regiment.tres",
 	"engr": "res://battle_system/data/regiments/engr_regiment.tres",
 	"grtcanon": "res://battle_system/data/regiments/grtcanon_regiment.tres",
@@ -46,7 +46,7 @@ const DWARF_UNITS: Dictionary = {
 # Cavalry: Wolf Riders (light), Boar Boyz (heavy)
 # Monster: Trolls
 const ORC_UNITS: Dictionary = {
-	"gob1": "res://battle_system/data/regiments/gob1_regiment.tres",
+	"gob1": "res://battle_system/data/regiments/ntgoblin_regiment.tres",
 	"orcboyz": "res://battle_system/data/regiments/orcboyz_regiment.tres",
 	"blackorc": "res://battle_system/data/regiments/blackorc_regiment.tres",
 	"gobarch": "res://battle_system/data/regiments/gobarch_regiment.tres",
@@ -86,7 +86,7 @@ const UNDEAD_UNITS: Dictionary = {
 # Unit registry: maps unit_id -> resource path
 const UNITS: Dictionary = {
 	# EMPIRE (Core)
-	"halb": "res://battle_system/data/regiments/halb_regiment.tres",
+	"halb": "res://battle_system/data/regiments/nlnhlb_regiment.tres",
 	"mcsword": "res://battle_system/data/regiments/mcsword_regiment.tres",
 	"empsword": "res://battle_system/data/regiments/empsword_regiment.tres",
 	"grtsword": "res://battle_system/data/regiments/grtsword_regiment.tres",
@@ -109,7 +109,7 @@ const UNITS: Dictionary = {
 
 	# DWARF (Core)
 	"dwwar": "res://battle_system/data/regiments/dwwar_regiment.tres",
-	"iron": "res://battle_system/data/regiments/iron_regiment.tres",
+	"iron": "res://battle_system/data/regiments/ironbrks_regiment.tres",
 	"ironbrks": "res://battle_system/data/regiments/ironbrks_regiment.tres",
 	"engr": "res://battle_system/data/regiments/engr_regiment.tres",
 	"grtcanon": "res://battle_system/data/regiments/grtcanon_regiment.tres",
@@ -123,7 +123,7 @@ const UNITS: Dictionary = {
 	# king removed - portrait sprite, not unit sprite
 
 	# ORC (Core)
-	"gob1": "res://battle_system/data/regiments/gob1_regiment.tres",
+	"gob1": "res://battle_system/data/regiments/ntgoblin_regiment.tres",
 	"orcboyz": "res://battle_system/data/regiments/orcboyz_regiment.tres",
 	"blackorc": "res://battle_system/data/regiments/blackorc_regiment.tres",
 	"gobarch": "res://battle_system/data/regiments/gobarch_regiment.tres",
@@ -175,7 +175,7 @@ const UNITS: Dictionary = {
 
 	# SUPPLY/LOGISTICS
 	"caravan": "res://battle_system/data/regiments/caravan_regiment.tres",
-	"wagon": "res://battle_system/data/regiments/wagon_regiment.tres",
+	# "wagon" removed - no wagon_regiment.tres exists (use mrtwag/impcwag for artillery wagons)
 	"packpony": "res://battle_system/data/regiments/packpony_regiment.tres",
 	"sheep": "res://battle_system/data/regiments/sheep_regiment.tres",
 
@@ -318,8 +318,8 @@ const ZOO_UNITS: Array = [
 	# Special/Standalone
 	"dragon",
 
-	# Supply/Logistics (4 units)
-	"caravan", "wagon", "packpony", "sheep",
+	# Supply/Logistics (3 units)
+	"caravan", "packpony", "sheep",
 ]
 
 
