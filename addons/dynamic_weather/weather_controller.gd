@@ -527,7 +527,7 @@ func _on_auto_weather_timer() -> void:
 
 
 func _select_random_weather():
-	if weather_pool.size() == 0:
+	if weather_pool.is_empty():
 		return null
 
 	# Weighted random selection

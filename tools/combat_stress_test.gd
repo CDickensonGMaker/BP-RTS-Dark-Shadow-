@@ -215,7 +215,7 @@ func _init() -> void:
 
 	load_all_regiment_data()
 
-	if all_units.size() == 0:
+	if all_units.is_empty():
 		print("ERROR: No regiment data files found!")
 		quit(1)
 		return

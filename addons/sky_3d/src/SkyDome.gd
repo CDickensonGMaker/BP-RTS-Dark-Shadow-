@@ -234,10 +234,10 @@ func is_day() -> bool:
 
 ## Signals when day has changed to night and vice versa.
 func _set_day_state(v: float, threshold: float = DAY_NIGHT_TRANSITION_ANGLE) -> void:
-	if _day == true and abs(v) > threshold:
+	if _day and abs(v) > threshold:
 		_day = false
 		emit_signal("day_night_changed", _day)
-	elif _day == false and abs(v) <= threshold:
+	elif not _day and abs(v) <= threshold:
 		_day = true
 		emit_signal("day_night_changed", _day)
 

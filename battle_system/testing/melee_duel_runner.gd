@@ -664,7 +664,7 @@ func _emit_report() -> void:
 		])
 	print("=".repeat(72))
 
-	if _all_invariant_violations.size() == 0 and _crashes.size() == 0:
+	if _all_invariant_violations.is_empty() and _crashes.is_empty():
 		print("STATUS: PASS - No melee combat invariants violated.")
 	else:
 		print("STATUS: FAIL - Holes found. See user://melee_duel_report.json for full detail.")

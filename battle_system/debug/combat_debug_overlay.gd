@@ -562,7 +562,7 @@ func _draw_melee_pairs() -> void:
 		return
 
 	for melee in CombatManager.active_melees:
-		if melee.size() == 0:
+		if melee.is_empty():
 			continue
 
 		var attacker = melee.get("attacker")

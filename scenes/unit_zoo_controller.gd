@@ -742,7 +742,7 @@ func _update_spell_buttons() -> void:
 	# Get available spells
 	var spells: Array[SpellData] = player_regiment.get_available_spells()
 
-	if spells.size() == 0:
+	if spells.is_empty():
 		if _spell_debug_label:
 			_spell_debug_label.text = "Spells: %s has no spells" % player_regiment.data.regiment_name
 		return

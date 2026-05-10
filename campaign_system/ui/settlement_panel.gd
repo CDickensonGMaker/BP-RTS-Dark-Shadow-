@@ -260,7 +260,7 @@ func _populate_buildings(settlement: Resource) -> void:
 	for child in buildings_container.get_children():
 		child.queue_free()
 
-	if settlement.buildings.size() == 0:
+	if settlement.buildings.is_empty():
 		var empty_label := Label.new()
 		empty_label.text = "No buildings constructed"
 		empty_label.add_theme_font_size_override("font_size", 16)

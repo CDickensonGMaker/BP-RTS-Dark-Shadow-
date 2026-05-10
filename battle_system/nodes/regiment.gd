@@ -692,7 +692,7 @@ func _setup_unit_morale():
 		else:
 			# Wait for formation to be ready with timeout
 			var waited := 0.0
-			while formation.soldiers.size() == 0 and waited < 2.0:
+			while formation.soldiers.is_empty() and waited < 2.0:
 				await get_tree().create_timer(0.1).timeout
 				waited += 0.1
 				# Safety check during wait
