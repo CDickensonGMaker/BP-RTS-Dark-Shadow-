@@ -27,6 +27,11 @@ var flanked_regiments: Dictionary = {}  # Regiment -> { flanker: Regiment, is_re
 ## Flank indicator duration
 const FLANK_INDICATOR_DURATION: float = 2.0
 
+## Performance: Cache regiments to avoid get_nodes_in_group every frame
+var _cached_regiments: Array = []
+var _cache_timer: float = 0.0
+const CACHE_REFRESH_INTERVAL: float = 0.2  # Refresh 5 times per second when debug active
+
 ## Colors
 const COLOR_MORALE_HIGH: Color = Color(0.2, 0.9, 0.2, 1.0)      # Green - above 60%
 const COLOR_MORALE_MED: Color = Color(0.9, 0.9, 0.2, 1.0)       # Yellow - 30-60%
@@ -130,6 +135,12 @@ func _process(delta: float) -> void:
 	if not camera or not is_instance_valid(camera):
 		camera = get_viewport().get_camera_3d()
 
+	# Periodically refresh regiment cache (not every frame)
+	_cache_timer += delta
+	if _cache_timer >= CACHE_REFRESH_INTERVAL:
+		_cache_timer = 0.0
+		_cached_regiments = get_tree().get_nodes_in_group("all_regiments")
+
 	# Update flank timers
 	_update_flank_timers(delta)
 
@@ -171,10 +182,8 @@ func _on_draw() -> void:
 	# Draw active melee pair connections first (so they appear behind other UI)
 	_draw_melee_pairs()
 
-	# Get all regiments
-	var all_regiments: Array = get_tree().get_nodes_in_group("all_regiments")
-
-	for regiment in all_regiments:
+	# Use cached regiments (refreshed in _process every 0.2s)
+	for regiment in _cached_regiments:
 		if not regiment is Regiment:
 			continue
 		if not is_instance_valid(regiment):

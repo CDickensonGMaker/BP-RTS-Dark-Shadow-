@@ -50,6 +50,14 @@ var _transition_tween: Tween
 ## Reference to gameplay WeatherSystem for combat modifiers (auto-detected)
 var _gameplay_weather_system: Node
 
+## Performance: Throttle updates that don't need to run every frame
+var _frame_counter: int = 0
+const PRECIPITATION_UPDATE_FRAMES: int = 3  # Update position every 3 frames
+var _day_night_timer: float = 0.0
+const DAY_NIGHT_CHECK_INTERVAL: float = 0.5  # Check every 0.5 seconds
+var _last_cam_pos: Vector3 = Vector3.ZERO
+const CAM_MOVE_THRESHOLD: float = 5.0  # Only update emission box if camera moves 5+ units
+
 
 func _ready() -> void:
 	# Find the gameplay weather system if it exists
@@ -71,26 +79,41 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	_update_precipitation_position()
-	_check_day_night_change()
+	# Throttle precipitation updates - every N frames is enough for smooth visuals
+	_frame_counter += 1
+	if _frame_counter >= PRECIPITATION_UPDATE_FRAMES:
+		_frame_counter = 0
+		_update_precipitation_position()
+
+	# Throttle day/night checks - only need to check twice per second
+	_day_night_timer += delta
+	if _day_night_timer >= DAY_NIGHT_CHECK_INTERVAL:
+		_day_night_timer = 0.0
+		_check_day_night_change()
 
 
 func _find_sky3d() -> void:
-	# Look for Sky3D in the scene tree
-	var sky_nodes = get_tree().get_nodes_in_group("sky3d")
+	# Look for Sky3D in the scene tree via group (most efficient)
+	var sky_nodes: Array[Node] = get_tree().get_nodes_in_group("sky3d")
 	if sky_nodes.size() > 0:
 		sky3d = sky_nodes[0]
 		return
 
-	# Search by class name
-	for node in get_tree().get_nodes_in_group(""):
-		if node.get_class() == "Sky3D" or (node.get_script() and "Sky3D" in str(node.get_script())):
-			sky3d = node
+	# Search common autoload names directly (much faster than scanning all nodes)
+	for autoload_name in ["Sky3D", "SkyDome", "WorldSky"]:
+		if has_node("/root/" + autoload_name):
+			sky3d = get_node("/root/" + autoload_name)
 			return
 
-	# Search WorldEnvironment nodes
-	var root = get_tree().current_scene
+	# Search current scene children only (limited depth search)
+	var root: Node = get_tree().current_scene
 	if root:
+		# Check direct children first (most common case)
+		for child in root.get_children():
+			if child.get_script() and "Sky" in str(child.get_script().resource_path):
+				sky3d = child
+				return
+		# Fall back to recursive search only if needed
 		sky3d = _find_node_by_script(root, "Sky3D")
 
 
@@ -270,27 +293,33 @@ func _setup_auto_weather() -> void:
 
 
 func _update_precipitation_position() -> void:
-	if not follow_camera:
+	# Cache camera reference - only look up once per scene
+	if not follow_camera or not is_instance_valid(follow_camera):
 		follow_camera = get_viewport().get_camera_3d()
+		if not follow_camera:
+			return
 
-	if follow_camera:
-		var cam_pos = follow_camera.global_position
-		# Get camera forward direction and position particles in front of view
-		var cam_forward = -follow_camera.global_basis.z
-		var cam_up = follow_camera.global_basis.y
+	var cam_pos: Vector3 = follow_camera.global_position
 
-		# Position particles in front of camera, filling the view
-		# For RTS, offset forward and slightly down to fill the viewport
-		var offset_forward = 30.0  # Distance in front of camera
-		var offset_up = 15.0  # Height above camera look point
-		var particle_pos = cam_pos + cam_forward * offset_forward + Vector3(0, offset_up, 0)
+	# Get camera forward direction and position particles in front of view
+	var cam_forward: Vector3 = -follow_camera.global_basis.z
 
-		_rain_particles.global_position = particle_pos
-		_snow_particles.global_position = particle_pos
+	# Position particles in front of camera, filling the view
+	# For RTS, offset forward and slightly down to fill the viewport
+	var offset_forward: float = 30.0  # Distance in front of camera
+	var offset_up: float = 15.0  # Height above camera look point
+	var particle_pos: Vector3 = cam_pos + cam_forward * offset_forward + Vector3(0, offset_up, 0)
 
-		# Use smaller emission box since particles are closer to camera
-		var rain_mat = _rain_particles.process_material as ParticleProcessMaterial
-		var snow_mat = _snow_particles.process_material as ParticleProcessMaterial
+	_rain_particles.global_position = particle_pos
+	_snow_particles.global_position = particle_pos
+
+	# Only update emission box extents if camera moved significantly
+	# This avoids setting shader params every frame
+	var cam_moved: float = cam_pos.distance_to(_last_cam_pos)
+	if cam_moved > CAM_MOVE_THRESHOLD:
+		_last_cam_pos = cam_pos
+		var rain_mat: ParticleProcessMaterial = _rain_particles.process_material as ParticleProcessMaterial
+		var snow_mat: ParticleProcessMaterial = _snow_particles.process_material as ParticleProcessMaterial
 		if rain_mat:
 			rain_mat.emission_box_extents = Vector3(60, 5, 60)
 		if snow_mat:

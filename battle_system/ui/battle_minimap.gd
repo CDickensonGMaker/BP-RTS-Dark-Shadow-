@@ -50,6 +50,9 @@ func _process(delta: float) -> void:
 	if _cache_timer >= CACHE_REFRESH_INTERVAL:
 		_cache_timer = 0.0
 		_refresh_regiment_cache()
+		# Also update camera reference if needed
+		if not _camera:
+			_camera = get_viewport().get_camera_3d()
 		queue_redraw()
 
 
@@ -261,10 +264,5 @@ func _move_units_to(world_pos: Vector3):
 			regiment.give_order(OrderType.Type.MOVE, world_pos)
 
 
-func _process(_delta):
-	# Redraw every frame for unit movement
-	queue_redraw()
-
-	# Update camera reference
-	if not _camera:
-		_camera = get_viewport().get_camera_3d()
+# NOTE: _process is defined earlier (line 47) with throttled regiment cache refresh
+# Camera reference is also updated there when cache refreshes
