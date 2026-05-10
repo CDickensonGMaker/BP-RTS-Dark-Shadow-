@@ -28,6 +28,12 @@ var _terrain_image: Image = null
 var _terrain_texture: ImageTexture = null
 var _needs_terrain_update: bool = true
 
+# Regiment cache for performance (avoid get_nodes_in_group every frame)
+var _cached_player_regiments: Array = []
+var _cached_enemy_regiments: Array = []
+var _cache_timer: float = 0.0
+const CACHE_REFRESH_INTERVAL: float = 0.25  # Refresh 4 times per second
+
 
 func _ready():
 	custom_minimum_size = minimap_size
@@ -35,6 +41,21 @@ func _ready():
 	mouse_default_cursor_shape = Control.CURSOR_CROSS  # Crosshair for tactical map
 	call_deferred("_find_references")
 	call_deferred("_generate_terrain_texture")
+	call_deferred("_refresh_regiment_cache")
+
+
+func _process(delta: float) -> void:
+	# Periodically refresh regiment cache (not every frame)
+	_cache_timer += delta
+	if _cache_timer >= CACHE_REFRESH_INTERVAL:
+		_cache_timer = 0.0
+		_refresh_regiment_cache()
+		queue_redraw()
+
+
+func _refresh_regiment_cache() -> void:
+	_cached_player_regiments = get_tree().get_nodes_in_group("player_regiments")
+	_cached_enemy_regiments = get_tree().get_nodes_in_group("enemy_regiments")
 
 
 func _find_references():
@@ -122,21 +143,21 @@ func _draw():
 
 
 func _draw_units():
-	# Draw enemy units first
-	for regiment in get_tree().get_nodes_in_group("enemy_regiments"):
-		if regiment is Regiment and regiment.state != Regiment.State.DEAD:
+	# Draw enemy units first (use cached array for performance)
+	for regiment in _cached_enemy_regiments:
+		if is_instance_valid(regiment) and regiment is Regiment and regiment.state != Regiment.State.DEAD:
 			var pos: Vector2 = _world_to_minimap(regiment.global_position)
 			# Draw with outline for visibility
 			draw_circle(pos, 6.0, Color(0.0, 0.0, 0.0, 0.5))  # Shadow
 			draw_circle(pos, 5.0, COLOR_ENEMY)
 
-	# Draw player units on top
+	# Draw player units on top (use cached array for performance)
 	var selected: Array = []
 	if SelectionManager:
 		selected = SelectionManager.selected_regiments
 
-	for regiment in get_tree().get_nodes_in_group("player_regiments"):
-		if regiment is Regiment and regiment.state != Regiment.State.DEAD:
+	for regiment in _cached_player_regiments:
+		if is_instance_valid(regiment) and regiment is Regiment and regiment.state != Regiment.State.DEAD:
 			var pos: Vector2 = _world_to_minimap(regiment.global_position)
 			var color: Color = COLOR_SELECTED if regiment in selected else COLOR_PLAYER
 			# Draw with outline for visibility

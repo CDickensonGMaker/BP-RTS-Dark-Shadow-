@@ -185,6 +185,11 @@ var melee_timer: float = 0.0
 var _update_bucket: int = 0
 const BUCKET_COUNT: int = 4  # Reduced from 16 for more responsive combat
 
+# Cover object cache for performance (avoid get_nodes_in_group every hit)
+var _cached_cover_objects: Array[Node] = []
+var _cover_cache_timer: float = 0.0
+const COVER_CACHE_INTERVAL: float = 1.0  # Refresh every 1 second (covers don't change often)
+
 # Projectile pool for performance (upgraded pooling system)
 var _projectile_pool: ProjectilePool = null
 var _projectile_scene: PackedScene = null
@@ -1819,6 +1824,12 @@ func _process(delta: float) -> void:
 	if DeploymentManager and DeploymentManager.is_deployment_phase():
 		return
 
+	# Refresh cover object cache periodically (performance optimization)
+	_cover_cache_timer += delta
+	if _cover_cache_timer >= COVER_CACHE_INTERVAL:
+		_cover_cache_timer = 0.0
+		_cached_cover_objects = get_tree().get_nodes_in_group("cover_objects")
+
 	# Advance bucket every frame so each melee gets serviced at the correct rate
 	_update_bucket = (_update_bucket + 1) % BUCKET_COUNT
 
@@ -1921,10 +1932,9 @@ func _apply_flank_morale_events(flanked: Regiment, flanker: Regiment, is_rear: b
 ## Get cover damage reduction for a defender position.
 ## Queries nearby CoverObjects and returns the best cover bonus.
 func _get_cover_damage_reduction(defender: Regiment) -> float:
-	var cover_objects: Array[Node] = get_tree().get_nodes_in_group("cover_objects")
 	var best_cover: float = 0.0
 
-	for cover in cover_objects:
+	for cover in _cached_cover_objects:
 		if not cover is CoverObject:
 			continue
 		if not is_instance_valid(cover):
@@ -1942,9 +1952,7 @@ func _get_cover_damage_reduction(defender: Regiment) -> float:
 ## Check if a position has line-of-sight blocking cover nearby.
 ## Used to validate ranged attacks.
 func _is_blocked_by_cover(from_pos: Vector3, to_pos: Vector3) -> bool:
-	var cover_objects: Array[Node] = get_tree().get_nodes_in_group("cover_objects")
-
-	for cover in cover_objects:
+	for cover in _cached_cover_objects:
 		if not cover is CoverObject:
 			continue
 		if not cover.blocks_line_of_sight:
