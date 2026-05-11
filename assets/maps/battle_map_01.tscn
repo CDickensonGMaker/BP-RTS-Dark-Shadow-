@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://battle_system/terrain/blender_map_terrain.gd" id="1_terrain"]
+[ext_resource type="PackedScene" path="res://assets/maps/battle_map_01_rocks.glb" id="2_rocks"]
+
+[node name="BattleMap01" type="Node3D"]
+
+[node name="Terrain" type="Node3D" parent="."]
+script = ExtResource("1_terrain")
+terrain_glb_path = "res://assets/maps/battle_map_01_terrain.glb"
+metadata_path = ""
+terrain_size = Vector2(400, 400)
+
+[node name="Rocks" parent="." instance=ExtResource("2_rocks")]

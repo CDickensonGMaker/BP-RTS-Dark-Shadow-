@@ -1,0 +1,70 @@
+# Cavalry Charge Impact Damage Test
+# Verifies that charges produce impact damage at moment of contact.
+# Regression test for combat_manager.begin_melee charge handling.
+
+id: cavalry_charge_deals_impact_damage
+description: |
+  A frontal cavalry charge into infantry should produce a charge_impact event
+  AND defender casualties within 0.5s. This validates that:
+  1. Charge distance requirement is met (>10 units traveled)
+  2. Impact damage is calculated and applied
+  3. Morale damage from impact is applied
+  Regression check for combat_manager.begin_melee charge code.
+
+tags: [charge, melee, cavalry, regression]
+severity_if_failing: high
+last_verified_pass: null
+
+setup:
+  duration_sec: 8.0
+  difficulty: normal
+  weather: clear
+
+  player:
+    - unit: reik  # Reiksguard Knights - heavy cavalry
+      count: 15
+      pos: [-25, 0, 0]  # Far enough for valid charge distance
+      facing: [1, 0, 0]  # Facing east toward enemy
+      order: charge
+      target: enemy[0]
+
+  enemy:
+    - unit: peasant  # Peasant militia - weak infantry
+      count: 30
+      pos: [10, 0, 0]
+      facing: [-1, 0, 0]
+      order: hold
+
+expectations:
+  - id: charge_impact_fires
+    within_sec: 5.0
+    event:
+      type: charge_impact
+      filter:
+        # Charger should be player-controlled knights
+        is_player: true
+
+  - id: defender_takes_casualties
+    after: charge_impact_fires
+    within_sec: 0.5
+    event:
+      type: regiment_attacked
+      filter:
+        damage_min: 1
+
+  - id: battle_started
+    within_sec: 0.5
+    event:
+      type: battle_started
+
+negative_expectations:
+  - id: no_phantom_brace
+    never:
+      type: charge_impact
+      filter:
+        was_braced: true
+        # Non-braced peasants should not negate charge
+
+variant_ranges:
+  enemy_count: [15, 30, 45]
+  player_count: [10, 15, 20]

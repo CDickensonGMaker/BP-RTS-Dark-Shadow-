@@ -1,0 +1,394 @@
+{
+  "start_time": "2026-05-09T00:40:13.674843",
+  "end_time": "2026-05-09T00:41:12.165261",
+  "code_audit": {
+    "total_findings": 1501,
+    "summary": {
+      "unused_function": {
+        "count": 677,
+        "items": [
+          "Unused function: unregister_commander_ai",
+          "Unused function: unregister_entity",
+          "Unused function: update_entity_position",
+          "Unused function: query_enemies",
+          "Unused function: query_allies"
+        ]
+      },
+      "orphan_signal": {
+        "count": 92,
+        "items": [
+          "Signal emitted but never connected: ai_tick_general",
+          "Signal emitted but never connected: ai_tick_commander",
+          "Signal emitted but never connected: ai_tick_fast",
+          "Signal emitted but never connected: projectile_expired",
+          "Signal emitted but never connected: unit_shattered"
+        ]
+      },
+      "unused_signal": {
+        "count": 24,
+        "items": [
+          "Unused signal: ai_play_completed",
+          "Unused signal: ai_order_issued",
+          "Unused signal: reinforcements_requested",
+          "Unused signal: unit_resupplied",
+          "Unused signal: entered_supply_range"
+        ]
+      },
+      "empty_function": {
+        "count": 6,
+        "items": [
+          "Empty function: _end_war_cry",
+          "Empty function: _create_unit_card_bar",
+          "Empty function: _create_speed_controls",
+          "Empty function: _update_stance_indicator",
+          "Empty function: _update_formation_indicator"
+        ]
+      },
+      "todo": {
+        "count": 34,
+        "items": [
+          "TODO: Investigate parsing issue",
+          "BUG: C FIX: set initial facing by reading deployment markers from",
+          "TODO: RegimentFiringScript temporarily disabled due to parse issue",
+          "BUG: B fix: Use SAME direction for both sprite AND logical facing",
+          "BUG: B fix: SYNC both logical facing AND sprite facing to same di"
+        ]
+      },
+      "unused_class": {
+        "count": 25,
+        "items": [
+          "Unused class_name: EffectAtlas",
+          "Unused class_name: CombatDebugOverlay",
+          "Unused class_name: MoraleEffects",
+          "Unused class_name: SelectionRing",
+          "Unused class_name: SpellBeam"
+        ]
+      },
+      "duplicate_function": {
+        "count": 22,
+        "items": [
+          "Duplicate function implementations found",
+          "Duplicate function implementations found",
+          "Duplicate function implementations found",
+          "Duplicate function implementations found",
+          "Duplicate function implementations found"
+        ]
+      },
+      "large_file": {
+        "count": 7,
+        "items": [
+          "Large file: 1065 lines",
+          "Large file: 2413 lines",
+          "Large file: 1987 lines",
+          "Large file: 1734 lines",
+          "Large file: 1197 lines"
+        ]
+      },
+      "performance": {
+        "count": 275,
+        "items": [
+          "get_nodes_in_group() call",
+          "Object duplication",
+          "size() comparison",
+          "Object duplication",
+          "Object duplication"
+        ]
+      },
+      "spaghetti": {
+        "count": 260,
+        "items": [
+          "Too many functions: 37 in one file",
+          "Magic numbers: 11 unexplained numeric literals",
+          "Deep nesting: query_radius() has 6 indent levels",
+          "Nested loops in query_radius()",
+          "Deep nesting: count_in_radius() has 6 indent levels"
+        ]
+      },
+      "code_smell": {
+        "count": 79,
+        "items": [
+          "Debug print statement (6 occurrences)",
+          "Temporary code comment (1 occurrence)",
+          "Debug print statement (11 occurrences)",
+          "Debug print statement (1 occurrence)",
+          "Debug print statement (6 occurrences)"
+        ]
+      }
+    },
+    "cleanup_plan": [
+      {
+        "priority": 1,
+        "title": "Critical Issues",
+        "description": "These should be fixed immediately as they may cause runtime errors",
+        "count": 22,
+        "items": [
+          "High complexity: _process_march() has 16 branches",
+          "Long function: _resolve_melee_tick() is 201 lines",
+          "High complexity: _resolve_melee_tick() has 28 branches",
+          "High complexity: fire_ranged_multi() has 20 branches",
+          "High complexity: resolve_ranged_hit_with_multiplier() has 27 branches",
+          "High complexity: _fire_breath_weapon() has 16 branches",
+          "High complexity: spawn_configured() has 17 branches",
+          "High complexity: _handle_key_input() has 18 branches",
+          "Deep nesting: _use_ability_hotkey() has 7 indent levels",
+          "Deep nesting: _test_combat_tick() has 7 indent levels"
+        ]
+      },
+      {
+        "priority": 2,
+        "title": "Code Quality Issues",
+        "description": "These indicate potential bugs or maintenance issues",
+        "count": 367,
+        "items": [
+          "Signal emitted but never connected: ai_tick_general",
+          "Signal emitted but never connected: ai_tick_commander",
+          "Signal emitted but never connected: ai_tick_fast",
+          "Signal emitted but never connected: projectile_expired",
+          "Signal emitted but never connected: unit_shattered",
+          "Signal emitted but never connected: broken_ratio_changed",
+          "Signal emitted but never connected: pierced_target",
+          "Signal emitted but never connected: capture_progress_changed",
+          "Signal emitted but never connected: point_contested",
+          "Signal emitted but never connected: siege_won"
+        ]
+      },
+      {
+        "priority": 3,
+        "title": "Cleanup Opportunities",
+        "description": "Dead code that can be safely removed",
+        "count": 1112,
+        "items": [
+          "Unused function: unregister_commander_ai",
+          "Unused function: unregister_entity",
+          "Unused function: update_entity_position",
+          "Unused function: query_enemies",
+          "Unused function: query_allies",
+          "Unused function: query_regiments",
+          "Unused function: count_allies",
+          "Unused function: register_regiment",
+          "Unused function: enable_ai",
+          "Unused function: pause_ai"
+        ]
+      }
+    ],
+    "top_issues": [
+      {
+        "title": "High complexity: _process_march() has 16 branches",
+        "file": "battle_system\\nodes\\regiment.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "Long function: _resolve_melee_tick() is 201 lines",
+        "file": "battle_system\\systems\\combat_manager.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Split into smaller, focused functions"
+      },
+      {
+        "title": "High complexity: _resolve_melee_tick() has 28 branches",
+        "file": "battle_system\\systems\\combat_manager.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "High complexity: fire_ranged_multi() has 20 branches",
+        "file": "battle_system\\systems\\combat_manager.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "High complexity: resolve_ranged_hit_with_multiplier() has 27 branches",
+        "file": "battle_system\\systems\\combat_manager.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "High complexity: _fire_breath_weapon() has 16 branches",
+        "file": "battle_system\\systems\\combat_manager.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "High complexity: spawn_configured() has 17 branches",
+        "file": "battle_system\\systems\\projectile_pool.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "High complexity: _handle_key_input() has 18 branches",
+        "file": "battle_system\\systems\\selection_manager.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "Deep nesting: _use_ability_hotkey() has 7 indent levels",
+        "file": "battle_system\\systems\\selection_manager.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Use early returns or extract nested logic to helper functions"
+      },
+      {
+        "title": "Deep nesting: _test_combat_tick() has 7 indent levels",
+        "file": "battle_system\\testing\\battle_simulator.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Use early returns or extract nested logic to helper functions"
+      },
+      {
+        "title": "Long function: _run_single_duel() is 213 lines",
+        "file": "battle_system\\testing\\melee_duel_runner.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Split into smaller, focused functions"
+      },
+      {
+        "title": "High complexity: _run_single_duel() has 27 branches",
+        "file": "battle_system\\testing\\melee_duel_runner.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "Long function: _setup_ui() is 221 lines",
+        "file": "battle_system\\ui\\unit_card.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Split into smaller, focused functions"
+      },
+      {
+        "title": "High complexity: _update_status_icons_throttled() has 20 branches",
+        "file": "battle_system\\ui\\unit_card.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "Long function: resolve_bidirectional_melee() is 238 lines",
+        "file": "battle_system\\systems\\combat\\melee_resolver.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Split into smaller, focused functions"
+      },
+      {
+        "title": "High complexity: resolve_bidirectional_melee() has 19 branches",
+        "file": "battle_system\\systems\\combat\\melee_resolver.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "Long function: _init() is 249 lines",
+        "file": "battle_system\\ai\\data\\formation_data.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Split into smaller, focused functions"
+      },
+      {
+        "title": "High complexity: _apply_objective_modifiers() has 20 branches",
+        "file": "battle_system\\ai\\general\\general_ai.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "High complexity: tick() has 21 branches",
+        "file": "battle_system\\ai\\commander\\tasks\\task_fire_ranged.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      },
+      {
+        "title": "High complexity: _connect_signals() has 20 branches",
+        "file": "scenes\\unit_zoo_controller.gd",
+        "category": "spaghetti",
+        "severity": "high",
+        "proposed_action": "Consider using match statements, lookup tables, or strategy pattern"
+      }
+    ]
+  },
+  "battle_tests": null,
+  "morning_plan": {
+    "generated_at": "2026-05-09T00:41:12.165240",
+    "runtime_hours": 0.016247333333333332,
+    "sections": [
+      {
+        "priority": 1,
+        "title": "CRITICAL ISSUES - Fix Today",
+        "description": "These issues may cause runtime errors or major bugs",
+        "count": 20,
+        "items": [
+          "High complexity: _process_march() has 16 branches (battle_system\\nodes\\regiment.gd)",
+          "Long function: _resolve_melee_tick() is 201 lines (battle_system\\systems\\combat_manager.gd)",
+          "High complexity: _resolve_melee_tick() has 28 branches (battle_system\\systems\\combat_manager.gd)",
+          "High complexity: fire_ranged_multi() has 20 branches (battle_system\\systems\\combat_manager.gd)",
+          "High complexity: resolve_ranged_hit_with_multiplier() has 27 branches (battle_system\\systems\\combat_manager.gd)",
+          "High complexity: _fire_breath_weapon() has 16 branches (battle_system\\systems\\combat_manager.gd)",
+          "High complexity: spawn_configured() has 17 branches (battle_system\\systems\\projectile_pool.gd)",
+          "High complexity: _handle_key_input() has 18 branches (battle_system\\systems\\selection_manager.gd)",
+          "Deep nesting: _use_ability_hotkey() has 7 indent levels (battle_system\\systems\\selection_manager.gd)",
+          "Deep nesting: _test_combat_tick() has 7 indent levels (battle_system\\testing\\battle_simulator.gd)"
+        ]
+      },
+      {
+        "priority": 2,
+        "title": "PERFORMANCE OPTIMIZATIONS",
+        "description": "275 potential performance improvements found",
+        "count": 275,
+        "items": [
+          "get_nodes_in_group() call",
+          "Object duplication",
+          "size() comparison",
+          "Object duplication",
+          "Object duplication"
+        ]
+      },
+      {
+        "priority": 3,
+        "title": "CODE QUALITY - Reduce Complexity",
+        "description": "260 complexity issues found (long functions, deep nesting, etc.)",
+        "count": 260,
+        "items": [
+          "Too many functions: 37 in one file",
+          "Magic numbers: 11 unexplained numeric literals",
+          "Deep nesting: query_radius() has 6 indent levels",
+          "Nested loops in query_radius()",
+          "Deep nesting: count_in_radius() has 6 indent levels"
+        ]
+      },
+      {
+        "priority": 4,
+        "title": "DEAD CODE CLEANUP",
+        "description": "726 unused functions/signals/classes can be removed",
+        "count": 726,
+        "items": [
+          "Unused function: unregister_commander_ai",
+          "Unused function: unregister_entity",
+          "Unused function: update_entity_position",
+          "Unused signal: ai_play_completed",
+          "Unused signal: ai_order_issued"
+        ]
+      },
+      {
+        "priority": 5,
+        "title": "TODOS TO ADDRESS",
+        "description": "34 TODO/FIXME/HACK comments found",
+        "count": 34,
+        "items": [
+          "TODO: Investigate parsing issue",
+          "BUG: C FIX: set initial facing by reading deployment markers from",
+          "TODO: RegimentFiringScript temporarily disabled due to parse issue",
+          "BUG: B fix: Use SAME direction for both sprite AND logical facing",
+          "BUG: B fix: SYNC both logical facing AND sprite facing to same di"
+        ]
+      }
+    ]
+  }
+}

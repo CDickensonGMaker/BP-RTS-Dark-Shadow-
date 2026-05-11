@@ -43,6 +43,11 @@ func _input(event):
 	if current_phase != Phase.DEPLOYMENT:
 		return
 
+	# Skip mouse input if not in battle viewport (e.g., clicking control panel in unit zoo)
+	if event is InputEventMouseButton or event is InputEventMouseMotion:
+		if not _is_mouse_in_battle_viewport():
+			return
+
 	# Handle deployment repositioning with left-click drag on units
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
@@ -57,11 +62,15 @@ func _input(event):
 func _try_start_drag(screen_pos: Vector2):
 	# Only allow dragging player units during deployment
 	var regiment = _raycast_regiment(screen_pos)
-	if regiment and regiment.is_player_controlled:
-		dragging_regiment = regiment
-		var ground_pos = _raycast_ground(screen_pos)
-		if ground_pos != Vector3.INF:
-			drag_offset = regiment.global_position - ground_pos
+	if regiment:
+		if regiment.is_player_controlled:
+			dragging_regiment = regiment
+			var ground_pos = _raycast_ground(screen_pos)
+			if ground_pos != Vector3.INF:
+				drag_offset = regiment.global_position - ground_pos
+				print("[Deployment] Started dragging: %s" % (regiment.data.regiment_name if regiment.data else regiment.name))
+		else:
+			print("[Deployment] Clicked enemy unit (can't drag): %s" % (regiment.data.regiment_name if regiment.data else regiment.name))
 
 
 func _update_drag(screen_pos: Vector2):
@@ -85,6 +94,10 @@ func _update_drag(screen_pos: Vector2):
 
 func _end_drag(_screen_pos: Vector2):
 	if dragging_regiment:
+		print("[Deployment] Dropped unit: %s at %s" % [
+			dragging_regiment.data.regiment_name if dragging_regiment.data else dragging_regiment.name,
+			dragging_regiment.global_position
+		])
 		BattleSignals.unit_repositioned.emit(dragging_regiment, dragging_regiment.global_position)
 	dragging_regiment = null
 	drag_offset = Vector3.ZERO
@@ -114,8 +127,11 @@ func is_in_enemy_deployment_zone(pos: Vector3) -> bool:
 func start_battle():
 	"""Called when player clicks Start Battle button"""
 	if current_phase != Phase.DEPLOYMENT:
+		print("[Deployment] Already in combat phase")
 		return
 
+	print("[Deployment] === STARTING COMBAT PHASE ===")
+	print("[Deployment] AI will now process, units can move and fight")
 	current_phase = Phase.COMBAT
 	dragging_regiment = null
 
@@ -131,16 +147,94 @@ func is_combat_phase() -> bool:
 	return current_phase == Phase.COMBAT
 
 
+# === VIEWPORT HELPERS (for SubViewport support in Unit Zoo) ===
+
+func _get_battle_camera() -> Camera3D:
+	"""Get the battle camera from scene group."""
+	var cameras := get_tree().get_nodes_in_group("battle_camera")
+	return cameras[0] as Camera3D if cameras.size() > 0 else null
+
+
+func _get_battle_viewport() -> Viewport:
+	"""Get the viewport containing the battle camera.
+	This supports both main viewport (battle scene) and SubViewport (unit zoo)."""
+	var camera := _get_battle_camera()
+	if camera:
+		return camera.get_viewport()
+	return get_viewport()
+
+
+func _convert_to_battle_viewport_pos(screen_pos: Vector2) -> Vector2:
+	"""Convert main window screen position to battle viewport position.
+	Handles SubViewport offset when unit zoo uses embedded viewport."""
+	var battle_vp := _get_battle_viewport()
+	var main_vp := get_viewport()
+
+	# If same viewport, no conversion needed
+	if battle_vp == main_vp:
+		return screen_pos
+
+	# Find the SubViewportContainer that holds the battle viewport
+	var container := _find_viewport_container(battle_vp)
+	if container:
+		# Convert to container-local coordinates
+		var container_rect := container.get_global_rect()
+		var local_pos := screen_pos - container_rect.position
+		# Scale if container is stretched
+		var scale_x := float(battle_vp.size.x) / container_rect.size.x if container_rect.size.x > 0 else 1.0
+		var scale_y := float(battle_vp.size.y) / container_rect.size.y if container_rect.size.y > 0 else 1.0
+		return Vector2(local_pos.x * scale_x, local_pos.y * scale_y)
+
+	return screen_pos
+
+
+func _find_viewport_container(viewport: Viewport) -> SubViewportContainer:
+	"""Find the SubViewportContainer that holds a SubViewport."""
+	if viewport is SubViewport:
+		var parent := viewport.get_parent()
+		if parent is SubViewportContainer:
+			return parent
+	return null
+
+
+func _is_mouse_in_battle_viewport() -> bool:
+	"""Check if mouse is within the battle viewport bounds."""
+	var battle_vp := _get_battle_viewport()
+	var main_vp := get_viewport()
+
+	# If same viewport, always valid
+	if battle_vp == main_vp:
+		return true
+
+	# Check if mouse is within the SubViewportContainer
+	var container := _find_viewport_container(battle_vp)
+	if container:
+		var mouse_pos := main_vp.get_mouse_position()
+		return container.get_global_rect().has_point(mouse_pos)
+
+	return true
+
+
+# === RAYCASTING ===
+
 func _raycast_regiment(screen_pos: Vector2) -> Regiment:
-	var viewport := get_viewport()
+	var viewport := _get_battle_viewport()
 	if not viewport:
 		return null
 	var camera := viewport.get_camera_3d()
 	if camera == null:
 		return null
-	var ray_origin = camera.project_ray_origin(screen_pos)
-	var ray_end = ray_origin + camera.project_ray_normal(screen_pos) * 1000
-	var space = get_viewport().get_world_3d().direct_space_state
+
+	# Convert screen position to battle viewport coordinates
+	var vp_pos := _convert_to_battle_viewport_pos(screen_pos)
+
+	var ray_origin = camera.project_ray_origin(vp_pos)
+	var ray_end = ray_origin + camera.project_ray_normal(vp_pos) * 1000
+
+	var world_3d := viewport.get_world_3d()
+	if not world_3d:
+		return null
+	var space = world_3d.direct_space_state
 	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
 	query.collide_with_areas = true  # Detect MeleeArea (Area3D)
 	query.collide_with_bodies = false  # Don't hit terrain
@@ -157,18 +251,24 @@ func _raycast_regiment(screen_pos: Vector2) -> Regiment:
 
 
 func _raycast_ground(screen_pos: Vector2) -> Vector3:
-	var viewport := get_viewport()
+	var viewport := _get_battle_viewport()
 	if not viewport:
 		return Vector3.INF
 	var camera := viewport.get_camera_3d()
 	if camera == null:
 		return Vector3.INF
 
-	var ray_origin = camera.project_ray_origin(screen_pos)
-	var ray_dir = camera.project_ray_normal(screen_pos)
+	# Convert screen position to battle viewport coordinates
+	var vp_pos := _convert_to_battle_viewport_pos(screen_pos)
+
+	var ray_origin = camera.project_ray_origin(vp_pos)
+	var ray_dir = camera.project_ray_normal(vp_pos)
 	var ray_end = ray_origin + ray_dir * 1000
 
-	var space = get_viewport().get_world_3d().direct_space_state
+	var world_3d := viewport.get_world_3d()
+	if not world_3d:
+		return Vector3.INF
+	var space = world_3d.direct_space_state
 	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
 	query.collision_mask = 1  # Terrain layer
 

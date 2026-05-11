@@ -273,7 +273,15 @@ func _cast_projectile(spell: SpellData, caster: Regiment, target_pos: Vector3) -
 		# Use shared ProjectilePool for better performance
 		var config := _spell_to_projectile_config(spell)
 		var spawn_pos: Vector3 = caster.global_position + Vector3(0, 1.5, 0)
-		var direction: Vector3 = (target_pos - spawn_pos).normalized()
+
+		# Add scatter based on distance (6% scatter at max range)
+		var distance := spawn_pos.distance_to(target_pos)
+		var scatter_radius := distance * 0.06
+		var scattered_target := target_pos
+		scattered_target.x += randf_range(-scatter_radius, scatter_radius)
+		scattered_target.z += randf_range(-scatter_radius, scatter_radius)
+
+		var direction: Vector3 = (scattered_target - spawn_pos).normalized()
 
 		var projectile = pool.spawn_configured(
 			caster,

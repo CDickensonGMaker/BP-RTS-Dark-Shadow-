@@ -40,6 +40,11 @@ func _input(event):
 	# Right-click move orders are now handled by FormationDragHandler
 	# which supports both simple moves and drag-to-set-formation
 
+	# Skip mouse input if not in battle viewport (e.g., clicking control panel in unit zoo)
+	if event is InputEventMouseButton or event is InputEventMouseMotion:
+		if not _is_mouse_in_battle_viewport():
+			return
+
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		# During deployment, DeploymentManager handles unit dragging
 		# We only handle selection when not dragging a unit
@@ -171,6 +176,15 @@ func _single_select(screen_pos: Vector2):
 	var regiment: Regiment = _raycast_regiment(screen_pos)
 	var current_time: float = Time.get_unix_time_from_system()
 
+	# Debug: Log selection attempt
+	if regiment:
+		print("[Selection] Clicked on: %s (player=%s)" % [
+			regiment.data.regiment_name if regiment.data else regiment.name,
+			regiment.is_player_controlled
+		])
+	else:
+		print("[Selection] Clicked on empty ground at %s" % screen_pos)
+
 	# Check for double-click on same unit
 	if regiment and regiment == last_clicked_regiment:
 		if current_time - last_click_time < DOUBLE_CLICK_TIME:
@@ -234,16 +248,21 @@ func _recall_group(id: int):
 				_add_to_selection(r)
 		BattleSignals.group_recalled.emit(id)
 func _raycast_regiment(screen_pos: Vector2) -> Regiment:
-	var viewport := get_viewport()
+	var viewport := _get_battle_viewport()
 	if not viewport:
 		return null
 	var camera := viewport.get_camera_3d()
 	if camera == null:
 		return null
-	var ray_origin = camera.project_ray_origin(screen_pos)
-	var ray_dir = camera.project_ray_normal(screen_pos)
+	var world_3d := viewport.get_world_3d()
+	if not world_3d:
+		return null
+	# Convert screen position to battle viewport coordinates
+	var vp_pos := _convert_to_battle_viewport_pos(screen_pos)
+	var ray_origin = camera.project_ray_origin(vp_pos)
+	var ray_dir = camera.project_ray_normal(vp_pos)
 	var ray_end = ray_origin + ray_dir * 1000
-	var space = get_viewport().get_world_3d().direct_space_state
+	var space = world_3d.direct_space_state
 
 	# First try to detect areas (units)
 	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
@@ -269,21 +288,26 @@ func _raycast_regiment(screen_pos: Vector2) -> Regiment:
 	for regiment in get_tree().get_nodes_in_group("all_regiments"):
 		if regiment is Regiment:
 			var regiment_screen_pos = camera.unproject_position(regiment.global_position)
-			var dist = screen_pos.distance_to(regiment_screen_pos)
+			var dist = vp_pos.distance_to(regiment_screen_pos)
 			if dist < closest_dist:
 				closest_dist = dist
 				closest_regiment = regiment
 
 	return closest_regiment
 func _regiment_in_screen_rect(regiment: Regiment, rect: Rect2) -> bool:
-	var viewport := get_viewport()
+	var viewport := _get_battle_viewport()
 	if not viewport:
 		return false
 	var camera := viewport.get_camera_3d()
 	if camera == null:
 		return false
 	var screen_pos = camera.unproject_position(regiment.global_position)
-	return rect.has_point(screen_pos)
+	# Convert rect to battle viewport coordinates for comparison
+	var vp_rect := Rect2(
+		_convert_to_battle_viewport_pos(rect.position),
+		_convert_to_battle_viewport_pos(rect.position + rect.size) - _convert_to_battle_viewport_pos(rect.position)
+	)
+	return vp_rect.has_point(screen_pos)
 
 
 func select_regiment(regiment: Regiment):
@@ -320,18 +344,22 @@ func _issue_move_order(screen_pos: Vector2):
 
 func _raycast_ground(screen_pos: Vector2) -> Vector3:
 	"""Raycast to find ground position under mouse"""
-	var viewport := get_viewport()
+	var viewport := _get_battle_viewport()
 	if not viewport:
 		return Vector3.INF
 	var camera: Camera3D = viewport.get_camera_3d()
 	if camera == null:
 		return Vector3.INF
+	var world_3d := viewport.get_world_3d()
+	if not world_3d:
+		return Vector3.INF
 
-	var ray_origin: Vector3 = camera.project_ray_origin(screen_pos)
-	var ray_dir: Vector3 = camera.project_ray_normal(screen_pos)
+	var vp_pos := _convert_to_battle_viewport_pos(screen_pos)
+	var ray_origin: Vector3 = camera.project_ray_origin(vp_pos)
+	var ray_dir: Vector3 = camera.project_ray_normal(vp_pos)
 	var ray_end: Vector3 = ray_origin + ray_dir * 1000
 
-	var space: PhysicsDirectSpaceState3D = get_viewport().get_world_3d().direct_space_state
+	var space: PhysicsDirectSpaceState3D = world_3d.direct_space_state
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
 	query.collision_mask = 1  # Terrain layer
 
@@ -606,10 +634,70 @@ func _find_player_general() -> Node:
 	return null
 
 
-func _get_battle_camera() -> Node:
+func _get_battle_camera() -> Camera3D:
 	"""Get the battle camera from scene group."""
 	var cameras := get_tree().get_nodes_in_group("battle_camera")
-	return cameras[0] if cameras.size() > 0 else null
+	return cameras[0] as Camera3D if cameras.size() > 0 else null
+
+
+func _get_battle_viewport() -> Viewport:
+	"""Get the viewport containing the battle camera.
+	This supports both main viewport (battle scene) and SubViewport (unit zoo)."""
+	var camera := _get_battle_camera()
+	if camera:
+		return camera.get_viewport()
+	return get_viewport()
+
+
+func _convert_to_battle_viewport_pos(screen_pos: Vector2) -> Vector2:
+	"""Convert main window screen position to battle viewport position.
+	Handles SubViewport offset when unit zoo uses embedded viewport."""
+	var battle_vp := _get_battle_viewport()
+	var main_vp := get_viewport()
+
+	# If same viewport, no conversion needed
+	if battle_vp == main_vp:
+		return screen_pos
+
+	# Find the SubViewportContainer that holds the battle viewport
+	var container := _find_viewport_container(battle_vp)
+	if container:
+		# Convert to container-local coordinates
+		var container_rect := container.get_global_rect()
+		var local_pos := screen_pos - container_rect.position
+		# Scale if container is stretched
+		var scale_x := float(battle_vp.size.x) / container_rect.size.x if container_rect.size.x > 0 else 1.0
+		var scale_y := float(battle_vp.size.y) / container_rect.size.y if container_rect.size.y > 0 else 1.0
+		return Vector2(local_pos.x * scale_x, local_pos.y * scale_y)
+
+	return screen_pos
+
+
+func _find_viewport_container(viewport: Viewport) -> SubViewportContainer:
+	"""Find the SubViewportContainer that holds a SubViewport."""
+	if viewport is SubViewport:
+		var parent := viewport.get_parent()
+		if parent is SubViewportContainer:
+			return parent
+	return null
+
+
+func _is_mouse_in_battle_viewport() -> bool:
+	"""Check if mouse is within the battle viewport bounds."""
+	var battle_vp := _get_battle_viewport()
+	var main_vp := get_viewport()
+
+	# If same viewport, always valid
+	if battle_vp == main_vp:
+		return true
+
+	# Check if mouse is within the SubViewportContainer
+	var container := _find_viewport_container(battle_vp)
+	if container:
+		var mouse_pos := main_vp.get_mouse_position()
+		return container.get_global_rect().has_point(mouse_pos)
+
+	return true
 
 
 # === PAUSE TOGGLE (QOL Phase 2) ===
@@ -625,6 +713,11 @@ func _toggle_pause() -> void:
 func _update_hover_state() -> void:
 	"""Update which regiment the mouse is hovering over."""
 	if _is_campaign_map_active():
+		_set_hovered_regiment(null)
+		return
+
+	# Check if mouse is within battle viewport
+	if not _is_mouse_in_battle_viewport():
 		_set_hovered_regiment(null)
 		return
 

@@ -32,8 +32,24 @@ func tick(delta: float) -> Status:
 	var regiment: Node = commander.regiment
 	var target = blackboard.get("target")  # Untyped to handle freed instances
 
+	# DEBUG: Show all ranged units attempting to fire
+	var unit_name: String = regiment.data.regiment_name if regiment.data else regiment.name
+	var has_firing_component: bool = regiment.firing != null
+
+	# DEBUG: Extra verbose for crossbow units to diagnose firing issues
+	var is_crossbow: bool = regiment.data and regiment.data.weapon_class == RegimentData.WeaponClass.CROSSBOW
+	if is_crossbow and Engine.get_process_frames() % 30 == 0:
+		print("[CROSSBOW DEBUG] %s: tick() called, target=%s, ammo=%d, firing_comp=%s" % [
+			unit_name,
+			target.data.regiment_name if target and is_instance_valid(target) and target.data else "NONE",
+			regiment.current_ammo,
+			"YES" if has_firing_component else "NO"
+		])
+
 	# Check preconditions
 	if not target or not is_instance_valid(target):
+		if is_crossbow:
+			print("[CROSSBOW DEBUG] %s: FAILURE - no valid target" % unit_name)
 		return Status.FAILURE
 
 	if target.state == Regiment.State.DEAD:
@@ -41,9 +57,11 @@ func tick(delta: float) -> Status:
 		return Status.FAILURE
 
 	if regiment.current_ammo <= 0:
+		print("[RANGED DEBUG] %s: No ammo (current_ammo=%d)" % [unit_name, regiment.current_ammo])
 		return Status.FAILURE
 
 	if regiment.data.ballistic_skill == 0:
+		print("[RANGED DEBUG] %s: No ballistic_skill" % unit_name)
 		return Status.FAILURE
 
 	# Update kite cooldown
@@ -138,12 +156,14 @@ func tick(delta: float) -> Status:
 	var shots_ready: int = _tick_firing(regiment, delta)
 
 	if shots_ready > 0:
-		if is_artillery:
-			print("[ARTILLERY DEBUG] %s: FIRING %d shots at %s!" % [
-				regiment.data.regiment_name if regiment.data else "?",
-				shots_ready,
-				target.data.regiment_name if target and target.data else "?"
-			])
+		# DEBUG: Log ALL ranged units firing
+		print("[RANGED FIRE] %s: FIRING %d shots at %s (ammo=%d, firing_comp=%s)" % [
+			regiment.data.regiment_name if regiment.data else regiment.name,
+			shots_ready,
+			target.data.regiment_name if target and target.data else target.name,
+			regiment.current_ammo,
+			"yes" if regiment.firing else "LEGACY"
+		])
 		_fire_volley(target, shots_ready)
 
 	# Success but keep attacking
@@ -153,29 +173,32 @@ func tick(delta: float) -> Status:
 func _tick_firing(regiment: Node, delta: float) -> int:
 	## Tick the firing component and return shots ready to fire.
 	## Falls back to legacy cooldown for regiments without firing component.
+	var unit_name: String = regiment.data.regiment_name if regiment.data else regiment.name
 
 	# Use RegimentFiring if available
 	if regiment.firing and regiment.firing.has_method("tick"):
 		var shots: int = regiment.firing.tick(delta)
-		# DEBUG: Track firing component state for artillery
-		var is_artillery: bool = regiment.data and regiment.data.unit_type == UnitType.Type.ARTILLERY
-		if is_artillery:
+		# DEBUG: Track firing component state for ALL ranged units (every 60 frames to reduce spam)
+		if Engine.get_process_frames() % 60 == 0:
 			var progress: float = regiment.firing.get_reload_progress() if regiment.firing.has_method("get_reload_progress") else -1.0
 			var pattern: String = regiment.firing.get_fire_pattern_name() if regiment.firing.has_method("get_fire_pattern_name") else "?"
-			print("[FIRING DEBUG] %s: pattern=%s, progress=%.2f, delta=%.2f, shots=%d" % [
-				regiment.data.regiment_name if regiment.data else "?",
-				pattern,
-				progress,
-				delta,
-				shots
+			print("[FIRING TICK] %s: pattern=%s, progress=%.2f, shots=%d" % [
+				unit_name, pattern, progress, shots
 			])
 		return shots
 
 	# Legacy fallback - single cooldown for entire regiment
+	# DEBUG: Log legacy fallback usage
+	if Engine.get_process_frames() % 120 == 0:
+		print("[FIRING TICK] %s: LEGACY mode (no firing component), cooldown=%.2f" % [
+			unit_name, _legacy_fire_cooldown
+		])
+
 	_legacy_fire_cooldown -= delta
 	if _legacy_fire_cooldown <= 0:
 		_legacy_fire_cooldown = _get_legacy_reload_time(regiment)
 		# Legacy fires all soldiers at once
+		print("[FIRING TICK] %s: LEGACY volley ready, firing %d shots" % [unit_name, regiment.current_soldiers])
 		return regiment.current_soldiers
 
 	return 0

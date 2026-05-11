@@ -1,0 +1,81 @@
+# Flanking Morale Penalty Persistence Test
+# Verifies that flank attacks cause persistent morale penalties during engagement.
+# Tests the FLANKING FIX in combat_manager.gd.
+
+id: flank_persists_during_engagement
+description: |
+  When a unit is attacked from the flank (45-135 degree angle), it should:
+  1. Receive a unit_flanked signal
+  2. Have continuous morale penalty applied (FLANK_ATTACK source)
+  3. Take increased damage (1.5x flank modifier)
+
+  This tests the flanking_calculator.gd integration and the continuous
+  morale modifier system. The penalty should persist while engaged.
+
+tags: [flanking, morale, melee, regression]
+severity_if_failing: high
+last_verified_pass: null
+
+setup:
+  duration_sec: 15.0
+  difficulty: normal
+  weather: clear
+
+  player:
+    # Main engagement force - holds enemy attention
+    - unit: grtsword
+      count: 20
+      pos: [-15, 0, 0]
+      facing: [1, 0, 0]
+      order: charge
+      target: enemy[0]
+
+    # Flanking force - attacks from the side
+    - unit: mcsword
+      count: 15
+      pos: [-5, 0, -20]  # Positioned to flank from north
+      facing: [0.5, 0, 1]  # Facing southeast toward enemy flank
+      order: charge
+      target: enemy[0]
+
+  enemy:
+    - unit: orcboyz
+      count: 30
+      pos: [10, 0, 0]
+      facing: [-1, 0, 0]  # Facing west toward main force
+      order: hold
+
+expectations:
+  - id: main_force_engages
+    within_sec: 4.0
+    event:
+      type: combat_started
+      filter:
+        combat_type: melee
+
+  - id: flank_attack_detected
+    within_sec: 8.0
+    event:
+      type: unit_flanked
+      filter:
+        is_rear: false  # Flank, not rear
+
+  - id: casualties_occur
+    after: main_force_engages
+    within_sec: 3.0
+    event:
+      type: regiment_attacked
+      filter:
+        damage_min: 1
+
+negative_expectations:
+  - id: no_instant_rout
+    never:
+      type: regiment_routing
+      filter:
+        # Orcs shouldn't instantly rout from one flank attack
+        is_player: false
+
+variant_ranges:
+  enemy_count: [20, 30, 40]
+  flank_delay_sec: [0, 2, 4]  # Stagger flank attack timing

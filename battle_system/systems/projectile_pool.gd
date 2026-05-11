@@ -5,9 +5,9 @@
 class_name ProjectilePool
 extends Node
 
-# Pool configuration - tuned for RTS scale
-const DEFAULT_POOL_SIZE: int = 100   # Pre-allocated projectiles
-const MAX_ACTIVE: int = 200          # Max simultaneous active projectiles
+# Pool configuration - tuned for RTS scale (increased for 3D arrow per-soldier volleys)
+const DEFAULT_POOL_SIZE: int = 300   # Pre-allocated projectiles
+const MAX_ACTIVE: int = 500          # Max simultaneous active projectiles
 
 # Pool arrays
 var _pool: Array[Node] = []

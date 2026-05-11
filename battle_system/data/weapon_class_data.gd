@@ -95,6 +95,10 @@ class WeaponDef extends RefCounted:
 	var is_homing: bool = false            # Whether projectile homes toward target
 	var homing_turn_rate: float = 0.0      # Degrees per second for slerp turning
 
+	# Volley scatter (how much arrows/bolts spread in a volley)
+	# Higher = more spread, simulating inaccuracy at range
+	var scatter_angle: float = 3.0         # Degrees of scatter (Total War style)
+
 	# Particle effect settings
 	var trail_enabled: bool = true
 	var trail_color: Color = Color(0.4, 0.25, 0.1, 0.8)
@@ -230,6 +234,7 @@ static func _init_definitions() -> void:
 	bow.lifetime = 4.0
 	bow.visual_type = "arrow"
 	bow.trail_color = Color(0.4, 0.25, 0.1, 0.8)  # Brown
+	bow.scatter_angle = 5.0  # Massed volley - high scatter for arrow rain effect
 	DEFINITIONS[RegimentData.WeaponClass.BOW] = bow
 
 	# === CROSSBOW ===
@@ -245,6 +250,7 @@ static func _init_definitions() -> void:
 	crossbow.max_pierces = 1
 	crossbow.pierce_falloff = 0.3
 	crossbow.visual_type = "bolt"
+	crossbow.scatter_angle = 2.5  # More accurate than bows
 	crossbow.trail_color = Color(0.3, 0.3, 0.35, 0.8)  # Gray
 	DEFINITIONS[RegimentData.WeaponClass.CROSSBOW] = crossbow
 
@@ -264,6 +270,7 @@ static func _init_definitions() -> void:
 	handgun.trail_color = Color(0.6, 0.6, 0.6, 0.5)  # Light gray smoke
 	handgun.trail_particles = 10
 	handgun.trail_lifetime = 0.15
+	handgun.scatter_angle = 1.5  # Most accurate ranged weapon
 	DEFINITIONS[RegimentData.WeaponClass.HANDGUN] = handgun
 
 	# === THROWN ===
@@ -278,6 +285,7 @@ static func _init_definitions() -> void:
 	thrown.lifetime = 3.5
 	thrown.visual_type = "arrow"  # Reuse arrow until we have javelin sprite
 	thrown.trail_color = Color(0.5, 0.35, 0.2, 0.8)  # Darker brown
+	thrown.scatter_angle = 4.0  # Thrown weapons scatter moderately
 	DEFINITIONS[RegimentData.WeaponClass.THROWN] = thrown
 
 	# === CANNON ===
@@ -301,6 +309,7 @@ static func _init_definitions() -> void:
 	cannon.trail_particles = 30
 	cannon.trail_lifetime = 0.5
 	cannon.impact_effect = "explosion"
+	cannon.scatter_angle = 2.5  # Artillery scatter increased for realism
 	DEFINITIONS[RegimentData.WeaponClass.CANNON] = cannon
 
 	# === MORTAR ===
@@ -323,6 +332,7 @@ static func _init_definitions() -> void:
 	mortar.trail_particles = 25
 	mortar.trail_lifetime = 0.6
 	mortar.impact_effect = "explosion"
+	mortar.scatter_angle = 6.0  # High arc = more scatter
 	DEFINITIONS[RegimentData.WeaponClass.MORTAR] = mortar
 
 	# === WAR_MACHINE ===
@@ -459,6 +469,7 @@ static func get_projectile_config(weapon_class: int) -> Dictionary:
 		"cone_angle": def.cone_angle,
 		"cone_length": def.cone_length,
 		"damage_type": def.damage_type,
+		"scatter_angle": def.scatter_angle,  # Volley scatter (Total War style)
 	}
 
 

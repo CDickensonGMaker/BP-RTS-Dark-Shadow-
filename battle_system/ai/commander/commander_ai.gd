@@ -21,7 +21,7 @@ enum Stance {
 }
 
 # Auto-engagement constants
-const AUTO_ENGAGE_RADIUS_AGGRESSIVE: float = 40.0  # Aggressive units engage within 40m
+const AUTO_ENGAGE_RADIUS_AGGRESSIVE: float = 100.0  # Aggressive units engage within 100m (covers 120m spawn gap)
 const AUTO_ENGAGE_RADIUS_DEFENSIVE: float = 15.0   # Defensive units only engage close threats
 const AUTO_ENGAGE_CHECK_INTERVAL: float = 1.0      # Check every 1 second
 

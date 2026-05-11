@@ -120,6 +120,10 @@ enum WeaponClass {
 ## Default 0 = cannon model faces North when regiment faces North.
 @export var artillery_model_direction: int = 0
 
+## Spacing between artillery pieces in formation (in world units/meters).
+## Cannon: 5.0 (standard), Mortar: 4.0 (compact), Catapult: 7.0 (large footprint)
+@export var artillery_spacing: float = 5.0
+
 # Hero trait (for GENERAL units - defines weakness)
 @export var hero_trait: HeroTrait = HeroTrait.NONE
 

@@ -372,6 +372,32 @@ func spawn_poison_burst(world_pos: Vector3, radius: float = 3.0, context_node: N
 	return spawn_effect("poison_burst_atlas", world_pos, 0, scale, false, Color(0.8, 1.0, 0.7), 0.6, context_node)
 
 
+## Update an effect's position (for moving projectiles like arrows).
+## Call this each frame to keep sprite arrow in sync with projectile position.
+func update_effect_position(batch_atlas_path: String, effect_idx: int, world_pos: Vector3, direction: int = -1) -> void:
+	# Search all batches that match this atlas path (may have different parent IDs)
+	for batch_key in _batches:
+		if batch_key.begins_with(batch_atlas_path):
+			var batch: Dictionary = _batches[batch_key]
+			if effect_idx >= 0 and effect_idx < batch.max_effects:
+				# Get current custom data to preserve start_time
+				var custom: Color = batch.multimesh.get_instance_custom_data(effect_idx)
+				if custom.b < 0.5:
+					return  # Effect is hidden, don't update
+
+				# Update transform with new position
+				var xform := Transform3D()
+				xform.origin = world_pos
+				xform = xform.scaled(Vector3(1.5, 1.5, 1.0))  # Match spawn_arrow scale
+				batch.multimesh.set_instance_transform(effect_idx, xform)
+
+				# Update direction if provided
+				if direction >= 0:
+					custom.g = float(clampi(direction, 0, 7))
+					batch.multimesh.set_instance_custom_data(effect_idx, custom)
+				return  # Effect found and updated
+
+
 ## Hide a specific effect (before its animation completes).
 ## Note: With SubViewport support, batch keys are now "atlas_path::parent_id"
 ## This function searches all batches matching the atlas_path prefix.

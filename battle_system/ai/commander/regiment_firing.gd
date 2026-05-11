@@ -267,17 +267,31 @@ func get_firing_state() -> FiringState:
 	var reload_time: float = _get_reload_time()
 	var progress: float = _shared_timer / reload_time if reload_time > 0 else 0.0
 
+	var result: FiringState
 	# Before first shot: timer is at 80%+ so we're AIMING
 	# After firing: timer resets to 0 and counts up = RELOADING until ~80%
 	if progress >= 0.8:
-		return FiringState.AIMING
+		result = FiringState.AIMING
 	else:
 		# After first shot, we're reloading
 		if _has_fired_first_shot:
-			return FiringState.RELOADING
+			result = FiringState.RELOADING
 		else:
 			# Still pre-battle loading
-			return FiringState.AIMING
+			result = FiringState.AIMING
+
+	# DEBUG: Log state for artillery debugging
+	if regiment and regiment.data and Engine.get_process_frames() % 120 == 0:
+		print("[FIRING STATE] %s: state=%s, progress=%.2f, fired_first=%s, timer=%.2f/%.2f" % [
+			regiment.data.regiment_name if regiment.data else "?",
+			["IDLE", "AIMING", "RELOADING"][result],
+			progress,
+			str(_has_fired_first_shot),
+			_shared_timer,
+			reload_time
+		])
+
+	return result
 
 
 func get_firing_state_name() -> String:

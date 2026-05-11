@@ -12,6 +12,11 @@ var combat_manager: Node = null
 # Reference to enemy GeneralAI instance
 var _enemy_general_ai = null
 
+# Combat tracking for battle end logic (prevents premature victory)
+var _any_combat_started: bool = false  # True once any melee/combat occurs
+var _victory_pending_timer: float = 0.0  # Timer for delayed victory check
+const VICTORY_DELAY: float = 2.0  # Require 2 seconds of one side eliminated
+
 # Player's rally ability (requires a general unit)
 var player_rally: RallyAbility = null
 var _player_general: Node = null
@@ -358,23 +363,60 @@ func _process(delta):
 	if player_rally:
 		player_rally.tick(delta)
 
+	# Track combat started via CombatManager active melees (more reliable than signal)
+	if not _any_combat_started and is_battle_active:
+		if combat_manager and "active_melees" in combat_manager:
+			if combat_manager.active_melees.size() > 0:
+				_any_combat_started = true
+				if DebugFlags.battle_setup:
+					print("[BattleManager] Combat started - melee engagement detected")
+
 
 func _check_battle_end():
+	# Phase 2A: Don't end battle before any fighting has occurred
+	if not _any_combat_started:
+		if DebugFlags.battle_setup:
+			print("[BattleManager] Battle end check skipped - no combat started yet")
+		return
+
 	var player_alive = get_tree().get_nodes_in_group("player_regiments").filter(
 		func(r): return r.state != Regiment.State.DEAD and r.state != Regiment.State.ROUTING
 	)
 	var enemy_alive = get_tree().get_nodes_in_group("enemy_regiments").filter(
 		func(r): return r.state != Regiment.State.DEAD and r.state != Regiment.State.ROUTING
 	)
+
+	# Phase 2B: Victory delay - require sustained 0 units for VICTORY_DELAY seconds
+	# This prevents instant victory from single deaths and allows rally/reinforcement
+	var pending_winner: String = ""
 	if player_alive.is_empty():
-		_end_battle("enemy")
+		pending_winner = "enemy"
 	elif enemy_alive.is_empty():
-		_end_battle("player")
+		pending_winner = "player"
+
+	if pending_winner != "":
+		_victory_pending_timer += get_process_delta_time()
+		if DebugFlags.battle_setup and int(_victory_pending_timer * 10) % 10 == 0:
+			print("[BattleManager] Victory pending for %s... (%.1fs / %.1fs)" % [
+				pending_winner, _victory_pending_timer, VICTORY_DELAY
+			])
+		if _victory_pending_timer >= VICTORY_DELAY:
+			_end_battle(pending_winner)
+	else:
+		# Reset timer if units respawn/rally/rejoin
+		if _victory_pending_timer > 0.0:
+			if DebugFlags.battle_setup:
+				print("[BattleManager] Victory pending reset - units still fighting")
+		_victory_pending_timer = 0.0
 
 
 func _end_battle(winner: String):
 	is_battle_active = false
 	var duration = Time.get_unix_time_from_system() - battle_start_time
+
+	# Reset combat tracking flags
+	_any_combat_started = false
+	_victory_pending_timer = 0.0
 
 	# Finalize battle stats
 	if battle_stats:

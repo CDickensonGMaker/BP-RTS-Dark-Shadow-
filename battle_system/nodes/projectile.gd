@@ -11,9 +11,17 @@
 class_name Projectile
 extends Node3D
 
-# === Sprite Mode Toggle ===
-## When true, uses sprite-based arrow rendering instead of procedural lines
-@export var use_sprite_arrows: bool = true
+# === Visual Mode Toggle ===
+## When true, uses 3D model arrow rendering instead of procedural lines or sprites
+@export var use_3d_arrows: bool = true
+## When true (and use_3d_arrows is false), uses sprite-based arrow rendering
+@export var use_sprite_arrows: bool = false
+## DEBUG: Show big red box instead of arrow model for visibility testing
+@export var debug_arrow_placeholder: bool = false
+
+# 3D arrow model reference
+var _arrow_3d_scene: PackedScene = null
+var _arrow_3d_instance: Node3D = null
 
 # === Signals ===
 signal returned_to_pool(projectile: Node)
@@ -123,7 +131,11 @@ var _sprite_direction: int = 0
 
 
 func _ready() -> void:
-	# Setup procedural arrow mesh (hidden if using sprites)
+	# Load 3D arrow scene for model-based rendering
+	if use_3d_arrows:
+		_arrow_3d_scene = load("res://battle_system/nodes/arrow_3d.tscn")
+
+	# Setup procedural arrow mesh (hidden if using 3D or sprites)
 	_setup_arrow_mesh()
 
 	# Setup trail particles
@@ -133,8 +145,8 @@ func _ready() -> void:
 	if sprite:
 		sprite.visible = false
 
-	# Hide procedural mesh if using sprite arrows
-	if use_sprite_arrows and _mesh_instance:
+	# Hide procedural mesh if using 3D arrows or sprite arrows
+	if (use_3d_arrows or use_sprite_arrows) and _mesh_instance:
 		_mesh_instance.visible = false
 
 	# Start deactivated - pool will activate
@@ -555,6 +567,7 @@ func apply_config(config: Dictionary) -> void:
 
 ## Activate projectile for use (called by pool)
 func activate() -> void:
+	print("[PROJECTILE ACTIVATE] Called! use_3d=", use_3d_arrows, " type=", projectile_type, " debug=", debug_arrow_placeholder)
 	is_active = true
 	visible = true
 	process_mode = Node.PROCESS_MODE_INHERIT
@@ -571,18 +584,30 @@ func activate() -> void:
 	if _trail_particles:
 		_trail_particles.emitting = true
 
-	# Spawn sprite arrow if using sprite mode (not for special projectile types)
-	var use_sprites: bool = use_sprite_arrows and projectile_type in [ProjectileType.ARROW, ProjectileType.CROSSBOW]
-	if use_sprites:
+	# Determine which visual mode to use
+	var is_arrow_type: bool = projectile_type in [ProjectileType.ARROW, ProjectileType.CROSSBOW]
+
+	# Use 3D arrow model for arrows and crossbow bolts
+	if use_3d_arrows and is_arrow_type:
+		print("[PROJECTILE] activate() - type=", projectile_type, " use_3d=", use_3d_arrows, " debug=", debug_arrow_placeholder)
+		_spawn_3d_arrow()
+		if _mesh_instance:
+			_mesh_instance.visible = false
+	# Use sprite arrows if 3D disabled but sprites enabled
+	elif use_sprite_arrows and is_arrow_type:
 		_spawn_sprite_arrow()
 		if _mesh_instance:
 			_mesh_instance.visible = false
 	else:
+		# Use procedural mesh for special projectile types (shells, magic, flame, etc.)
 		if _mesh_instance:
 			_mesh_instance.visible = true
 			# Update mesh material color for projectile type
 			if _arrow_material:
 				_arrow_material.albedo_color = ARROW_COLORS.get(projectile_type, ARROW_COLORS[ProjectileType.ARROW])
+		# Hide 3D arrow if it exists
+		if _arrow_3d_instance:
+			_arrow_3d_instance.visible = false
 
 
 ## Deactivate projectile for pooling (called by pool)
@@ -658,6 +683,9 @@ func deactivate() -> void:
 	# === STOP EFFECTS ===
 	if _trail_particles:
 		_trail_particles.emitting = false
+
+	# Clean up 3D arrow
+	_hide_3d_arrow()
 
 	# Clean up sprite arrow
 	_hide_sprite_arrow()
@@ -746,6 +774,9 @@ func _process(delta: float) -> void:
 
 	# Move projectile
 	_update_movement(delta)
+
+	# Update sprite arrow position to follow projectile
+	_update_sprite_arrow()
 
 	# Check for airburst (shrapnel exploding above target)
 	if is_airburst and airburst_height > 0.0 and is_instance_valid(target):
@@ -1000,6 +1031,101 @@ func _on_impact() -> void:
 
 
 # =============================================================================
+# 3D ARROW MODEL SUPPORT
+# =============================================================================
+
+## Spawn 3D arrow model instance
+func _spawn_3d_arrow() -> void:
+	# DEBUG MODE: Spawn big red box instead
+	if debug_arrow_placeholder:
+		_spawn_debug_placeholder()
+		return
+
+	if not _arrow_3d_scene:
+		push_warning("[ARROW] Failed to load arrow_3d.tscn - scene is null!")
+		_spawn_debug_placeholder()  # Fallback to debug box
+		return
+
+	# Reuse existing instance if available
+	if _arrow_3d_instance and is_instance_valid(_arrow_3d_instance):
+		_arrow_3d_instance.visible = true
+		print("[ARROW] Reusing 3D arrow instance")
+		return
+
+	# Create new instance
+	_arrow_3d_instance = _arrow_3d_scene.instantiate()
+	add_child(_arrow_3d_instance)
+	print("[ARROW] Spawned new 3D arrow instance")
+
+	# Apply tint based on projectile type
+	_apply_3d_arrow_tint()
+
+
+## DEBUG: Create a big red box placeholder for arrow visibility testing
+func _spawn_debug_placeholder() -> void:
+	# Create a large visible box
+	var debug_mesh := MeshInstance3D.new()
+	debug_mesh.name = "DebugArrowBox"
+
+	# Big red box - 2x2x2 units (very visible!)
+	var box := BoxMesh.new()
+	box.size = Vector3(2.0, 2.0, 2.0)
+	debug_mesh.mesh = box
+
+	# Bright red unshaded material
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.0, 0.0, 1.0)  # Bright red
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED  # Always visible
+	mat.no_depth_test = true  # Render on top of everything
+	debug_mesh.material_override = mat
+
+	add_child(debug_mesh)
+	print("[DEBUG ARROW] Spawned red placeholder at ", global_position)
+
+
+## Apply color tint to 3D arrow model based on projectile type
+func _apply_3d_arrow_tint() -> void:
+	if not _arrow_3d_instance:
+		return
+
+	var tint_color: Color
+	match projectile_type:
+		ProjectileType.ARROW:
+			tint_color = Color(0.85, 0.75, 0.6)  # Warm wood color
+		ProjectileType.CROSSBOW:
+			tint_color = Color(0.7, 0.7, 0.75)  # Steel gray for bolts
+		_:
+			tint_color = Color.WHITE
+
+	# Find mesh instances and apply tint
+	_apply_tint_recursive(_arrow_3d_instance, tint_color)
+
+
+## Recursively apply tint to all MeshInstance3D nodes
+func _apply_tint_recursive(node: Node, tint: Color) -> void:
+	if node is MeshInstance3D:
+		var mesh_inst := node as MeshInstance3D
+		# Create override material with tint
+		for i in mesh_inst.get_surface_override_material_count():
+			var mat = mesh_inst.get_surface_override_material(i)
+			if not mat:
+				mat = mesh_inst.mesh.surface_get_material(i)
+			if mat is StandardMaterial3D:
+				var new_mat := mat.duplicate() as StandardMaterial3D
+				new_mat.albedo_color = new_mat.albedo_color * tint
+				mesh_inst.set_surface_override_material(i, new_mat)
+
+	for child in node.get_children():
+		_apply_tint_recursive(child, tint)
+
+
+## Hide 3D arrow instance
+func _hide_3d_arrow() -> void:
+	if _arrow_3d_instance and is_instance_valid(_arrow_3d_instance):
+		_arrow_3d_instance.visible = false
+
+
+# =============================================================================
 # SPRITE ARROW SUPPORT
 # =============================================================================
 
@@ -1025,6 +1151,27 @@ func _spawn_sprite_arrow() -> void:
 	_sprite_direction = _direction_to_index(direction)
 	# Pass self as context_node to ensure effect spawns in correct viewport (Unit Zoo SubViewport support)
 	_sprite_effect_idx = sprite_pool.spawn_arrow(global_position, _sprite_direction, projectile_type, self)
+
+
+## Update sprite arrow position to follow projectile during flight
+func _update_sprite_arrow() -> void:
+	if _sprite_effect_idx < 0:
+		return
+
+	var sprite_pool := get_node_or_null("/root/SpriteEffectPool")
+	if not sprite_pool or not sprite_pool.has_method("update_effect_position"):
+		return
+
+	# Update direction based on current movement
+	var new_direction: int = _direction_to_index(direction)
+
+	# Update both position and direction
+	sprite_pool.update_effect_position(
+		"res://assets/sprites/effects/arrow_atlas.tres",
+		_sprite_effect_idx,
+		global_position,
+		new_direction
+	)
 
 
 ## Hide/cleanup sprite arrow effect

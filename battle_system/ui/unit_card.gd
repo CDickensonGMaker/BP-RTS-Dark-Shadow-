@@ -879,9 +879,12 @@ func _update_artillery_reload_throttled():
 
 	# Check if regiment has firing component
 	if not regiment.firing:
-		artillery_state_label.text = "NO TARGET"
+		artillery_state_label.text = "NO FIRING"
 		artillery_state_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
 		artillery_reload_bar.value = 0
+		# DEBUG: Artillery has no firing component
+		if Engine.get_process_frames() % 60 == 0:
+			print("[UNIT CARD DEBUG] %s: No firing component!" % (regiment.data.regiment_name if regiment.data else "?"))
 		return
 
 	# Get firing state and progress

@@ -5,7 +5,9 @@ extends BTNode
 ## Handles charging and sustained melee engagement.
 
 var commander: CommanderAI
-const MELEE_RANGE: float = 7.0  # Slightly larger than MeleeArea radius (6.0) to stop before collision
+# COMBAT FIX: Reduced from 7.0 to 5.0 to ensure MeleeArea collision (radius 6.0) has already
+# triggered before AI engages. This prevents units from "engaging" at 14-25m visual distance.
+const MELEE_RANGE: float = 5.0  # Must be INSIDE MeleeArea overlap (2*6.0=12m center-to-center)
 const CHARGE_RANGE: float = 15.0
 const DEFENSIVE_ENGAGE_RANGE: float = 18.0  # Auto-engage enemies within this range when DEFENSIVE
 
@@ -47,6 +49,12 @@ func tick(_delta: float) -> Status:
 
 	# In melee range - stop movement and engage
 	if distance <= MELEE_RANGE:
+		# DEBUG: Log exact engagement trigger distance
+		print("[ENGAGE DEBUG] %s engaging %s at dist=%.2fm (MELEE_RANGE=%.1f)" % [
+			regiment.data.regiment_name if regiment.data else regiment.name,
+			target.data.regiment_name if target.data else target.name,
+			distance, MELEE_RANGE
+		])
 		# Stop movement immediately before engaging
 		regiment.leader.stop_movement()
 		regiment.set_state(Regiment.State.ENGAGING)
@@ -81,6 +89,12 @@ func tick(_delta: float) -> Status:
 	# Previously only checked != MARCHING, causing deadlock when infantry
 	# reached destination (state -> IDLE) but was still outside MELEE_RANGE
 	if regiment.state == Regiment.State.IDLE:
+		# DEBUG: Show distance when unit needs to move closer
+		print("[ENGAGE DEBUG] %s too far from %s (dist=%.2fm > MELEE=%.1f), issuing move" % [
+			regiment.data.regiment_name if regiment.data else regiment.name,
+			target.data.regiment_name if target.data else target.name,
+			distance, MELEE_RANGE
+		])
 		commander.issue_move_order(target.global_position)
 	return Status.RUNNING
 

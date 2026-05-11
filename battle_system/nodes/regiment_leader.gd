@@ -32,7 +32,7 @@ var _charge_distance_used: float = 0.0
 # Stuck detection (spring1944-inspired)
 var _last_position: Vector3 = Vector3.ZERO
 var _stuck_time: float = 0.0
-const STUCK_THRESHOLD: float = 3.0  # Seconds before attempting unstuck
+const STUCK_THRESHOLD: float = 1.5  # Reduced from 3.0 - detect stuck faster for large battles
 const STUCK_MOVE_THRESHOLD: float = 0.5  # Must move more than this to not be stuck
 
 # === VELOCITY-BASED MOVEMENT (Fix for rubberbanding) ===

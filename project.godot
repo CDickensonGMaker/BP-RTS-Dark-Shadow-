@@ -63,7 +63,7 @@ window/stretch/scale="1.0"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/battle_map_viewer/plugin.cfg", "res://addons/battle_scene_editor/plugin.cfg", "res://addons/campaign_map_editor/plugin.cfg", "res://addons/dynamic_weather/plugin.cfg", "res://addons/sky_3d/plugin.cfg")
+enabled=PackedStringArray("res://addons/battle_map_viewer/plugin.cfg", "res://addons/battle_scene_editor/plugin.cfg", "res://addons/campaign_map_editor/plugin.cfg", "res://addons/dynamic_weather/plugin.cfg", "res://addons/model_viewer/plugin.cfg", "res://addons/sky_3d/plugin.cfg")
 
 [input]
 

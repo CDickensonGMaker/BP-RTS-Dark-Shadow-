@@ -68,8 +68,8 @@ var enemy_regiments: Array[Node] = []
 const MAX_UNITS_PER_SIDE: int = 6
 var all_unit_ids: Array = []
 
-# Selection tracking for battle controls
-var _selected_regiments: Array[Node] = []
+# Selection tracking for battle controls - now uses SelectionManager autoload
+# var _selected_regiments: Array[Node] = []  # REMOVED - use SelectionManager.selected_regiments
 var _is_dragging_formation: bool = false
 var _formation_drag_start: Vector3 = Vector3.ZERO
 
@@ -78,7 +78,7 @@ var _aggressive_retry_counts: Dictionary = {}  # regiment -> int
 const MAX_AGGRESSIVE_RETRIES: int = 10
 
 # Default starting units
-const DEFAULT_PLAYER_UNIT: String = "grtcanon"  # Changed for testing artillery melee
+const DEFAULT_PLAYER_UNIT: String = "xbow"  # Crossbowmen for 3D arrow testing
 const DEFAULT_ENEMY_UNIT: String = "orcboyz"
 
 # Auto-test state
@@ -96,6 +96,10 @@ var _stress_test_counter_label: Label = null
 # Set to true to auto-start testing on scene load (for MCP automation)
 # Disabled by default - press T to manually start auto-test
 @export var auto_start_test: bool = false
+
+# Auto-start combat phase when units spawn (skip deployment phase)
+# Enabled by default for faster testing - disable to manually position units first
+@export var auto_start_combat: bool = true
 
 # Auto-start battle stress test on load (for automated testing while away)
 @export var auto_start_battle_stress: bool = false
@@ -269,6 +273,14 @@ const ENEMY_RANGED_PRESETS: Dictionary = {
 }
 
 
+## Helper to get selected regiments from SelectionManager autoload.
+## Returns empty array if SelectionManager not available.
+func _get_selected_regiments() -> Array:
+	if SelectionManager:
+		return SelectionManager.selected_regiments
+	return []
+
+
 func _ready() -> void:
 	# Detect headless mode (daemon/automated testing)
 	var is_headless: bool = DisplayServer.get_name() == "headless"
@@ -295,6 +307,9 @@ func _ready() -> void:
 
 	# Create stress test counter label (upper right corner)
 	_create_stress_test_counter()
+
+	# Create formation debug overlay (F5 to toggle - shows facing arrows and melee boxes)
+	_create_formation_debug_overlay()
 
 	# Enable combat debugging by default in Unit Zoo
 	if CombatManager:
@@ -703,6 +718,21 @@ func _create_stress_test_counter() -> void:
 	_stress_test_counter_label.visible = false  # Hidden until stress test starts
 
 
+func _create_formation_debug_overlay() -> void:
+	"""Create formation debug overlay for visualizing facing arrows and melee boxes."""
+	var overlay_scene = load("res://battle_system/debug/formation_debug_overlay.tscn")
+	if not overlay_scene:
+		push_warning("[UnitZoo] Could not load formation debug overlay scene")
+		return
+
+	var overlay = overlay_scene.instantiate()
+	if unit_container:
+		unit_container.add_child(overlay)
+		print("[UnitZoo] Formation debug overlay available (F5 to toggle, F6 for all units)")
+	else:
+		push_warning("[UnitZoo] No unit_container found for formation overlay")
+
+
 func _update_stress_test_counter() -> void:
 	"""Update the stress test counter display."""
 	if _stress_test_counter_label:
@@ -959,16 +989,8 @@ func _input(event: InputEvent) -> void:
 		elif event.keycode == KEY_4:
 			_cast_spell_at_enemy(3)
 
-	# Only handle mouse input if within the viewport
-	if not _is_mouse_over_viewport():
-		return
-
-	# Handle mouse clicks for selection and movement
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-			_handle_left_click(event.position)
-		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			_handle_right_click(event.position)
+	# Mouse selection and movement now handled by SelectionManager and FormationDragHandler autoloads
+	# which support SubViewport coordinate conversion
 
 
 func _is_mouse_over_viewport() -> bool:
@@ -980,70 +1002,8 @@ func _is_mouse_over_viewport() -> bool:
 	return container_rect.has_point(mouse_pos)
 
 
-func _handle_left_click(screen_pos: Vector2) -> void:
-	"""Handle left click for unit selection."""
-	var world_pos: Vector3 = _screen_to_world(screen_pos)
-	if world_pos == Vector3.INF:
-		return
-
-	# Find closest unit to click
-	var closest_unit: Node = null
-	var closest_dist: float = 10.0  # Max selection distance
-
-	for reg in player_regiments:
-		if not is_instance_valid(reg):
-			continue
-		var dist: float = reg.global_position.distance_to(world_pos)
-		if dist < closest_dist:
-			closest_dist = dist
-			closest_unit = reg
-
-	# Clear previous selection
-	for reg in _selected_regiments:
-		if is_instance_valid(reg) and reg.has_method("set_selected"):
-			reg.set_selected(false)
-	_selected_regiments.clear()
-
-	# Select new unit
-	if closest_unit:
-		_selected_regiments.append(closest_unit)
-		if closest_unit.has_method("set_selected"):
-			closest_unit.set_selected(true)
-		print("[UnitZoo] Selected: %s" % closest_unit.data.regiment_name)
-
-
-func _handle_right_click(screen_pos: Vector2) -> void:
-	"""Handle right click for move/attack orders."""
-	if _selected_regiments.is_empty():
-		return
-
-	var world_pos: Vector3 = _screen_to_world(screen_pos)
-	if world_pos == Vector3.INF:
-		return
-
-	# Check if clicking on an enemy
-	var target_enemy: Node = null
-	for reg in enemy_regiments:
-		if not is_instance_valid(reg):
-			continue
-		var dist: float = reg.global_position.distance_to(world_pos)
-		if dist < 8.0:  # Click near enemy = attack
-			target_enemy = reg
-			break
-
-	# Issue orders to selected units
-	for reg in _selected_regiments:
-		if not is_instance_valid(reg):
-			continue
-		if target_enemy:
-			# Set AI target so ranged units know what to shoot at
-			if reg.ai_controller:
-				reg.ai_controller.set_target(target_enemy)
-			reg.give_order(OrderType.Type.ATTACK_MOVE, target_enemy.global_position)
-			print("[UnitZoo] Attack order: %s -> %s" % [reg.data.regiment_name, target_enemy.data.regiment_name])
-		else:
-			reg.give_order(OrderType.Type.MOVE, world_pos)
-			print("[UnitZoo] Move order: %s -> %.1f, %.1f" % [reg.data.regiment_name, world_pos.x, world_pos.z])
+# REMOVED: _handle_left_click and _handle_right_click
+# Selection and movement now handled by SelectionManager and FormationDragHandler autoloads
 
 
 func _screen_to_world(screen_pos: Vector2) -> Vector3:
@@ -1073,19 +1033,21 @@ func _screen_to_world(screen_pos: Vector2) -> Vector3:
 
 func _set_selected_stance(stance: CommanderAI.Stance) -> void:
 	"""Set stance for all selected regiments."""
-	for reg in _selected_regiments:
+	var selected := _get_selected_regiments()
+	for reg in selected:
 		if is_instance_valid(reg) and reg.ai_controller:
 			reg.ai_controller.current_stance = stance
-	if not _selected_regiments.is_empty():
+	if not selected.is_empty():
 		print("[UnitZoo] Stance changed to: %s" % CommanderAI.Stance.keys()[stance])
 
 
 func _set_selected_formation(formation: FormationType.Type) -> void:
 	"""Set formation for all selected regiments."""
-	for reg in _selected_regiments:
+	var selected := _get_selected_regiments()
+	for reg in selected:
 		if is_instance_valid(reg):
 			reg.set_formation(formation)
-	if not _selected_regiments.is_empty():
+	if not selected.is_empty():
 		print("[UnitZoo] Formation changed to: %s" % FormationType.Type.keys()[formation])
 
 
@@ -1113,9 +1075,38 @@ func _spawn_initial_units() -> void:
 	# Auto-target player ranged units at the enemy (for artillery/ranged testing)
 	call_deferred("_setup_player_ranged_targeting")
 
-	# Combat phase is now started manually via the Start Battle button
-	# This allows positioning units before combat begins
-	_update_battle_button_state()
+	# Auto-start combat if enabled (default: true for faster testing)
+	# Disable auto_start_combat in inspector to manually position units first
+	if auto_start_combat:
+		call_deferred("_auto_start_combat_after_spawn")
+	else:
+		_update_battle_button_state()
+
+
+func _auto_start_combat_after_spawn() -> void:
+	"""Start combat automatically after units spawn and settle."""
+	await get_tree().create_timer(0.3).timeout  # Let units initialize
+	_ensure_combat_phase()
+	print("[UnitZoo] Auto-started combat phase (disable auto_start_combat to manually position units)")
+
+	# Re-issue attack orders AFTER combat phase starts - ensures AI ticks with valid targets
+	await get_tree().create_timer(0.1).timeout
+
+	# Re-target enemy units at player (fixes enemy stopping halfway)
+	for enemy in enemy_regiments:
+		if is_instance_valid(enemy) and enemy.ai_controller:
+			if player_regiment and is_instance_valid(player_regiment):
+				enemy.ai_controller.set_target(player_regiment)
+				enemy.ai_controller.issue_attack_order(player_regiment)
+				print("[UnitZoo] Post-combat-start: Re-issued attack order for %s" % (enemy.data.regiment_name if enemy.data else enemy.name))
+
+	# Re-target player ranged units at enemy (fixes crossbows not firing)
+	if player_regiment and is_instance_valid(player_regiment):
+		if player_regiment.data and player_regiment.data.ballistic_skill > 0:
+			if player_regiment.ai_controller and enemy_regiment and is_instance_valid(enemy_regiment):
+				player_regiment.ai_controller.set_target(enemy_regiment)
+				player_regiment.ai_controller.issue_attack_order(enemy_regiment)
+				print("[UnitZoo] Post-combat-start: Re-issued attack order for player ranged %s" % (player_regiment.data.regiment_name if player_regiment.data else player_regiment.name))
 
 
 func _setup_player_ranged_targeting() -> void:
@@ -1295,7 +1286,9 @@ func _clear_player_units() -> void:
 			reg.queue_free()
 	player_regiments.clear()
 	player_regiment = null
-	_selected_regiments.clear()
+	# Clear selection via SelectionManager
+	if SelectionManager:
+		SelectionManager.clear_selection()
 
 	# Refresh unit cards in HUD
 	_refresh_hud_unit_cards()
@@ -1532,8 +1525,9 @@ func _update_compass_debug() -> void:
 
 	# Get selected unit facing (or primary player regiment)
 	var selected_reg: Node = null
-	if not _selected_regiments.is_empty():
-		selected_reg = _selected_regiments[0]
+	var selected := _get_selected_regiments()
+	if not selected.is_empty():
+		selected_reg = selected[0]
 	elif player_regiment and is_instance_valid(player_regiment):
 		selected_reg = player_regiment
 

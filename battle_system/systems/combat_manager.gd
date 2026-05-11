@@ -932,6 +932,13 @@ func _get_friendly_in_melee_with(target: Regiment, attacker_is_player: bool) -> 
 
 ## Fire ranged attack
 func fire_ranged(attacker: Regiment, target: Regiment) -> void:
+	# ALWAYS print for debugging arrow issues
+	print("[RANGED] fire_ranged: %s -> %s (ammo=%d, BS=%d)" % [
+		attacker.data.regiment_name if attacker.data else "?",
+		target.data.regiment_name if target and target.data else "?",
+		attacker.current_ammo,
+		attacker.data.ballistic_skill if attacker.data else 0
+	])
 	if debug_combat:
 		print("[CombatManager] fire_ranged called: %s -> %s (ammo=%d, BS=%d)" % [
 			attacker.data.regiment_name, target.data.regiment_name,
@@ -1008,6 +1015,12 @@ func fire_ranged(attacker: Regiment, target: Regiment) -> void:
 ## Each soldier fires independently, creating N projectiles with slight position offsets.
 ## Uses weapon class data for projectile configuration.
 func fire_ranged_multi(attacker: Regiment, target: Regiment, shot_count: int) -> void:
+	# ALWAYS print for debugging arrow issues
+	print("[RANGED] fire_ranged_multi: %s -> %s, shots=%d" % [
+		attacker.data.regiment_name if attacker.data else "?",
+		target.data.regiment_name if target and target.data else "?",
+		shot_count
+	])
 	# DEBUG: Trace artillery firing
 	var is_artillery: bool = attacker.data and attacker.data.unit_type == UnitType.Type.ARTILLERY
 	if is_artillery:
@@ -1125,13 +1138,41 @@ func _spawn_projectile_at_offset(from: Regiment, to: Regiment, offset: Vector3) 
 
 
 ## Spawn a single standard projectile.
+## Enhanced with distance-scaled scatter for realistic volley spread.
 func _spawn_single_projectile(from: Regiment, to: Regiment, offset: Vector3, config: Dictionary) -> void:
 	# Calculate spawn position with offset
 	var spawn_pos: Vector3 = from.global_position + Vector3(0, 2, 0) + offset
 	var target_pos: Vector3 = to.global_position + Vector3(0, 1, 0)
-	# Add slight randomness to target position for volley spread
-	target_pos += Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
+
+	# Calculate distance-scaled scatter for realistic volley spread
+	# Further targets = more scatter, simulating accuracy falloff
+	var distance: float = from.global_position.distance_to(to.global_position)
+
+	# Base scatter scales with distance (Total War style)
+	# Scatter angle in degrees - bows scatter more than crossbows/handguns
+	var base_scatter_angle: float = config.get("scatter_angle", 3.0)  # Default 3 degrees
+	var max_range: float = from.data.range_distance if from.data else 50.0
+	var range_ratio: float = clampf(distance / max_range, 0.2, 1.0)
+
+	# Scatter increases with range: base + (range_ratio * multiplier)
+	var scatter_deg: float = base_scatter_angle * (0.5 + range_ratio * 1.5)
+	var scatter_rad: float = deg_to_rad(scatter_deg)
+
+	# Apply scatter to target position using spherical offset
+	var base_dir: Vector3 = (target_pos - spawn_pos).normalized()
+	var right: Vector3 = base_dir.cross(Vector3.UP).normalized()
+	var up: Vector3 = right.cross(base_dir).normalized()
+
+	# Random scatter within cone
+	var h_scatter: float = randf_range(-scatter_rad, scatter_rad)
+	var v_scatter: float = randf_range(-scatter_rad * 0.5, scatter_rad * 0.5)  # Less vertical scatter
+
+	# Also add position-based scatter for formation spread
+	var pos_scatter: float = clampf(distance * 0.02, 0.5, 3.0)
+	target_pos += Vector3(randf_range(-pos_scatter, pos_scatter), 0, randf_range(-pos_scatter, pos_scatter))
+
 	var direction: Vector3 = (target_pos - spawn_pos).normalized()
+	direction = direction.rotated(up, h_scatter).rotated(right, v_scatter).normalized()
 
 	var projectile = _projectile_pool.spawn_configured(
 		from,
@@ -1701,6 +1742,10 @@ func _fire_breath_weapon(attacker: Regiment, target: Regiment) -> void:
 	var direction: Vector3 = (target.global_position - origin).normalized()
 	direction.y = 0  # Flatten to horizontal
 
+	# Add breath weapon inaccuracy (~7 degree wobble)
+	var aim_deviation := randf_range(-0.12, 0.12)
+	direction = direction.rotated(Vector3.UP, aim_deviation)
+
 	# Consume ammo
 	attacker.current_ammo -= 1
 
@@ -1823,6 +1868,12 @@ func _process(delta: float) -> void:
 	# Don't process combat during deployment phase
 	if DeploymentManager and DeploymentManager.is_deployment_phase():
 		return
+
+	# DEBUG: Periodic status print for active melees (every 2 seconds)
+	if Engine.get_process_frames() % 120 == 0 and active_melees.size() > 0:
+		print("[MELEE STATUS] active_melees=%d, melee_timer=%.3f, bucket=%d/%d" % [
+			active_melees.size(), melee_timer, _update_bucket, BUCKET_COUNT
+		])
 
 	# Refresh cover object cache periodically (performance optimization)
 	_cover_cache_timer += delta

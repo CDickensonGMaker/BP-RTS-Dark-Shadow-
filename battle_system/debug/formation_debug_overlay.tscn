@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://battle_system/debug/formation_debug_overlay.gd" id="1_overlay"]
+
+[node name="FormationDebugOverlay" type="Node3D"]
+script = ExtResource("1_overlay")

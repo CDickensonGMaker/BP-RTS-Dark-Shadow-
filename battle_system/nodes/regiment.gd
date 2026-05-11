@@ -88,8 +88,8 @@ var charge_distance_traveled: float = 0.0           # Distance traveled during c
 const MIN_CHARGE_DISTANCE: float = 10.0             # Minimum distance to apply charge bonus
 
 # Engagement constants (Phase 1 fix + rank-to-rank stopping)
-const ENGAGEMENT_MIN_GAP: float = 0.8               # Minimum gap between front ranks (prevents clipping)
-const ENGAGEMENT_DEAD_ZONE: float = 0.5             # ±0.5 units from ideal = no correction (prevents oscillation)
+const ENGAGEMENT_MIN_GAP: float = 0.5               # Reduced from 0.8 - tighter formations in melee
+const ENGAGEMENT_DEAD_ZONE: float = 0.2             # Reduced from 0.5 - tighter tolerance (prevents oscillation)
 const ENGAGEMENT_DECEL_RATE: float = 8.0            # Units/sec of corrective movement toward ideal spacing
 const APPROACH_OFFSET: float = 6.0                  # Attack approach point offset (accounts for formation depth)
 const FORMATION_SPACING: float = 1.2                # Default soldier spacing in formation
@@ -302,6 +302,10 @@ func _ready():
 	else:
 		add_to_group("enemy_regiments")
 
+	# Phase 1C: Log group membership for combat debugging
+	if DebugFlags and DebugFlags.battle_setup:
+		print("[REGIMENT] %s added to groups: %s" % [name, get_groups()])
+
 	# Initialize per-soldier morale system
 	_setup_unit_morale()
 
@@ -343,13 +347,32 @@ func _setup_abilities():
 func _setup_firing():
 	## Initialize per-soldier firing state for ranged units.
 	if not data:
+		print("[FIRING SETUP] %s: No data, skipping firing setup" % name)
 		return
+
+	# DEBUG: Show weapon class and ballistic skill
+	print("[FIRING SETUP] %s: weapon_class=%d, ballistic_skill=%d, range=%.1f" % [
+		data.regiment_name if data.regiment_name else name,
+		data.weapon_class,
+		data.ballistic_skill,
+		data.range_distance
+	])
+
 	# Only setup firing for units with a weapon class (ranged capability)
-	# TODO: RegimentFiringScript temporarily disabled due to parse issue
 	if RegimentFiringScript == null:
 		RegimentFiringScript = load("res://battle_system/ai/commander/regiment_firing.gd")
-	if RegimentFiringScript and data.weapon_class != RegimentData.WeaponClass.NONE:
+		if RegimentFiringScript == null:
+			push_error("[FIRING SETUP] FAILED to load regiment_firing.gd!")
+			return
+
+	if data.weapon_class != RegimentData.WeaponClass.NONE:
 		firing = RegimentFiringScript.new(self)
+		print("[FIRING SETUP] %s: Created firing component, weapon_def=%s" % [
+			data.regiment_name if data.regiment_name else name,
+			"OK" if firing and firing.weapon_def else "MISSING"
+		])
+	else:
+		print("[FIRING SETUP] %s: No weapon class (melee only)" % (data.regiment_name if data.regiment_name else name))
 
 
 func _assign_general_spells():
@@ -488,7 +511,7 @@ func _setup_artillery_formation():
 	arty_formation.artillery_model = data.artillery_model
 	arty_formation.max_pieces = data.artillery_pieces_count
 	arty_formation.model_scale = data.artillery_model_scale
-	arty_formation.spacing = 5.0  # Wide spacing between guns
+	arty_formation.spacing = data.artillery_spacing  # Configurable spacing between guns
 	arty_formation.faction_color = data.faction_color
 	arty_formation.enable_collision = false  # Cannon pieces have NO collision - crew handles melee
 	arty_formation.height_offset = 0.0
@@ -625,10 +648,14 @@ func _snap_to_terrain_then_init_ai():
 	# Also initialize for player ranged/artillery units so they can fire via behavior tree
 	if not is_player_controlled:
 		_setup_ai_controller()
+		# Phase 3A: Log AI controller setup for enemy units
+		if DebugFlags and DebugFlags.battle_setup:
+			print("[REGIMENT] Enemy %s: AI controller initialized" % name)
 	elif data and data.ballistic_skill > 0:
 		# Player ranged units need AI controller for firing behavior
 		_setup_ai_controller()
-		print("[REGIMENT] Player ranged unit %s: AI controller initialized for firing" % (data.regiment_name if data else name))
+		if DebugFlags and DebugFlags.battle_setup:
+			print("[REGIMENT] Player ranged unit %s: AI controller initialized for firing" % (data.regiment_name if data else name))
 
 
 func _snap_to_terrain():
@@ -900,6 +927,10 @@ func set_state(new_state: State):
 	var old_state = state
 	state = new_state
 
+	# Phase 1B: State logging for combat debugging
+	if DebugFlags and DebugFlags.battle_setup:
+		print("[REGIMENT] %s: %s -> %s" % [name, State.keys()[old_state], State.keys()[new_state]])
+
 	# Update 3D soldier animations
 	if formation and old_state != new_state:
 		var anim_name = STATE_ANIMATIONS.get(new_state, "Idle")
@@ -1142,7 +1173,13 @@ func take_casualties(amount: int):
 			set_state(State.DEAD)
 		return
 
+	# DEBUG: Log casualty application
+	var old_count: int = current_soldiers
 	current_soldiers = max(0, current_soldiers - amount)
+	if amount > 0:
+		print("[CASUALTY] %s: -%d soldiers (%d -> %d)" % [
+			data.regiment_name if data else name, amount, old_count, current_soldiers
+		])
 
 	# Resync firing timers when soldiers die (trim stagger arrays)
 	if firing and firing.has_method("resync_after_casualty"):
@@ -1230,6 +1267,11 @@ func play_hit_reaction():
 
 ## Apply separation steering to avoid overlapping with nearby units
 func _apply_separation_steering(velocity: Vector3) -> Vector3:
+	# Phase 5A: Skip separation during ENGAGING state - let units overlap in melee!
+	# This allows regiments to get close enough to fight instead of pushing apart.
+	if state == State.ENGAGING:
+		return velocity
+
 	if not AIAutoload or not AIAutoload.spatial_hash:
 		return velocity
 
@@ -1243,6 +1285,9 @@ func _apply_separation_steering(velocity: Vector3) -> Vector3:
 			continue
 		# Only separate from living units
 		if other.state == State.DEAD or other.state == State.ROUTING:
+			continue
+		# Skip separation with units we're engaging (they should be close!)
+		if other.state == State.ENGAGING:
 			continue
 
 		var other_pos: Vector3 = other.global_position

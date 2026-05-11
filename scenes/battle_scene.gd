@@ -91,6 +91,13 @@ func _ready():
 			add_child(debugger)
 			print("[BattleScene] Freeze debugger ENABLED")
 
+	# Add formation debug overlay (F5 to toggle - shows facing arrows and melee boxes)
+	var formation_overlay_scene = load("res://battle_system/debug/formation_debug_overlay.tscn")
+	if formation_overlay_scene:
+		var overlay = formation_overlay_scene.instantiate()
+		add_child(overlay)
+		print("[BattleScene] Formation debug overlay available (F5 to toggle)")
+
 	# Wait for terrain to generate
 	await get_tree().create_timer(0.6).timeout
 

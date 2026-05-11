@@ -1,0 +1,72 @@
+# Scenario Template for Combat Referee Agent
+# Copy this file and fill in values to create a new scenario.
+#
+# Scenarios define:
+# - Setup: units, positions, orders
+# - Expectations: events that MUST happen (positive)
+# - Negative expectations: events that must NOT happen
+# - Variant ranges: parameters to fuzz for edge case discovery
+
+id: template_scenario_id
+description: |
+  Brief description of what this scenario tests.
+  Include the regression or behavior you're verifying.
+
+tags: [tag1, tag2]  # e.g., charge, melee, ranged, flanking, morale, regression
+severity_if_failing: medium  # critical, high, medium, low
+last_verified_pass: null  # ISO date when scenario last passed, e.g., 2026-05-08
+
+setup:
+  duration_sec: 30.0  # How long to run the battle
+  difficulty: normal  # easy, normal, hard, very_hard, iron_man
+  weather: clear  # clear, rain, fog, storm, snow, blizzard
+
+  player:
+    - unit: grtsword  # UnitCatalog ID (matches regiment file basename)
+      count: 20  # Number of soldiers
+      pos: [-15, 0, 0]  # World position [x, y, z]
+      facing: [1, 0, 0]  # Direction vector [x, y, z]
+      order: charge  # hold, march, charge
+      target: enemy[0]  # Target for charge/attack orders
+
+  enemy:
+    - unit: orcboyz
+      count: 20
+      pos: [15, 0, 0]
+      facing: [-1, 0, 0]
+      order: hold
+
+# Events that MUST happen for the scenario to pass
+expectations:
+  - id: unique_expectation_id
+    within_sec: 5.0  # Must happen within this time from battle start
+    event:
+      type: signal_name  # BattleSignals signal name (e.g., charge_impact, regiment_attacked)
+      filter:  # All filters are AND'd
+        field_name: exact_value  # Exact match
+        field_name_contains: substring  # Case-insensitive substring
+        field_name_min: 1  # Minimum value (inclusive)
+        field_name_max: 100  # Maximum value (inclusive)
+
+  # Example: expectation that depends on a previous one
+  - id: dependent_expectation
+    after: unique_expectation_id  # Anchor time is when unique_expectation_id matched
+    within_sec: 0.5  # Must happen within 0.5s of anchor
+    event:
+      type: regiment_attacked
+      filter:
+        damage_min: 1
+
+# Events that must NOT happen
+negative_expectations:
+  - id: no_forbidden_event
+    never:
+      type: signal_name
+      filter:
+        some_field: forbidden_value
+
+# Ranges for generating test variants (cartesian product, capped at 50)
+variant_ranges:
+  enemy_count: [10, 50, step: 10]  # 10, 20, 30, 40, 50
+  player_facing_angle: [-30, 30, step: 15]  # -30, -15, 0, 15, 30
+  # enemy_state_pre_charge: [hold, march, routing]  # Enum values

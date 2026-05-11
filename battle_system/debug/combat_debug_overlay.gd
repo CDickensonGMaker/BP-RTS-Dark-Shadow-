@@ -63,6 +63,13 @@ const ARROW_HEAD_SIZE: float = 8.0
 const FLANKED_OFFSET_Y: float = -72.0
 const AI_STATE_OFFSET_Y: float = -87.0
 const UNIT_NAME_OFFSET_Y: float = -102.0
+
+## Battle summary panel colors
+const COLOR_PANEL_BG: Color = Color(0.0, 0.0, 0.0, 0.75)
+const COLOR_PANEL_BORDER: Color = Color(0.5, 0.5, 0.5, 1.0)
+const COLOR_PLAYER_TEXT: Color = Color(0.3, 0.7, 1.0, 1.0)
+const COLOR_ENEMY_TEXT: Color = Color(1.0, 0.3, 0.3, 1.0)
+const COLOR_NEUTRAL_TEXT: Color = Color(1.0, 1.0, 1.0, 1.0)
 const COLOR_UNIT_NAME_ENEMY: Color = Color(1.0, 0.3, 0.3, 1.0)      # Red for enemies
 const COLOR_UNIT_NAME_PLAYER: Color = Color(0.3, 0.7, 1.0, 1.0)     # Blue for player
 const COLOR_MORALE_STATE_STEADY: Color = Color(0.3, 0.9, 0.3, 1.0)  # Green
@@ -179,6 +186,9 @@ func _on_draw() -> void:
 	if not is_enabled or not camera:
 		return
 
+	# Draw battle summary panel at top of screen (Phase 1A enhancement)
+	_draw_battle_summary()
+
 	# Draw active melee pair connections first (so they appear behind other UI)
 	_draw_melee_pairs()
 
@@ -196,6 +206,79 @@ func _on_draw() -> void:
 		# Log engagement position deltas if enabled
 		if log_engage_deltas and regiment.state == Regiment.State.ENGAGING:
 			_log_engage_delta(regiment)
+
+
+func _draw_battle_summary() -> void:
+	## Draw battle summary panel at top of screen showing regiment counts.
+	## Phase 1A: Real-time display for debugging large-scale combat.
+
+	# Get regiment counts from groups
+	var player_regiments := get_tree().get_nodes_in_group("player_regiments")
+	var enemy_regiments := get_tree().get_nodes_in_group("enemy_regiments")
+
+	# Count alive (non-DEAD, non-ROUTING) regiments
+	var player_alive := player_regiments.filter(
+		func(r): return is_instance_valid(r) and r.state != Regiment.State.DEAD and r.state != Regiment.State.ROUTING
+	)
+	var enemy_alive := enemy_regiments.filter(
+		func(r): return is_instance_valid(r) and r.state != Regiment.State.DEAD and r.state != Regiment.State.ROUTING
+	)
+
+	# Count engaging regiments
+	var player_engaging := player_regiments.filter(
+		func(r): return is_instance_valid(r) and r.state == Regiment.State.ENGAGING
+	)
+	var enemy_engaging := enemy_regiments.filter(
+		func(r): return is_instance_valid(r) and r.state == Regiment.State.ENGAGING
+	)
+
+	# Count active melee pairs
+	var melee_count: int = 0
+	if CombatManager and "active_melees" in CombatManager:
+		melee_count = CombatManager.active_melees.size()
+
+	# Build summary text
+	var font: Font = ThemeDB.fallback_font
+	var font_size: int = 14
+	var line_height: float = 18.0
+	var padding: float = 10.0
+
+	var lines: Array[String] = [
+		"=== BATTLE DEBUG (F3 toggle) ===",
+		"Player: %d/%d alive (%d engaging)" % [player_alive.size(), player_regiments.size(), player_engaging.size()],
+		"Enemy:  %d/%d alive (%d engaging)" % [enemy_alive.size(), enemy_regiments.size(), enemy_engaging.size()],
+		"Active melee pairs: %d" % melee_count,
+	]
+
+	# Calculate panel size
+	var max_width: float = 0.0
+	for line in lines:
+		var line_width: float = font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		max_width = maxf(max_width, line_width)
+
+	var panel_width: float = max_width + padding * 2
+	var panel_height: float = lines.size() * line_height + padding * 2
+	var panel_pos: Vector2 = Vector2(10, 10)  # Top-left corner
+
+	# Draw panel background
+	var panel_rect: Rect2 = Rect2(panel_pos, Vector2(panel_width, panel_height))
+	draw_control.draw_rect(panel_rect, COLOR_PANEL_BG)
+	draw_control.draw_rect(panel_rect, COLOR_PANEL_BORDER, false, 2.0)
+
+	# Draw lines
+	var text_pos: Vector2 = panel_pos + Vector2(padding, padding + font_size)
+	for i in range(lines.size()):
+		var line: String = lines[i]
+		var color: Color = COLOR_NEUTRAL_TEXT
+		if i == 1:  # Player line
+			color = COLOR_PLAYER_TEXT
+		elif i == 2:  # Enemy line
+			color = COLOR_ENEMY_TEXT
+		elif i == 3:  # Melee line
+			color = COLOR_MELEE_LINE
+
+		draw_control.draw_string(font, text_pos, line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+		text_pos.y += line_height
 
 
 func _draw_regiment_debug(regiment: Regiment) -> void:

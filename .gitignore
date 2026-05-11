@@ -41,3 +41,7 @@ assets/sprites/
 sothr_sprites_labeled/
 *.png
 *.png.import
+
+# Python
+__pycache__/
+*.pyc

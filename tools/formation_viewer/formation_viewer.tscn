@@ -1,0 +1,364 @@
+[gd_scene load_steps=2 format=3 uid="uid://dxk8qqfvhmj5p"]
+
+[ext_resource type="Script" path="res://tools/formation_viewer/formation_viewer.gd" id="1_script"]
+
+[node name="FormationViewer" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="HSplitContainer" type="HSplitContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+split_offset = 320
+
+[node name="LeftPanel" type="VBoxContainer" parent="HSplitContainer"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+text = "Formation Editor"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="UnitSelector" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/UnitSelector"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Unit:"
+
+[node name="UnitDropdown" type="OptionButton" parent="HSplitContainer/LeftPanel/UnitSelector"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RenderModePanel" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/RenderModePanel"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Render:"
+
+[node name="RenderModeDropdown" type="OptionButton" parent="HSplitContainer/LeftPanel/RenderModePanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CountPanel" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/CountPanel"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Soldiers:"
+
+[node name="CountSpin" type="SpinBox" parent="HSplitContainer/LeftPanel/CountPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 200.0
+value = 40.0
+
+[node name="FormationPanel" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/FormationPanel"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Formation:"
+
+[node name="FormationDropdown" type="OptionButton" parent="HSplitContainer/LeftPanel/FormationPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HSeparator2" type="HSeparator" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="FormationEditLabel" type="Label" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+text = "Formation Parameters"
+horizontal_alignment = 1
+
+[node name="SpacingPanel" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/SpacingPanel"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Spacing:"
+
+[node name="SpacingSpin" type="SpinBox" parent="HSplitContainer/LeftPanel/SpacingPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.5
+max_value = 5.0
+step = 0.1
+value = 1.2
+
+[node name="DepthPanel" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/DepthPanel"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Depth:"
+
+[node name="DepthSpin" type="SpinBox" parent="HSplitContainer/LeftPanel/DepthPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.5
+max_value = 5.0
+step = 0.1
+value = 1.0
+
+[node name="RowsPanel" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/RowsPanel"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Rows:"
+
+[node name="RowsSpin" type="SpinBox" parent="HSplitContainer/LeftPanel/RowsPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 20.0
+step = 1.0
+value = 3.0
+
+[node name="FrontagePanel" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/FrontagePanel"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Frontage:"
+
+[node name="FrontageSpin" type="SpinBox" parent="HSplitContainer/LeftPanel/FrontagePanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.2
+max_value = 3.0
+step = 0.1
+value = 1.0
+
+[node name="HSeparator6" type="HSeparator" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="UnitViewLabel" type="Label" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+text = "Unit View Direction"
+horizontal_alignment = 1
+
+[node name="UnitViewPanel" type="VBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="UnitViewButtons" type="HBoxContainer" parent="HSplitContainer/LeftPanel/UnitViewPanel"]
+layout_mode = 2
+alignment = 1
+
+[node name="UnitCCWButton" type="Button" parent="HSplitContainer/LeftPanel/UnitViewPanel/UnitViewButtons"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "← CCW"
+
+[node name="UnitViewDirLabel" type="Label" parent="HSplitContainer/LeftPanel/UnitViewPanel/UnitViewButtons"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "N (0°)"
+horizontal_alignment = 1
+
+[node name="UnitCWButton" type="Button" parent="HSplitContainer/LeftPanel/UnitViewPanel/UnitViewButtons"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "CW →"
+
+[node name="SaveFrontButton" type="Button" parent="HSplitContainer/LeftPanel/UnitViewPanel"]
+layout_mode = 2
+text = "Save as Formation Front"
+tooltip_text = "Save current sprite direction as the unit's formation front direction"
+
+[node name="HSeparator7" type="HSeparator" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="RotationLabel2" type="Label" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+text = "Formation Front"
+horizontal_alignment = 1
+
+[node name="RotationPanel" type="VBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="RotationSlider" type="HSlider" parent="HSplitContainer/LeftPanel/RotationPanel"]
+layout_mode = 2
+min_value = 0.0
+max_value = 315.0
+step = 45.0
+
+[node name="RotationLabel" type="Label" parent="HSplitContainer/LeftPanel/RotationPanel"]
+layout_mode = 2
+text = "N (0°)"
+horizontal_alignment = 1
+
+[node name="HSeparator3" type="HSeparator" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="LOSLabel" type="Label" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+text = "LOS Cone"
+horizontal_alignment = 1
+
+[node name="LOSPanel" type="VBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="LOSAngleRow" type="HBoxContainer" parent="HSplitContainer/LeftPanel/LOSPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/LOSPanel/LOSAngleRow"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Angle:"
+
+[node name="LOSAngleSpin" type="SpinBox" parent="HSplitContainer/LeftPanel/LOSPanel"]
+layout_mode = 2
+min_value = 10.0
+max_value = 180.0
+value = 90.0
+suffix = "°"
+
+[node name="LOSRangeRow" type="HBoxContainer" parent="HSplitContainer/LeftPanel/LOSPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/LOSPanel/LOSRangeRow"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Range:"
+
+[node name="LOSRangeSpin" type="SpinBox" parent="HSplitContainer/LeftPanel/LOSPanel"]
+layout_mode = 2
+min_value = 5.0
+max_value = 100.0
+value = 30.0
+
+[node name="HSeparator4" type="HSeparator" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="AnimPanel" type="HBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="AnimLabel" type="Label" parent="HSplitContainer/LeftPanel/AnimPanel"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Animation:"
+
+[node name="AnimDropdown" type="OptionButton" parent="HSplitContainer/LeftPanel/AnimPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PlayButton" type="Button" parent="HSplitContainer/LeftPanel/AnimPanel"]
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 2
+text = "Play"
+
+[node name="HSeparator5" type="HSeparator" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="CameraLabel" type="Label" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+text = "Camera"
+horizontal_alignment = 1
+
+[node name="CameraPanel" type="VBoxContainer" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+
+[node name="OrbitRow" type="HBoxContainer" parent="HSplitContainer/LeftPanel/CameraPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/CameraPanel/OrbitRow"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Orbit:"
+
+[node name="OrbitSlider" type="HSlider" parent="HSplitContainer/LeftPanel/CameraPanel"]
+layout_mode = 2
+min_value = -180.0
+max_value = 180.0
+step = 15.0
+
+[node name="ZoomRow" type="HBoxContainer" parent="HSplitContainer/LeftPanel/CameraPanel"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LeftPanel/CameraPanel/ZoomRow"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Zoom:"
+
+[node name="ZoomSlider" type="HSlider" parent="HSplitContainer/LeftPanel/CameraPanel"]
+layout_mode = 2
+min_value = 15.0
+max_value = 100.0
+value = 40.0
+
+[node name="Spacer" type="Control" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="KeysLabel" type="Label" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+text = "Keys: ←/→ Rotate, Q/E Orbit, +/- Zoom"
+
+[node name="StatusLabel" type="Label" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+text = "Ready"
+horizontal_alignment = 1
+
+[node name="RightPanel" type="VBoxContainer" parent="HSplitContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ViewportContainer" type="SubViewportContainer" parent="HSplitContainer/RightPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="HSplitContainer/RightPanel/ViewportContainer"]
+handle_input_locally = false
+size = Vector2i(800, 600)
+render_target_update_mode = 4
+
+[node name="Camera3D" type="Camera3D" parent="HSplitContainer/RightPanel/ViewportContainer/SubViewport"]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 30, 30)
+fov = 50.0
+
+[node name="DirectionalLight" type="DirectionalLight3D" parent="HSplitContainer/RightPanel/ViewportContainer/SubViewport"]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 20, 0)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="AmbientLight" type="DirectionalLight3D" parent="HSplitContainer/RightPanel/ViewportContainer/SubViewport"]
+transform = Transform3D(1, 0, 0, 0, -0.707107, 0.707107, 0, -0.707107, -0.707107, 0, -10, 0)
+light_color = Color(0.6, 0.7, 0.8, 1)
+light_energy = 0.4
+
+[node name="Ground" type="MeshInstance3D" parent="HSplitContainer/RightPanel/ViewportContainer/SubViewport"]
+
+[node name="FormationRoot" type="Node3D" parent="HSplitContainer/RightPanel/ViewportContainer/SubViewport"]
+
+[node name="DirectionArrow" type="MeshInstance3D" parent="HSplitContainer/RightPanel/ViewportContainer/SubViewport"]
+
+[node name="LOSCone" type="MeshInstance3D" parent="HSplitContainer/RightPanel/ViewportContainer/SubViewport"]

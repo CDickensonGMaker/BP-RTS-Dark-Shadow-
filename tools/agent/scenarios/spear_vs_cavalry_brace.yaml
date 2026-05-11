@@ -1,0 +1,80 @@
+# Spear vs Cavalry Brace Test
+# Verifies that braced spearmen negate cavalry charge bonuses.
+# Tests SPEAR_VS_CAVALRY_BONUS (1.25x) and brace mechanics.
+
+id: spear_vs_cavalry_brace
+description: |
+  When spearmen are braced and receive a frontal cavalry charge:
+  1. Charge should be negated (was_braced: true on charge_impact)
+  2. Spearmen should deal bonus damage (SPEAR_VS_CAVALRY_BONUS = 1.25x)
+  3. Cavalry should take significant casualties on impact
+
+  This validates:
+  - Regiment.is_braced detection
+  - FlankingCalculator.is_frontal_attack for brace check
+  - MeleeResolver spear vs cavalry bonus application
+  - ChargeSystem brace negation
+
+tags: [charge, brace, spear, cavalry, melee, rock-paper-scissors]
+severity_if_failing: high
+last_verified_pass: null
+
+setup:
+  duration_sec: 10.0
+  difficulty: normal
+  weather: clear
+
+  player:
+    - unit: halb  # Halberdiers - spear/polearm unit
+      count: 25
+      pos: [0, 0, 0]
+      facing: [-1, 0, 0]  # Facing west toward charging cavalry
+      order: hold  # Braced stance
+
+  enemy:
+    - unit: boarboyz  # Boar Boyz - orc cavalry
+      count: 15
+      pos: [-30, 0, 0]  # Far enough for valid charge
+      facing: [1, 0, 0]
+      order: charge
+      target: player[0]
+
+expectations:
+  - id: charge_is_braced
+    within_sec: 5.0
+    event:
+      type: charge_impact
+      filter:
+        was_braced: true
+
+  - id: cavalry_takes_casualties
+    after: charge_is_braced
+    within_sec: 1.0
+    event:
+      type: regiment_attacked
+      filter:
+        # Cavalry should take damage from counter
+        is_player: false
+        damage_min: 1
+
+  - id: spearmen_survive
+    within_sec: 8.0
+    event:
+      type: regiment_attacked
+      filter:
+        is_player: true
+        # Damage should be reduced due to brace
+
+negative_expectations:
+  - id: no_spear_instant_wipe
+    never:
+      type: regiment_dead
+      filter:
+        is_player: true
+        # Braced spears should not be instantly wiped
+
+variant_ranges:
+  player_count: [15, 25, 35]
+  enemy_count: [10, 15, 20]
+  # Test different spear units
+  player_unit: [halb, nlnhlb]
